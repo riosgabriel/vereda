@@ -40,6 +40,15 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
     }
 
     if (attempt > 0) {
+      // Let consumer decide whether to keep retrying before paying for backoff
+      if (
+        retryConfig.retryWhen &&
+        !retryConfig.retryWhen(lastError, attempt)
+      ) {
+        ticket._markDone({ success: false, error: lastError });
+        return;
+      }
+
       const delayMs = backoffFn(attempt - 1);
       ticket._markRetrying(attempt, delayMs);
       await sleep(delayMs);
@@ -71,7 +80,6 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 
       case "timeout":
         lastError = new TimeoutError(url, triggerConfig.timeoutMs ?? 0);
-        // Continue to next attempt
         break;
 
       case "queued_status":
@@ -79,14 +87,13 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
           url,
           triggerConfig.timeoutMs ?? 0
         );
-        // Continue to next attempt
         break;
 
       case "error":
         lastError = result.error;
-        // Continue to next attempt
         break;
     }
+
   }
 
   // All attempts exhausted

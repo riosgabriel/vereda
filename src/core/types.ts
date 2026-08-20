@@ -60,6 +60,10 @@ export interface PartitionConfig {
 export interface RetryConfig {
   maxAttempts?: number;
   backoff?: BackoffFn | BackoffOptions;
+  /** Optional predicate to decide whether a failed attempt should be retried.
+   *  Called with the error and the zero-based attempt number.
+   *  Return `false` to stop retrying and surface the error. */
+  retryWhen?: (error: AppError, attempt: number) => boolean;
 }
 
 // ---------------------------------------------------------------------------
