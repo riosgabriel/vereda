@@ -128,6 +128,19 @@ retry: {
   maxAttempts: 3,
   backoff: (attempt) => Math.min(100 * 2 ** attempt, 10000),
 }
+
+// Or decide per-failure whether to keep retrying
+retry: {
+  maxAttempts: 5,
+  retryWhen: (error, attempt) => {
+    // error: the AppError from the attempt that just failed
+    // attempt: that attempt's zero-based number (0 = first attempt)
+    // Consulted after every failed attempt — including the first, before
+    // any retry is scheduled. Returning false surfaces the error as-is.
+    if (error instanceof NetworkError && error.statusCode === 500) return false;
+    return true;
+  },
+}
 ```
 
 ### Bulkhead Isolation

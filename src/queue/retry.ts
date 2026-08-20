@@ -40,7 +40,11 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
     }
 
     if (attempt > 0) {
-      // Let consumer decide whether to keep retrying before paying for backoff
+      // Let the consumer decide whether to keep retrying before paying for
+      // backoff. The loop's attempt k is overall execution k+1 (the first
+      // attempt ran outside the loop, vetted by the client), so `attempt`
+      // here is the overall zero-based number of the execution that
+      // produced `lastError`.
       if (
         retryConfig.retryWhen &&
         !retryConfig.retryWhen(lastError, attempt)

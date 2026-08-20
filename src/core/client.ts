@@ -8,7 +8,7 @@ import type {
   TriggerConfig,
 } from "./types.js";
 import type { AppError } from "./errors.js";
-import { NetworkError, CancelledError } from "./errors.js";
+import { NetworkError, CancelledError, TimeoutError } from "./errors.js";
 import { BulkheadRegistry } from "../queue/bulkhead.js";
 import { executeRequest, type MiddlewareFn } from "../queue/executor.js";
 import { runRetryLoop } from "../queue/retry.js";
@@ -141,17 +141,39 @@ export class HttpClient {
           ticket._markDone({ success: false, error: result.error });
           return;
         }
-        // Other errors fall through to queue
+        // Let the consumer veto retrying before the request is queued
+        if (this.retryVetoed(retryConfig, result.error, ticket, url)) return;
         ticket._markQueued();
         this._scheduleInBulkhead(ticket, url, options, triggerConfig, retryConfig, partitionName, bulkhead);
         return;
 
       case "timeout":
-      case "queued_status":
+      case "queued_status": {
+        // Same error construction runRetryLoop uses for these cases
+        const error = new TimeoutError(url, triggerConfig.timeoutMs ?? 0);
+        if (this.retryVetoed(retryConfig, error, ticket, url)) return;
         ticket._markQueued();
         this._scheduleInBulkhead(ticket, url, options, triggerConfig, retryConfig, partitionName, bulkhead);
         return;
+      }
     }
+  }
+
+  /** Consult retryWhen after the first attempt failed (attempt 0). Returns
+   *  true if the consumer vetoed retrying — the ticket is resolved with
+   *  the error and must not be queued. */
+  private retryVetoed(
+    retryConfig: RetryConfig,
+    error: AppError,
+    ticket: Ticket<unknown>,
+    url: string
+  ): boolean {
+    if (retryConfig.retryWhen && !retryConfig.retryWhen(error, 0)) {
+      this.emit("failure", { ticketId: ticket.id, url, error });
+      ticket._markDone({ success: false, error });
+      return true;
+    }
+    return false;
   }
 
   private _scheduleInBulkhead(

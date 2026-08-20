@@ -61,8 +61,10 @@ export interface RetryConfig {
   maxAttempts?: number;
   backoff?: BackoffFn | BackoffOptions;
   /** Optional predicate to decide whether a failed attempt should be retried.
-   *  Called with the error and the zero-based attempt number.
-   *  Return `false` to stop retrying and surface the error. */
+   *  Called with the error from the most recent failed attempt and that
+   *  attempt's zero-based number (0 = the first attempt). Consulted after
+   *  every failed attempt — including the first, before any retry is
+   *  scheduled — so returning `false` surfaces the error immediately. */
   retryWhen?: (error: AppError, attempt: number) => boolean;
 }
 
