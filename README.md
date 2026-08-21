@@ -266,7 +266,7 @@ if (result.success) {
 
 `parse` is just `(data: unknown) => T`, so any validator that throws on failure works. A failed parse resolves the ticket with a `ValidationError` (carrying the issues) and is never retried.
 
-The core package has no dependency on Zod; only the `relay/zod` entry point imports it.
+The core package has no dependency on Zod; only the `relay/zod` entry point imports it. Zod is an optional peer dependency — install it yourself (`npm install zod`) if you use `withZod`.
 
 ## Lifecycle events
 
