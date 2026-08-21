@@ -23,6 +23,14 @@ export class Bulkhead {
     return this.running;
   }
 
+  get concurrencyLimit(): number {
+    return this.concurrency;
+  }
+
+  get maxQueueSizeLimit(): number {
+    return this.maxQueueSize;
+  }
+
   canAccept(): boolean {
     return this.queue.length < this.maxQueueSize;
   }
@@ -68,6 +76,14 @@ export class Bulkhead {
 // Bulkhead registry — one bulkhead per partition
 // ---------------------------------------------------------------------------
 
+export interface BulkheadSnapshot {
+  name: string;
+  running: number;
+  queued: number;
+  concurrency: number;
+  maxQueueSize: number;
+}
+
 export class BulkheadRegistry {
   private readonly bulkheads = new Map<string, Bulkhead>();
   private readonly globalConfig: PartitionConfig;
@@ -93,7 +109,17 @@ export class BulkheadRegistry {
     return this.bulkheads.get(partitionName)!;
   }
 
-  getAll(): Map<string, Bulkhead> {
-    return this.bulkheads;
+  getAll(): BulkheadSnapshot[] {
+    const result: BulkheadSnapshot[] = [];
+    for (const [, bh] of this.bulkheads) {
+      result.push({
+        name: bh.name,
+        running: bh.runningCount,
+        queued: bh.queueSize,
+        concurrency: bh.concurrencyLimit,
+        maxQueueSize: bh.maxQueueSizeLimit,
+      });
+    }
+    return result;
   }
 }

@@ -136,6 +136,83 @@ describe("HttpClient integration", () => {
     }
   });
 
+  it("retryWhen predicate stops retrying and surfaces the underlying error", async () => {
+    server.setHandler((_req, res) => {
+      res.writeHead(500);
+      res.end("Server Error");
+    });
+
+    const result = await client.get(`${server.url}/bad`, {
+      retry: {
+        maxAttempts: 3,
+        backoff: { baseDelayMs: 10, jitter: false },
+        retryWhen: (err) => !(err instanceof NetworkError && err.statusCode === 500),
+      },
+    }).toPromise();
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      // Should surface the NetworkError, not MaxRetriesExceededError
+      expect(result.error).toBeInstanceOf(NetworkError);
+      expect((result.error as NetworkError).statusCode).toBe(500);
+    }
+  });
+
+  it("retryWhen receives the failed attempt's zero-based number", async () => {
+    let requestCount = 0;
+    server.setHandler((_req, res) => {
+      requestCount++;
+      res.writeHead(500);
+      res.end("Server Error");
+    });
+
+    const attemptsSeen: number[] = [];
+    const result = await client.get(`${server.url}/bad`, {
+      retry: {
+        maxAttempts: 3,
+        backoff: { baseDelayMs: 10, jitter: false },
+        // Allow retries after the first two failures, reject after the third
+        retryWhen: (_err, attempt) => {
+          attemptsSeen.push(attempt);
+          return attempt < 2;
+        },
+      },
+    }).toPromise();
+
+    // Failed attempts are numbered 0, 1, 2 — the predicate sees each one
+    expect(attemptsSeen).toEqual([0, 1, 2]);
+    expect(requestCount).toBe(3);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toBeInstanceOf(NetworkError);
+      expect((result.error as NetworkError).statusCode).toBe(500);
+    }
+  });
+
+  it("retryWhen rejecting the first failure prevents any retry", async () => {
+    let requestCount = 0;
+    server.setHandler((_req, res) => {
+      requestCount++;
+      res.writeHead(500);
+      res.end("Server Error");
+    });
+
+    const result = await client.get(`${server.url}/bad`, {
+      retry: {
+        maxAttempts: 3,
+        backoff: { baseDelayMs: 10, jitter: false },
+        retryWhen: () => false,
+      },
+    }).toPromise();
+
+    expect(requestCount).toBe(1);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toBeInstanceOf(NetworkError);
+      expect((result.error as NetworkError).statusCode).toBe(500);
+    }
+  });
+
   it("cancel() aborts the ticket immediately", async () => {
     server.setHandler((_req, res) => {
       setTimeout(() => { try { res.writeHead(200); res.end("{}"); } catch {} }, 5000);
