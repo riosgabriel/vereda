@@ -32,7 +32,7 @@ export async function executeRequest(
 ): Promise<ExecuteResult> {
   const { url, options, triggerConfig, signal } = req;
 
-  if (signal.aborted) {
+  if (signal.aborted || options.signal?.aborted) {
     return { kind: "cancelled" };
   }
 
@@ -56,7 +56,8 @@ export async function executeRequest(
       // Merge signals: external cancel + timeout
       const mergedSignal = mergeSignals(
         signal,
-        timeoutController.signal
+        timeoutController.signal,
+        ...(options.signal ? [options.signal] : [])
       );
 
       try {
@@ -69,10 +70,13 @@ export async function executeRequest(
         return { kind: "timeout" };
       }
     } else {
-      response = await composed({ ...options, signal });
+      const mergedSignal = options.signal
+        ? mergeSignals(signal, options.signal)
+        : signal;
+      response = await composed({ ...options, signal: mergedSignal });
     }
   } catch (err) {
-    if (signal.aborted) {
+    if (signal.aborted || options.signal?.aborted) {
       return { kind: "cancelled" };
     }
     if (isAbortError(err)) {
