@@ -21,6 +21,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "prepare": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
@@ -34,6 +35,9 @@
     "resilience"
   ],
   "license": "MIT",
+  "files": [
+    "dist"
+  ],
   "dependencies": {
     "zod": "^3.23.8"
   },
