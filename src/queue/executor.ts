@@ -76,6 +76,12 @@ export async function executeRequest(
       response = await composed({ ...options, signal: mergedSignal });
     }
   } catch (err) {
+    // Precedence: cancellation wins over timeout. If the ticket or the
+    // external signal is aborted, report cancelled even if the timeout
+    // also fired — the ticket is already marked cancelled, and
+    // cancellation is the caller's terminal intent. A timeout that fires
+    // first still surfaces as "timeout": the external signal is not yet
+    // aborted when this check runs.
     if (signal.aborted || options.signal?.aborted) {
       return { kind: "cancelled" };
     }
