@@ -1,184 +1,230 @@
 # Relay
 
-A resilient HTTP client for Node.js with automatic queuing, retries, and bulkhead isolation.
+A resilient HTTP client for Node.js. Configure retries, timeouts, and per-host concurrency limits once on the client, then make requests. Relay fires each request, absorbs failures, backs off, and retries. You await one result.
 
-## Features
-
-- **Ticket-based API** - Non-blocking requests that return a `Ticket` object
-- **Automatic Retries** - Exponential backoff with optional jitter
-- **Bulkhead Pattern** - Isolate failures by partition with concurrency limits
-- **Request Queuing** - Automatic queuing for rate-limited (429) or unavailable (503) responses
-- **Timeout Protection** - Cancel slow requests and queue them for retry
-- **Middleware Support** - Intercept and modify requests/responses
-- **Type Safety** - Full TypeScript support with schema validation
-- **Lifecycle Events** - Monitor request lifecycle with typed events
-- **Cancellation** - Cancel in-flight requests via AbortSignal
-
-## Installation
-
-```bash
-npm install relay
-```
-
-## Quick Start
+Every request returns a **Ticket** — a handle you can await, subscribe to, or cancel while Relay does the work.
 
 ```typescript
 import { HttpClient } from "relay";
 
-const client = HttpClient.create();
+const client = HttpClient.create({ baseUrl: "https://api.example.com" });
 
-// Make a request - returns immediately with a Ticket
-const ticket = client.get("https://api.example.com/users/1");
-
-// Consume the result as a promise
-const result = await ticket.toPromise();
+const result = await client.get("/users/1").toPromise();
 if (result.success) {
-  console.log(result.data); // Typed response data
+  const user = await result.raw.json();
 } else {
-  console.error(result.error); // Typed error
+  console.error(result.error.message); // typed error, never a throw
 }
 ```
 
-## Core Concepts
+## Status
 
-### Ticket
+Relay is early-stage software. The API is small, tested (36 passing tests), and MIT licensed, but it has not been hardened in production yet. Pin the version you depend on.
 
-A `Ticket` represents an in-flight or queued request. It provides:
+## Why Relay
 
-- **Status tracking** - `pending`, `queued`, `retrying`, `done`, or `cancelled`
-- **Promise interface** - `toPromise()` for async/await usage
-- **Async iterator** - `subscribe()` for streaming updates
-- **Cancellation** - `cancel()` to abort the request
-- **Events** - `on("done")`, `on("error")`, `on("update")`
+`fetch` gives you one attempt at a request. Production code needs more: retry flaky networks, back off when a server returns 429, cap how many calls hit a struggling host, and give up cleanly when a request hangs. Most codebases grow a tangle of `setTimeout`, `try/catch`, and ad-hoc queues around `fetch` to get there.
+
+Relay puts that machinery in one place:
+
+- **Retries with exponential backoff and jitter**, on by default for every failed request
+- **Bulkhead isolation** — each host gets its own concurrency limit and queue, so one failing upstream can't starve the rest
+- **Timeouts** that cancel slow requests and hand them to the retry loop
+- **A result type instead of exceptions** — requests resolve to `{ success, data, raw }` or `{ success: false, error }` with typed error classes
+- **Observability** — lifecycle events and per-ticket status updates for anything you need to monitor
+
+Relay is built on Node's global `fetch` and `node:events`. It runs on Node 18+ and is ESM-only. It is not a browser client.
+
+## Installation
+
+Relay is not published to npm yet. The `relay` name on npm belongs to an unrelated package — don't install that one.
+
+Install from GitHub instead:
+
+```bash
+npm install github:riosgabriel/relay
+```
+
+npm runs the build during install (via the `prepare` script), so `dist/` is ready when installation finishes.
+
+## How a request flows
+
+```
+client.get(url)
+      |
+      v
+ first attempt ------ success ------> ticket done
+      |
+ failure, timeout, or busy status (e.g. 429)
+      |
+      v
+ partition bulkhead --> backoff --> retry --> ... --> done
+      (per host)                      |
+                                      +-- attempts exhausted --> MaxRetriesExceededError
+```
+
+The first attempt fires immediately, outside the bulkhead. Only requests that need another attempt go through their partition's queue, which is what keeps retry traffic from hammering an already-struggling host.
+
+With zero configuration:
+
+| Setting | Default |
+| --- | --- |
+| Global concurrency | 10 in-flight retries across all partitions |
+| Per-partition concurrency | 5 |
+| Per-partition queue size | 100 waiting requests |
+| Retries | 3 retries after the first attempt (4 total executions) |
+| Backoff | Exponential: 200ms base, 30s cap, full jitter |
+| Timeout | None |
+| Queue-on status codes | None (all non-2xx responses are retried as errors) |
+
+A request is retried on any failure: network errors, non-2xx responses, timeouts, and any status code you list in `queueOnStatus`. The one exception is schema validation — a response that fails your `parse` function resolves immediately with a `ValidationError`, because retrying would parse the same payload again.
+
+## Tickets
+
+`client.get()` and friends return synchronously with a `Ticket<T>`. The ticket tracks the request from first attempt to terminal result:
 
 ```typescript
 const ticket = client.get("/api/data");
 
-// Check status
-console.log(ticket.status); // { state: "pending" | "queued" | "retrying" | "done" | "cancelled" }
+ticket.status;      // { state: "pending" | "queued" | "retrying" | "done" | "cancelled" }
+ticket.id;          // unique ticket id
+ticket.isCancelled; // boolean
 
-// Wait for result
+// Await the terminal result
 const result = await ticket.toPromise();
 
-// Or subscribe to updates
+// Or follow every state change
 for await (const update of ticket.subscribe()) {
-  console.log(update); // { type: "queued" } | { type: "retrying", attempt, delayMs } | ...
+  // { type: "queued" }
+  // { type: "retrying", attempt, delayMs }
+  // { type: "done", result }
+  // { type: "cancelled" }
 }
+
+// Or use events
+ticket.on("done", (result) => {});
+ticket.on("error", (error) => {});
+ticket.on("update", (update) => {});
 ```
 
-### Configuration
+`toPromise()` never rejects. The result is a discriminated union:
+
+```typescript
+type Result<T> =
+  | { success: true; data: T; raw: Response }
+  | { success: false; error: AppError };
+```
+
+One detail worth knowing: without a `parse` function, `data` is `undefined` and the unparsed body lives on `result.raw` (the standard `Response` object). Add a `parse` function to get typed `data` — see [Schema validation](#schema-validation).
+
+## Retries and backoff
+
+Configure retries globally, per partition, or per request. Per-request settings override partition settings, which override global ones.
 
 ```typescript
 const client = HttpClient.create({
-  // Base URL prepended to all requests
-  baseUrl: "https://api.example.com",
-
-  // Global concurrency limit (default: 10)
-  concurrency: 5,
-
-  // Global trigger settings
-  trigger: {
-    timeoutMs: 5000, // Cancel requests taking longer than 5s
-    queueOnStatus: [429, 503], // Queue on these status codes
-  },
-
-  // Global retry settings
   retry: {
-    maxAttempts: 3,
+    maxAttempts: 5, // retries after the first attempt
     backoff: {
-      baseDelayMs: 200,
-      maxDelayMs: 30000,
-      jitter: true,
+      baseDelayMs: 1000, // first retry delay before jitter
+      maxDelayMs: 30000, // cap
+      jitter: true,      // full jitter: uniform random in [0, delay]
     },
-  },
-
-  // Per-partition overrides (keyed by hostname by default)
-  partitions: {
-    "api.example.com": {
-      concurrency: 3,
-      maxQueueSize: 50,
-    },
-  },
-
-  // Custom logger
-  logger: {
-    debug: (msg, meta) => console.debug(msg, meta),
-    info: (msg, meta) => console.info(msg, meta),
-    warn: (msg, meta) => console.warn(msg, meta),
-    error: (msg, meta) => console.error(msg, meta),
   },
 });
 ```
 
-### Retry Configuration
+The default backoff is `200ms * 2^attempt`, capped at 30s, with full jitter applied. Jitter spreads retries out so a fleet of clients doesn't hit a recovering server at the same instant.
+
+You can also supply a custom backoff function, where `attempt` is the zero-based retry number:
 
 ```typescript
-// Simple backoff options
-retry: {
-  maxAttempts: 5,
-  backoff: {
-    baseDelayMs: 1000,
-    maxDelayMs: 30000,
-    jitter: true, // Add randomness to prevent thundering herd
-  },
-}
-
-// Or provide a custom backoff function
 retry: {
   maxAttempts: 3,
   backoff: (attempt) => Math.min(100 * 2 ** attempt, 10000),
 }
+```
 
-// Or decide per-failure whether to keep retrying
+### Deciding which failures to retry
+
+`retryWhen` is consulted after every failed attempt — including the first one, before any retry is scheduled. Return `false` to surface the error immediately.
+
+```typescript
+import { NetworkError } from "relay";
+
 retry: {
   maxAttempts: 5,
   retryWhen: (error, attempt) => {
     // error: the AppError from the attempt that just failed
     // attempt: that attempt's zero-based number (0 = first attempt)
-    // Consulted after every failed attempt — including the first, before
-    // any retry is scheduled. Returning false surfaces the error as-is.
     if (error instanceof NetworkError && error.statusCode === 500) return false;
     return true;
   },
 }
 ```
 
-### Bulkhead Isolation
+When all attempts are exhausted, the ticket resolves with a `MaxRetriesExceededError` carrying the attempt count and the last underlying error.
 
-Relay uses the bulkhead pattern to isolate failures by partition (hostname by default):
+## Partitions and bulkheads
+
+Every request is assigned to a partition, keyed by hostname by default. Each partition owns a bulkhead: a concurrency limit plus a waiting queue. A slow or failing host fills its own queue and throttles its own retries without touching traffic to other hosts.
 
 ```typescript
 const client = HttpClient.create({
-  // Global concurrency
-  concurrency: 10,
+  concurrency: 10, // global cap across all partitions
 
-  // Partition-specific configs
   partitions: {
     "api.external.com": {
-      concurrency: 2, // Only 2 concurrent requests to external API
-      maxQueueSize: 10, // Max 10 pending requests in queue
+      concurrency: 2,    // at most 2 in-flight retries
+      maxQueueSize: 10,  // at most 10 waiting requests
     },
     "api.internal.com": {
-      concurrency: 20, // Higher concurrency for internal API
+      concurrency: 20,
     },
   },
 });
-
-// Partition is automatically determined by hostname
-// Or specify manually:
-client.get("/path", { partition: "my-partition" });
 ```
 
-### Middleware
+Partitions are created on first use. You can also assign a partition explicitly, which is useful for priority lanes or for grouping several hosts:
 
-Add middleware to intercept and modify requests/responses:
+```typescript
+client.get("/path", { partition: "high-priority" });
+```
+
+When a partition's queue is full, the new request's ticket resolves with a `NetworkError` explaining the queue is full. That is deliberate backpressure: the alternative is unbounded memory growth.
+
+## Timeouts and queue triggers
+
+```typescript
+const client = HttpClient.create({
+  trigger: {
+    timeoutMs: 5000,           // cancel attempts slower than 5s and retry them
+    queueOnStatus: [429, 503], // treat these statuses as "busy, try again later"
+  },
+});
+```
+
+- `timeoutMs` — a hard per-attempt timeout. The attempt is aborted and the request joins the retry loop. No timeout is set by default.
+- `queueOnStatus` — status codes that mean the server is busy rather than broken. Matching responses are queued for retry without being treated as errors. 429 and 503 are the usual candidates.
+
+Both settings merge per request, same as retry config:
+
+```typescript
+client.get("/api/data", {
+  trigger: { timeoutMs: 10000, queueOnStatus: [429, 500, 502, 503, 504] },
+});
+```
+
+## Middleware
+
+Middleware wraps every attempt (including retries) in the standard onion shape: receive options, call `next`, return a `Response`.
 
 ```typescript
 import { defaultHeaders, requestLogger } from "relay/middleware";
 
-// Add default headers to every request
+// Add default headers to every request (per-request headers win on conflict)
 client.use(defaultHeaders({
-  "Authorization": "Bearer token123",
+  Authorization: "Bearer token123",
   "X-Client-Version": "1.0.0",
 }));
 
@@ -194,9 +240,11 @@ client.use(async (options, next) => {
 });
 ```
 
-### Schema Validation
+Middleware runs inside the timeout and cancellation wiring, so a hung middleware gets cancelled along with the request.
 
-Use the Zod adapter for type-safe response parsing:
+## Schema validation
+
+Pass a `parse` function to validate and type the response body. Relay ships a Zod adapter:
 
 ```typescript
 import { z } from "zod";
@@ -208,67 +256,107 @@ const UserSchema = z.object({
   email: z.string().email(),
 });
 
-const ticket = client.get("/users/1", {
-  parse: withZod(UserSchema),
-});
+const ticket = client.get<User>("/users/1", { parse: withZod(UserSchema) });
 
 const result = await ticket.toPromise();
 if (result.success) {
-  // result.data is typed as { id: number; name: string; email: string }
-  console.log(result.data.name);
+  result.data.name; // typed: string
 }
 ```
 
-### Lifecycle Events
+`parse` is just `(data: unknown) => T`, so any validator that throws on failure works. A failed parse resolves the ticket with a `ValidationError` (carrying the issues) and is never retried.
 
-Monitor the request lifecycle with typed events:
+The core package has no dependency on Zod; only the `relay/zod` entry point imports it.
+
+## Lifecycle events
+
+The client emits typed events across all requests — useful for metrics, logging, and alerting:
 
 ```typescript
-client.on("request", ({ ticketId, url, method }) => {
-  console.log(`Request ${ticketId}: ${method} ${url}`);
-});
+client.on("request", ({ ticketId, url, method }) => {});  // request submitted
+client.on("retry",   ({ ticketId, url, attempt, delayMs }) => {});
+client.on("success", ({ ticketId, url, attempt }) => {});
+client.on("failure", ({ ticketId, url, error }) => {});   // terminal failure
 
-client.on("success", ({ ticketId, url, attempt }) => {
-  console.log(`Success ${ticketId} after ${attempt} attempts`);
-});
-
-client.on("failure", ({ ticketId, url, error }) => {
-  console.log(`Failed ${ticketId}: ${error.message}`);
-});
-
-client.on("retry", ({ ticketId, url, attempt, delayMs }) => {
-  console.log(`Retry ${ticketId}: attempt ${attempt}, waiting ${delayMs}ms`);
-});
+// Remove a listener
+client.off("success", listener);
 ```
 
-### Cancellation
+## Cancellation
 
-Cancel requests using the built-in cancellation or an external AbortSignal:
+Cancel from the ticket, or wire in your own `AbortSignal`:
 
 ```typescript
 const ticket = client.get("/slow-api/data");
+ticket.cancel(); // aborts the in-flight attempt and settles the ticket
 
-// Cancel directly
-ticket.cancel();
-
-// Or use an external signal
 const controller = new AbortController();
-const ticket = client.get("/api/data", {
-  signal: controller.signal,
-});
-
-// Later...
-controller.abort();
+const ticket2 = client.get("/api/data", { signal: controller.signal });
+controller.abort(); // same effect: ticket resolves with CancelledError
 ```
 
-## API Reference
+Cancellation wins over everything else: if you abort while a timeout is also firing, the result is `CancelledError`. A cancelled request is never retried.
 
-### HttpClient
+## Error handling
+
+Errors are a closed hierarchy under `RelayError`, so an `instanceof` chain covers every failure mode:
+
+| Error | Meaning | Notable fields |
+| --- | --- | --- |
+| `NetworkError` | Network failure or non-2xx response | `statusCode`, `response`, `cause` |
+| `TimeoutError` | Attempt exceeded `timeoutMs` | `url`, `timeoutMs` |
+| `ValidationError` | Response body failed `parse` (never retried) | `issues` |
+| `CancelledError` | Ticket cancelled or signal aborted | — |
+| `MaxRetriesExceededError` | All attempts exhausted | `attempts`, `lastError` |
+
+```typescript
+import { MaxRetriesExceededError, NetworkError } from "relay";
+
+const result = await ticket.toPromise();
+if (!result.success) {
+  const { error } = result;
+  if (error instanceof MaxRetriesExceededError) {
+    // error.lastError is the underlying AppError from the final attempt
+  } else if (error instanceof NetworkError) {
+    // error.statusCode, error.response
+  }
+}
+```
+
+## Configuration reference
+
+### `ClientConfig`
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `baseUrl` | `string` | — | Prepended to relative request URLs |
+| `concurrency` | `number` | `10` | Global cap on in-flight retries across partitions |
+| `trigger` | `TriggerConfig` | — | Default `timeoutMs` and `queueOnStatus` |
+| `retry` | `RetryConfig` | 3 retries, exponential backoff | Default retry policy |
+| `partitions` | `Record<string, PartitionConfig>` | — | Per-partition overrides (concurrency, queue size, trigger, retry) |
+| `logger` | `Logger` | — | Structured logger with `debug`/`info`/`warn`/`error` |
+
+### `RequestOptions`
+
+| Option | Type | Description |
+| --- | --- | --- |
+| `method` | `string` | HTTP method (set by `get`/`post`/etc.) |
+| `headers` | `Record<string, string>` | Request headers |
+| `body` | `BodyInit` | Request body |
+| `partition` | `string` | Partition name (defaults to hostname) |
+| `parse` | `(data: unknown) => T` | Validate and type the response body |
+| `trigger` | `TriggerConfig` | Per-request trigger overrides |
+| `retry` | `RetryConfig` | Per-request retry overrides |
+| `signal` | `AbortSignal` | External cancellation |
+
+## API reference
+
+### `HttpClient`
 
 ```typescript
 static create(config?: ClientConfig): HttpClient
 
-// HTTP methods
+// HTTP methods — all return immediately with a Ticket
 get<T>(url: string, options?: RequestOptions<T>): Ticket<T>
 post<T>(url: string, body?: BodyInit, options?: RequestOptions<T>): Ticket<T>
 put<T>(url: string, body?: BodyInit, options?: RequestOptions<T>): Ticket<T>
@@ -284,7 +372,7 @@ on<K extends keyof LifecycleEventMap>(event: K, listener: (data: LifecycleEventM
 off<K extends keyof LifecycleEventMap>(event: K, listener: (data: LifecycleEventMap[K]) => void): this
 ```
 
-### Ticket
+### `Ticket<T>`
 
 ```typescript
 // Properties
@@ -302,99 +390,26 @@ on(event: "done", listener: (result: Result<T>) => void): this
 on(event: "error", listener: (error: AppError) => void): this
 on(event: "update", listener: (update: TicketUpdate) => void): this
 
-// Async iterator
+// Async iterator over state changes
 subscribe(): AsyncGenerator<TicketUpdate>
 ```
 
-### Result Type
+## Design notes
 
-```typescript
-type Result<T> =
-  | { success: true; data: T; raw: Response }
-  | { success: false; error: AppError };
-```
+**Why tickets instead of promises?** A promise is a single future value. A resilient request has a lifecycle — queued, retrying, done — and you may want to observe or cancel it mid-flight. A ticket gives you that surface while still offering a plain `toPromise()` for code that just wants the answer.
 
-### Error Types
+**Why does the first attempt skip the bulkhead?** Fresh requests should not wait behind retry traffic for a host that happens to be degraded. The bulkhead exists to throttle *retry* pressure onto struggling hosts, which is where thundering herds come from.
 
-- `RelayError` - Base error class
-- `NetworkError` - HTTP errors, network failures
-- `ValidationError` - Schema validation failures
-- `TimeoutError` - Request timeout
-- `CancelledError` - Request cancelled
-- `MaxRetriesExceededError` - All retry attempts exhausted
+**What Relay does not do.** No response caching, no request deduplication, no streaming response helpers, no browser support. It is deliberately narrow: queueing, retries, isolation, and typed results on top of `fetch`.
 
-## Advanced Usage
-
-### Streaming Updates with Async Iterator
-
-```typescript
-const ticket = client.get("/api/slow-endpoint");
-
-for await (const update of ticket.subscribe()) {
-  switch (update.type) {
-    case "queued":
-      console.log("Request queued");
-      break;
-    case "retrying":
-      console.log(`Retrying (attempt ${update.attempt}), waiting ${update.delayMs}ms`);
-      break;
-    case "done":
-      console.log("Request complete", update.result);
-      break;
-    case "cancelled":
-      console.log("Request cancelled");
-      break;
-  }
-}
-```
-
-### Per-Request Configuration
-
-```typescript
-const ticket = client.get("/api/data", {
-  // Override global retry config
-  retry: {
-    maxAttempts: 5,
-    backoff: { baseDelayMs: 500, jitter: true },
-  },
-
-  // Override trigger config
-  trigger: {
-    timeoutMs: 10000,
-    queueOnStatus: [429, 500, 502, 503, 504],
-  },
-
-  // Custom headers for this request
-  headers: { "X-Custom": "value" },
-
-  // Request body (for POST/PUT/PATCH)
-  body: JSON.stringify({ key: "value" }),
-
-  // Partition override
-  partition: "high-priority",
-
-  // External abort signal
-  signal: abortController.signal,
-});
-```
-
-## Building and Testing
+## Development
 
 ```bash
-# Install dependencies
-npm install
-
-# Build
-npm run build
-
-# Run tests
-npm test
-
-# Run tests in watch mode
+npm install       # install dependencies
+npm run build     # compile TypeScript to dist/
+npm test          # run the test suite (vitest)
 npm run test:watch
-
-# Type check
-npm run typecheck
+npm run typecheck # tsc --noEmit
 ```
 
 ## License
