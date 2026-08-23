@@ -49,7 +49,7 @@ Request flow: `client.get()` returns a `Ticket` synchronously → first attempt 
 
 ## Onboarding contributors (for LLMs)
 
-An LLM can stand in for a library's docs website: interactively walk a new contributor through the internals so they can start contributing. Use this section plus the architecture and invariants above as the teaching mental model.
+An LLM can stand in for a library's docs website: interactively walk a new contributor through the internals so they can start contributing. Use this section plus the architecture and invariants above as the teaching mental model. Developers can invoke the `guide-me` skill to get this walkthrough interactively.
 
 **Method**
 1. Follow `ONBOARDING.md` stop-by-stop. At each stop, open the referenced source file and explain the *actual* code — read it, don't paraphrase from memory.
