@@ -412,6 +412,10 @@ npm run test:watch
 npm run typecheck # tsc --noEmit
 ```
 
+## Contributing
+
+New to Relay? Start with [ONBOARDING.md](ONBOARDING.md), a guided tour of the codebase that follows one request through the library. When you're ready to contribute, read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, commands, and the behavioral invariants your change must preserve.
+
 ## License
 
 MIT
