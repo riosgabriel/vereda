@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { HttpClient } from "../../src/core/client.js";
-import { MaxRetriesExceededError, NetworkError, ValidationError } from "../../src/core/errors.js";
+import { CancelledError, MaxRetriesExceededError, NetworkError, ValidationError } from "../../src/core/errors.js";
 import { z } from "zod";
 import { withZod } from "../../src/adapters/zod.js";
 
@@ -238,4 +238,65 @@ describe("HttpClient integration", () => {
     await middlewareClient.get(`${server.url}/headers`).toPromise();
     expect(receivedHeader).toBe("relay-test");
   });
+
+  it("honors a pre-aborted external signal", async () => {
+    let requestCount = 0;
+    server.setHandler((_req, res) => {
+      requestCount++;
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end("{}");
+    });
+
+    const controller = new AbortController();
+    controller.abort();
+
+    const ticket = client.get(`${server.url}/pre-aborted`, { signal: controller.signal });
+    const result = await ticket.toPromise();
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error).toBeInstanceOf(CancelledError);
+    expect(requestCount).toBe(0);
+    expect(ticket.isCancelled).toBe(true);
+  });
+
+  it("aborts an in-flight request via external signal", async () => {
+    server.setHandler((_req, res) => {
+      setTimeout(() => { try { res.writeHead(200); res.end("{}"); } catch {} }, 500);
+    });
+
+    const controller = new AbortController();
+    const ticket = client.get(`${server.url}/in-flight-abort`, { signal: controller.signal });
+    setTimeout(() => controller.abort(), 30);
+
+    const result = await ticket.toPromise();
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error).toBeInstanceOf(CancelledError);
+    expect(ticket.isCancelled).toBe(true);
+  }, 5_000);
+
+  it("external abort during retry backoff stops retrying", async () => {
+    let requestCount = 0;
+    server.setHandler((_req, res) => {
+      requestCount++;
+      res.writeHead(500);
+      res.end("Server Error");
+    });
+
+    const controller = new AbortController();
+    const ticket = client.get(`${server.url}/backoff-abort`, {
+      signal: controller.signal,
+      retry: { maxAttempts: 3, backoff: { baseDelayMs: 200, jitter: false } },
+    });
+    setTimeout(() => controller.abort(), 50);
+
+    const result = await ticket.toPromise();
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error).toBeInstanceOf(CancelledError);
+    // The first retry fires immediately (loop attempt 0 has no backoff),
+    // so the abort lands during the first backoff window and stops the
+    // remaining attempts: 2 requests instead of 4.
+    expect(requestCount).toBe(2);
+  }, 5_000);
 });

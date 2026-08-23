@@ -73,6 +73,15 @@ export class HttpClient {
     const ticketId = nanoid();
     const ticket = new Ticket<T>(ticketId);
 
+    // Wire external cancellation: aborting options.signal cancels the ticket
+    if (options.signal) {
+      if (options.signal.aborted) {
+        ticket.cancel();
+      } else {
+        options.signal.addEventListener("abort", () => ticket.cancel(), { once: true });
+      }
+    }
+
     const triggerConfig = this.mergeTrigger(options);
     const retryConfig = this.mergeRetry(options);
     const partitionName = options.partition ?? new URL(fullUrl).hostname;
