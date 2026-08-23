@@ -2,6 +2,8 @@
 
 Welcome! This guide walks you through how Relay works by following a single request through the codebase. By the end you'll understand the architecture well enough to fix a bug or add a feature.
 
+Prefer to be walked through it? Ask an LLM to guide you stop-by-stop — it can open each referenced file and explain the real code as you go.
+
 **Prerequisites:** Node 18+, basic TypeScript, familiarity with `fetch`.
 
 > If this doc and the code disagree, trust the code and the tests. This doc is curated by hand and can lag.

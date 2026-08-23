@@ -40,7 +40,35 @@ Request flow: `client.get()` returns a `Ticket` synchronously → first attempt 
 - Cancellation wins over timeouts/retries; a cancelled ticket is never retried.
 - `ticket.toPromise()` never rejects — failures are a `Result` union with the closed `RelayError` hierarchy (`src/core/errors.ts`).
 
+→ To onboard a contributor using this mental model, see **Onboarding contributors (for LLMs)** below and `ONBOARDING.md`.
+
 ## Tests
 
 - Self-contained: integration tests spin up `node:http` servers on `127.0.0.1` ephemeral ports. No network, services, or env vars needed.
 - `testTimeout` is 15s (`vitest.config.ts`); retry/backoff tests use tiny delays (`baseDelayMs: 10`, `jitter: false`) — keep new timing-sensitive tests similarly fast.
+
+## Onboarding contributors (for LLMs)
+
+An LLM can stand in for a library's docs website: interactively walk a new contributor through the internals so they can start contributing. Use this section plus the architecture and invariants above as the teaching mental model.
+
+**Method**
+1. Follow `ONBOARDING.md` stop-by-stop. At each stop, open the referenced source file and explain the *actual* code — read it, don't paraphrase from memory.
+2. Convey the mental-model essentials below at the relevant stops.
+3. After the tour, point to `CONTRIBUTING.md` for setup, commands, and how to make the first contribution.
+
+**Mental-model essentials to convey**
+- Request flow: `client.get()` returns a `Ticket` synchronously; the first attempt fires *outside* the bulkhead; only retries go through the per-host bulkhead (`src/queue/`).
+- `retryWhen` is consulted after *every* failed attempt, including attempt 0.
+- `ValidationError` (failed `parse`) resolves immediately and is never retried.
+- Cancellation wins over timeouts/retries; a cancelled ticket is never retried.
+- `ticket.toPromise()` never rejects — failures are a `Result` union with the closed `RelayError` hierarchy (`src/core/errors.ts`).
+
+**Key file per concern** (for "where do I look?" questions)
+- Public API / `Ticket` / errors: `src/core/` (`index.ts`, `client.ts`, `errors.ts`, `types.ts`)
+- Ticket state machine: `src/ticket/ticket.ts`
+- Single attempt + middleware composition: `src/queue/executor.ts`
+- Retry loop: `src/queue/retry.ts`
+- Bulkhead + per-host queue: `src/queue/bulkhead.ts`
+- Backoff: `src/core/backoff.ts`
+- Middleware helpers: `src/middleware/index.ts`
+- Zod adapter (only zod import site): `src/adapters/zod.ts`
