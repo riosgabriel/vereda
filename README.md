@@ -412,6 +412,15 @@ npm run test:watch
 npm run typecheck # tsc --noEmit
 ```
 
+## Contributing
+
+New to Relay? You have two on-ramps:
+
+- **Self-guided** — read [ONBOARDING.md](ONBOARDING.md), a tour that follows one request through the library.
+- **Interactive** — run the **`guide-me`** skill in your coding harness (Claude Code, OpenCode, etc.). It's bundled in the repo (`.claude/skills/` and `.opencode/skills/`), so your assistant discovers it automatically and walks you through the internals stop-by-step until you're ready for your first contribution.
+
+When you're ready to contribute, read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, commands, and the behavioral invariants your change must preserve.
+
 ## License
 
 MIT

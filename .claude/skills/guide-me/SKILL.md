@@ -1,0 +1,1 @@
+../../../.opencode/skills/guide-me/SKILL.md
