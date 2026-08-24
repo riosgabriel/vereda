@@ -20,7 +20,11 @@ export type TicketUpdate =
 // terminal: `cancel()` resolves the ticket directly with a CancelledError
 // result, so a cancelled ticket is never transitioned to `done` by the retry
 // loop (its `_markDone` becomes a no-op). The `retrying -> retrying` self-loop
-// updates the attempt counter on each retry.
+// permits re-entering `retrying` with a new attempt number (a fresh status
+// object is assigned, not mutated in place). `pending -> done` is the
+// first-attempt success path: client.ts calls `_markDone` directly from
+// `pending` when the initial request succeeds, so it is an intentional
+// shortcut, not a gap in the lifecycle.
 const ALLOWED_TRANSITIONS: Record<
   TicketStatus["state"],
   TicketStatus["state"][]
