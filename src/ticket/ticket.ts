@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import type { Result } from "../core/types.js";
 import type { AppError } from "../core/errors.js";
+import { CancelledError } from "../core/errors.js";
 
 export type TicketStatus =
   | { state: "pending" }
@@ -14,6 +15,22 @@ export type TicketUpdate =
   | { type: "retrying"; attempt: number; delayMs: number }
   | { type: "done"; result: Result<unknown> }
   | { type: "cancelled" };
+
+// Allowed transitions between ticket states. `done` and `cancelled` are both
+// terminal: `cancel()` resolves the ticket directly with a CancelledError
+// result, so a cancelled ticket is never transitioned to `done` by the retry
+// loop (its `_markDone` becomes a no-op). The `retrying -> retrying` self-loop
+// updates the attempt counter on each retry.
+const ALLOWED_TRANSITIONS: Record<
+  TicketStatus["state"],
+  TicketStatus["state"][]
+> = {
+  pending: ["queued", "done", "cancelled"],
+  queued: ["retrying", "done", "cancelled"],
+  retrying: ["retrying", "done", "cancelled"],
+  cancelled: [],
+  done: [],
+};
 
 export class Ticket<T> {
   public readonly id: string;
@@ -38,6 +55,17 @@ export class Ticket<T> {
     return this._status;
   }
 
+  /** Validate and apply a state transition. Returns false (and leaves the
+   *  current state untouched) when `next` is not reachable from the current
+   *  state, so illegal transitions are ignored rather than corrupting state. */
+  private applyTransition(next: TicketStatus): boolean {
+    if (!ALLOWED_TRANSITIONS[this._status.state].includes(next.state)) {
+      return false;
+    }
+    this._status = next;
+    return true;
+  }
+
   get signal(): AbortSignal {
     return this._abortController.signal;
   }
@@ -57,11 +85,15 @@ export class Ticket<T> {
 
   cancel(): void {
     if (this._cancelled) return;
+    // `cancelled` is terminal — if the ticket already resolved, this is a no-op.
+    if (!this.applyTransition({ state: "cancelled" })) return;
     this._cancelled = true;
     this._abortController.abort();
-    this._status = { state: "cancelled" };
-    const update: TicketUpdate = { type: "cancelled" };
-    this.emitter.emit("update", update);
+    const result: Result<T> = { success: false, error: new CancelledError() };
+    this.emitter.emit("update", { type: "cancelled" } as TicketUpdate);
+    this.emitter.emit("done", result);
+    this.emitter.emit("error", result.error);
+    this._resolve(result);
   }
 
   toPromise(): Promise<Result<T>> {
@@ -109,17 +141,17 @@ export class Ticket<T> {
   }
 
   _markQueued(): void {
-    this._status = { state: "queued" };
+    if (!this.applyTransition({ state: "queued" })) return;
     this.emitter.emit("update", { type: "queued" } as TicketUpdate);
   }
 
   _markRetrying(attempt: number, delayMs: number): void {
-    this._status = { state: "retrying", attempt };
+    if (!this.applyTransition({ state: "retrying", attempt })) return;
     this.emitter.emit("update", { type: "retrying", attempt, delayMs } as TicketUpdate);
   }
 
   _markDone(result: Result<T>): void {
-    this._status = { state: "done", result };
+    if (!this.applyTransition({ state: "done", result })) return;
     this.emitter.emit("update", { type: "done", result } as TicketUpdate);
     this.emitter.emit("done", result);
     if (result.success === false) {
