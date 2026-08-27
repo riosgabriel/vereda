@@ -19,7 +19,7 @@ if (result.success) {
 
 ## Status
 
-Relay is early-stage software. The API is small, tested (36 passing tests), and MIT licensed, but it has not been hardened in production yet. Pin the version you depend on.
+Relay is early-stage software. The API is small, tested (40 passing tests), and MIT licensed, but it has not been hardened in production yet. Pin the version you depend on.
 
 ## Why Relay
 
