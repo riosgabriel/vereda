@@ -97,31 +97,21 @@ const ticket = client.get("/api/data");
                   └─────────────┘
 ```
 
-You can await it, stream its steps, or cancel it mid-flight:
+You can observe every step:
 
 ```typescript
-// 1. Await the terminal result
-const ticket = client.get("/api/data");
+// Await the terminal result
 const result = await ticket.toPromise();
-if (result.success) {
-  console.log(result.data);
-}
-```
 
-```typescript
-// 2. Or follow every state change
-const ticket = client.get("/api/data");
+// Or follow every state change
 for await (const update of ticket.subscribe()) {
   // { type: "queued" }
   // { type: "retrying", attempt, delayMs }
   // { type: "done", result }
   // { type: "cancelled" }
 }
-```
 
-```typescript
-// 3. Or cancel mid-flight
-const ticket = client.get("/api/data");
+// Or cancel mid-flight
 ticket.cancel();
 ```
 
@@ -151,7 +141,7 @@ client.get(url)
                                              └── attempts exhausted ──> MaxRetriesExceededError
 ```
 
-The first attempt fires immediately, outside the bulkhead. Only requests that need another attempt go through their partition's queue, so retry traffic never starves fresh requests.
+The first attempt fires immediately, outside the bulkhead. Only requests that need another attempt go through their partition's queue — retry traffic never starves fresh requests.
 
 With zero configuration:
 
@@ -335,7 +325,7 @@ Middleware runs inside the timeout and cancellation wiring, so a hung middleware
 
 ### Lifecycle events
 
-The client emits typed events across all requests, useful for metrics, logging, and alerting:
+The client emits typed events across all requests — useful for metrics, logging, and alerting:
 
 ```typescript
 client.on("request", ({ ticketId, url, method }) => {});
