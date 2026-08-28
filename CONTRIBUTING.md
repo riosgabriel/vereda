@@ -17,9 +17,11 @@ Requires Node 18+.
 ## Commands
 
 ```bash
-npm test          # run the full suite (vitest) — 30 tests
+npm test          # run the full suite (vitest) — 36 tests
 npm run typecheck # tsc --noEmit
 npm run build     # compile TypeScript to dist/
+npm run format    # format all files with Prettier
+npm run lint      # run ESLint
 ```
 
 Run a single test file or a single test:
@@ -38,6 +40,20 @@ Tests are self-contained: integration tests spin up `node:http` servers on ephem
 - Every relative import in `src/` and `test/` must use the `.js` extension (NodeNext ESM), even when importing a `.ts` file.
 - `npm run typecheck` skips `**/*.test.ts`; run the tests to keep test code type-safe.
 - Zod is an optional peer dependency. Only `src/adapters/zod.ts` may import it; `src/core/` must stay zod-free.
+
+## Code Style
+
+This project uses Prettier for formatting and ESLint for linting.
+
+**Format on save:** If your editor supports format-on-save (VS Code, etc.), it will work automatically with the `.prettierrc` and `.editorconfig` files.
+
+**Commands:**
+```bash
+npm run format         # Format all files
+npm run format:check   # Check formatting without fixing
+npm run lint           # Run ESLint
+npm run lint:fix       # Run ESLint with auto-fix
+```
 
 ## Behavioral invariants (don't break these)
 
