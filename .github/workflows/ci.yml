@@ -7,7 +7,7 @@ on:
 
 jobs:
   ci:
-    name: Test, typecheck, and build
+    name: ci
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
