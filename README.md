@@ -1,8 +1,165 @@
-# Vereda
+<p align="center">
+  <img src="assets/logo.png" alt="Vereda" width="200" />
+</p>
 
-A resilient HTTP client for Node.js. Configure retries, timeouts, and per-host concurrency limits once on the client, then make requests. Vereda fires each request, absorbs failures, backs off, and retries. You await one result.
+<h1 align="center">Vereda</h1>
 
-Every request returns a **Ticket** — a handle you can await, subscribe to, or cancel while Vereda does the work.
+<h3 align="center">Make <code>fetch</code> resilient.</h3>
+
+<p align="center">
+  Retries · Backoff · Bulkheads · Timeouts · Typed Results
+</p>
+
+<p align="center">
+  <a href="https://github.com/riosgabriel/vereda/actions/workflows/ci.yml"><img src="https://github.com/riosgabriel/vereda/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/riosgabriel/vereda/blob/main/LICENSE"><img src="https://img.shields.io/github/license/riosgabriel/vereda" alt="License" /></a>
+  <a href="https://github.com/riosgabriel/vereda"><img src="https://img.shields.io/github/stars/riosgabriel/vereda?style=social" alt="GitHub stars" /></a>
+  <a href="https://nodejs.org/en/about/previous-releases"><img src="https://img.shields.io/badge/node-18%2B-green" alt="Node 18+" /></a>
+  <a href="https://github.com/riosgabriel/vereda"><img src="https://img.shields.io/badge/ESM-only-blue" alt="ESM only" /></a>
+  <a href="https://github.com/riosgabriel/vereda"><img src="https://img.shields.io/badge/TypeScript-6.0-blue" alt="TypeScript" /></a>
+</p>
+
+```typescript
+import { HttpClient } from "vereda";
+
+const client = HttpClient.create({
+  retry: { maxAttempts: 5 },
+  trigger: { timeoutMs: 5_000, queueOnStatus: [429, 503] },
+  partitions: {
+    "api.example.com": { concurrency: 5, maxQueueSize: 50 },
+  },
+});
+
+const result = await client.get("/users/1").toPromise();
+
+if (result.success) {
+  console.log(result.raw.status); // resilient by default, after up to 5 retries
+}
+```
+
+## Why Vereda?
+
+`fetch` gives you one attempt. Production systems need more:
+
+```
+                Without Vereda               With Vereda
+
+Service             │                          │
+                    ▼                          ▼
+               fetch()                     Vereda
+                    │                          │
+               ┌────┴────┐                     └── resilient request
+               │         │
+            try/catch   setTimeout
+               │         │
+            retry?     AbortController
+               │         │
+           backoff?    concurrency queue
+               │         │
+            logging?   ...
+```
+
+Vereda handles retries, exponential backoff, per-host bulkhead isolation, timeouts, and typed results, so you don't have to wire it up yourself.
+
+**What Vereda does not do.** No response caching, no request deduplication, no streaming helpers, no browser support.
+
+## Tickets
+
+Every request returns a **Ticket** — a handle you can await, subscribe to, or cancel while Vereda does the work. This is the core abstraction.
+
+```typescript
+const ticket = client.get("/api/data");
+```
+
+```
+                  ┌─────────────┐
+                  │   pending   │
+                  └──────┬──────┘
+                         │
+                         ▼
+                  ┌─────────────┐
+                  │   queued    │
+                  └──────┬──────┘
+                         │
+                         ▼
+                  ┌─────────────┐
+             ┌───►│  retrying   │
+             │    └──────┬──────┘
+             │           │
+             │           ▼
+             │      ┌─────────┐
+             └──────│ attempt │
+                    └────┬────┘
+                         │
+                         ▼
+                  ┌─────────────┐
+                  │     done    │
+                  └─────────────┘
+```
+
+You can observe every step:
+
+```typescript
+// Await the terminal result
+const result = await ticket.toPromise();
+
+// Or follow every state change
+for await (const update of ticket.subscribe()) {
+  // { type: "queued" }
+  // { type: "retrying", attempt, delayMs }
+  // { type: "done", result }
+  // { type: "cancelled" }
+}
+
+// Or cancel mid-flight
+ticket.cancel();
+```
+
+`toPromise()` never rejects. The result is a discriminated union:
+
+```typescript
+type Result<T> =
+  | { success: true; data: T; raw: Response }
+  | { success: false; error: AppError };
+```
+
+**Why tickets instead of promises?** A promise is a single future value. A resilient request has a lifecycle — queued, retrying, done — and you may want to observe or cancel it mid-flight. A ticket gives you that surface while still offering a plain `toPromise()` for code that just wants the answer.
+
+## How it works
+
+```
+client.get(url)
+      │
+      ▼
+ first attempt ────── success ──────> ticket done
+      │
+ failure, timeout, or busy status (e.g. 429)
+      │
+      ▼
+ partition bulkhead ──> backoff ──> retry ──> ... ──> done
+      (per host)                             │
+                                             └── attempts exhausted ──> MaxRetriesExceededError
+```
+
+The first attempt fires immediately, outside the bulkhead. Only requests that need another attempt go through their partition's queue — retry traffic never starves fresh requests.
+
+With zero configuration:
+
+| Setting | Default |
+| --- | --- |
+| Global concurrency | 10 in-flight retries across all partitions |
+| Per-partition concurrency | 5 |
+| Per-partition queue size | 100 waiting retries |
+| Retries | 3 retries after the first attempt (4 total executions) |
+| Backoff | Exponential: 200ms base, 30s cap, full jitter |
+| Timeout | None |
+| Queue-on status codes | None (all non-2xx responses are retried as errors) |
+
+## Quick start
+
+```bash
+npm install github:riosgabriel/vereda
+```
 
 ```typescript
 import { HttpClient } from "vereda";
@@ -17,144 +174,22 @@ if (result.success) {
 }
 ```
 
-## Status
+That's it. Vereda handles retries, backoff, timeouts, and isolation for you.
 
-Vereda is early-stage software. The API is small, tested (40 passing tests), and MIT licensed, but it has not been hardened in production yet. Pin the version you depend on.
+## Features
 
-## Why Vereda
-
-The name **vereda** comes from Brazilian Portuguese — it means a narrow trail or pathway, a resilient route through terrain. That maps directly to what the library does: give your requests a reliable path through flaky networks, retries, and backpressure. Easy for English speakers: veh-REH-da.
-
-`fetch` gives you one attempt at a request. Production code needs more: retry flaky networks, back off when a server returns 429, cap how many calls hit a struggling host, and give up cleanly when a request hangs. Most codebases grow a tangle of `setTimeout`, `try/catch`, and ad-hoc queues around `fetch` to get there.
-
-Vereda puts that machinery in one place:
-
-- **Retries with exponential backoff and jitter** — on by default for every failed request
-- **Bulkhead isolation** — each host gets its own concurrency limit and queue, so one failing upstream can't starve the rest
-- **Timeouts** that cancel slow requests and hand them to the retry loop
-- **A result type instead of exceptions** — requests resolve to `{ success, data, raw }` or `{ success: false, error }` with typed error classes
-- **Observability** — lifecycle events and per-ticket status updates for monitoring
-
-Vereda is built on Node's global `fetch` and `node:events`. It runs on Node 18+ and is ESM-only. It is not a browser client.
-
-**What Vereda does not do.** No response caching, no request deduplication, no streaming response helpers, no browser support. It is deliberately narrow: queueing, retries, isolation, and typed results on top of `fetch`.
-
-## Table of Contents
-
-- [Status](#status)
-- [Why Vereda](#why-vereda)
-- [Installation](#installation)
-- [How a request flows](#how-a-request-flows)
-- [Tickets](#tickets)
-- [Retries and backoff](#retries-and-backoff)
-- [Partitions and bulkheads](#partitions-and-bulkheads)
-- [Timeouts and queue triggers](#timeouts-and-queue-triggers)
-- [Middleware](#middleware)
-- [Schema validation](#schema-validation)
-- [Lifecycle events](#lifecycle-events)
-- [Cancellation](#cancellation)
-- [Error handling](#error-handling)
-- [Configuration reference](#configuration-reference)
-- [API reference](#api-reference)
-- [Design notes](#design-notes)
-- [Development](#development)
-- [Contributing](#contributing)
-- [License](#license)
-
-## Installation
-
-Vereda is not published to npm yet.
-
-Install from GitHub instead:
-
-```bash
-npm install github:riosgabriel/vereda
-```
-
-npm runs the build during install (via the `prepare` script), so `dist/` is ready when installation finishes.
-
-## How a request flows
-
-```
-client.get(url)
-      |
-      v
- first attempt ------ success ------> ticket done
-      |
- failure, timeout, or busy status (e.g. 429)
-      |
-      v
- partition bulkhead --> backoff --> retry --> ... --> done
-      (per host)                      |
-                                      +-- attempts exhausted --> MaxRetriesExceededError
-```
-
-The first attempt fires immediately, outside the bulkhead. Only requests that need another attempt go through their partition's queue, which keeps retry traffic from hammering an already-struggling host.
-
-With zero configuration:
-
-| Setting | Default |
-| --- | --- |
-| Global concurrency | 10 in-flight retries across all partitions |
-| Per-partition concurrency | 5 |
-| Per-partition queue size | 100 waiting retries |
-| Retries | 3 retries after the first attempt (4 total executions) |
-| Backoff | Exponential: 200ms base, 30s cap, full jitter |
-| Timeout | None |
-| Queue-on status codes | None (all non-2xx responses are retried as errors) |
-
-A request is retried on any failure: network errors, non-2xx responses, timeouts, and any status code you list in `queueOnStatus`. The one exception is schema validation — a response that fails your `parse` function resolves immediately with a `ValidationError`, because retrying would parse the same payload again.
-
-## Tickets
-
-`client.get()` returns synchronously with a `Ticket<T>`. The ticket tracks the request from first attempt to terminal result:
-
-```typescript
-const ticket = client.get("/api/data");
-
-ticket.status;      // { state: "pending" | "queued" | "retrying" | "done" | "cancelled" }
-ticket.id;          // unique ticket id
-ticket.isCancelled; // boolean
-
-// Await the terminal result
-const result = await ticket.toPromise();
-
-// Or follow every state change
-for await (const update of ticket.subscribe()) {
-  // { type: "queued" }
-  // { type: "retrying", attempt, delayMs }
-  // { type: "done", result }
-  // { type: "cancelled" }
-}
-
-// Or use events
-ticket.on("done", (result) => {});
-ticket.on("error", (error) => {});
-ticket.on("update", (update) => {});
-```
-
-`toPromise()` never rejects. The result is a discriminated union:
-
-```typescript
-type Result<T> =
-  | { success: true; data: T; raw: Response }
-  | { success: false; error: AppError };
-```
-
-Without a `parse` function, `data` is `undefined` and the unparsed body lives on `result.raw` (the standard `Response` object). Add a `parse` function to get typed `data` — see [Schema validation](#schema-validation).
-
-## Retries and backoff
+### Retries and backoff
 
 Configure retries globally, per partition, or per request. Per-request settings override partition settings, which override global ones.
 
 ```typescript
 const client = HttpClient.create({
   retry: {
-    maxAttempts: 5, // retries after the first attempt
+    maxAttempts: 5,
     backoff: {
-      baseDelayMs: 1000, // first retry delay before jitter
-      maxDelayMs: 30000, // cap
-      jitter: true,      // full jitter: uniform random in [0, delay]
+      baseDelayMs: 1000,
+      maxDelayMs: 30000,
+      jitter: true,
     },
   },
 });
@@ -162,7 +197,7 @@ const client = HttpClient.create({
 
 The default backoff is `200ms * 2^attempt`, capped at 30s, with full jitter applied. Jitter spreads retries out so a fleet of clients doesn't hit a recovering server at the same instant.
 
-You can also supply a custom backoff function, where `attempt` is the zero-based retry number:
+You can also supply a custom backoff function:
 
 ```typescript
 retry: {
@@ -171,9 +206,7 @@ retry: {
 }
 ```
 
-### Deciding which failures to retry
-
-`retryWhen` is consulted after every failed attempt — including the first one, before any retry is scheduled. Return `false` to surface the error immediately.
+`retryWhen` is consulted after every failed attempt, including the first one. Return `false` to surface the error immediately:
 
 ```typescript
 import { NetworkError } from "vereda";
@@ -181,8 +214,6 @@ import { NetworkError } from "vereda";
 retry: {
   maxAttempts: 5,
   retryWhen: (error, attempt) => {
-    // error: the AppError from the attempt that just failed
-    // attempt: that attempt's zero-based number (0 = first attempt)
     if (error instanceof NetworkError && error.statusCode === 500) return false;
     return true;
   },
@@ -191,49 +222,43 @@ retry: {
 
 When all attempts are exhausted, the ticket resolves with a `MaxRetriesExceededError` carrying the attempt count and the last underlying error.
 
-## Partitions and bulkheads
+### Bulkhead isolation
 
-Every request is assigned to a partition, keyed by hostname by default. Each partition owns a bulkhead: a concurrency limit plus a waiting queue. A slow or failing host fills its own queue and throttles its own retries without touching traffic to other hosts.
+Every request is assigned to a partition, keyed by hostname by default. Each partition owns a concurrency limit plus a waiting queue. A slow or failing host fills its own queue without touching traffic to other hosts.
 
 ```typescript
 const client = HttpClient.create({
-  concurrency: 10, // global cap across all partitions
-
+  concurrency: 10,
   partitions: {
-    "api.external.com": {
-      concurrency: 2,    // at most 2 in-flight retries
-      maxQueueSize: 10,  // at most 10 waiting retries
-    },
-    "api.internal.com": {
-      concurrency: 20,
-    },
+    "api.external.com": { concurrency: 2, maxQueueSize: 10 },
+    "api.internal.com": { concurrency: 20 },
   },
 });
 ```
 
-Partitions are created on first use. You can also assign a partition explicitly, which is useful for priority lanes or for grouping several hosts:
+You can assign a partition explicitly for priority lanes or host grouping:
 
 ```typescript
 client.get("/path", { partition: "high-priority" });
 ```
 
-When a partition's queue is full, the new request's ticket resolves with a `NetworkError` explaining the queue is full. That is deliberate backpressure: the alternative is unbounded memory growth.
+When a partition's queue is full, the ticket resolves with a `NetworkError`. That is deliberate backpressure: the alternative is unbounded memory growth.
 
-## Timeouts and queue triggers
+### Timeouts
 
 ```typescript
 const client = HttpClient.create({
   trigger: {
-    timeoutMs: 5000,           // cancel attempts slower than 5s and retry them
-    queueOnStatus: [429, 503], // treat these statuses as "busy, try again later"
+    timeoutMs: 5000,
+    queueOnStatus: [429, 503],
   },
 });
 ```
 
-- `timeoutMs` — a hard per-attempt timeout. The attempt is aborted and the request joins the retry loop. No timeout is set by default.
-- `queueOnStatus` — status codes that mean the server is busy rather than broken. Matching responses are queued for retry without being treated as errors. 429 and 503 are the usual candidates.
+- `timeoutMs` — a hard per-attempt timeout. The attempt is aborted and the request joins the retry loop.
+- `queueOnStatus` — status codes that mean the server is busy rather than broken. Matching responses are queued for retry without being treated as errors.
 
-Both settings merge per request, same as retry config:
+Both settings merge per request:
 
 ```typescript
 client.get("/api/data", {
@@ -241,36 +266,24 @@ client.get("/api/data", {
 });
 ```
 
-## Middleware
+### Typed results
 
-Middleware wraps every attempt (including retries) in the standard onion shape: receive options, call `next`, return a `Response`.
+Pass a `parse` function to validate and type the response body. `parse` is just `(data: unknown) => T`, and any validator that throws on failure works. A failed parse resolves the ticket with a `ValidationError` and is never retried.
 
 ```typescript
-import { defaultHeaders, requestLogger } from "vereda/middleware";
-
-// Add default headers to every request (per-request headers win on conflict)
-client.use(defaultHeaders({
-  Authorization: "Bearer token123",
-  "X-Client-Version": "1.0.0",
-}));
-
-// Log request timing
-client.use(requestLogger());
-
-// Custom middleware
-client.use(async (options, next) => {
-  console.log("Request:", options.url);
-  const response = await next(options);
-  console.log("Response:", response.status);
-  return response;
+const ticket = client.get<User>("/users/1", {
+  parse: (data) => data as User, // or your own throwing validator
 });
+
+const result = await ticket.toPromise();
+if (result.success) {
+  result.data.name; // typed: string
+}
 ```
 
-Middleware runs inside the timeout and cancellation wiring, so a hung middleware gets cancelled along with the request.
+#### Zod adapter (optional)
 
-## Schema validation
-
-Pass a `parse` function to validate and type the response body. Vereda ships a Zod adapter:
+Zod is an optional peer dependency. Only the `vereda/zod` entry point imports it; the core has zero dependencies. Vereda ships a Zod adapter for it:
 
 ```typescript
 import { z } from "zod";
@@ -290,42 +303,55 @@ if (result.success) {
 }
 ```
 
-`parse` is just `(data: unknown) => T`, so any validator that throws on failure works. A failed parse resolves the ticket with a `ValidationError` (carrying the issues) and is never retried.
+### Middleware
 
-The core package has no dependency on Zod; only the `vereda/zod` entry point imports it. Zod is an optional peer dependency — install it yourself (`npm install zod`) if you use `withZod`.
+Middleware wraps every attempt (including retries) in the standard onion shape:
 
-## Lifecycle events
+```typescript
+import { defaultHeaders, requestLogger } from "vereda/middleware";
+
+client.use(defaultHeaders({ Authorization: "Bearer token123" }));
+client.use(requestLogger());
+
+client.use(async (options, next) => {
+  console.log("Request:", options.url);
+  const response = await next(options);
+  console.log("Response:", response.status);
+  return response;
+});
+```
+
+Middleware runs inside the timeout and cancellation wiring, so a hung middleware gets cancelled along with the request.
+
+### Lifecycle events
 
 The client emits typed events across all requests — useful for metrics, logging, and alerting:
 
 ```typescript
-client.on("request", ({ ticketId, url, method }) => {});  // request submitted
+client.on("request", ({ ticketId, url, method }) => {});
 client.on("retry",   ({ ticketId, url, attempt, delayMs }) => {});
 client.on("success", ({ ticketId, url, attempt }) => {});
-client.on("failure", ({ ticketId, url, error }) => {});   // terminal failure
-
-// Remove a listener
-client.off("success", listener);
+client.on("failure", ({ ticketId, url, error }) => {});
 ```
 
-## Cancellation
+### Cancellation
 
 Cancel from the ticket, or wire in your own `AbortSignal`:
 
 ```typescript
 const ticket = client.get("/slow-api/data");
-ticket.cancel(); // aborts the in-flight attempt and settles the ticket
+ticket.cancel();
 
 const controller = new AbortController();
 const ticket2 = client.get("/api/data", { signal: controller.signal });
-controller.abort(); // same effect: ticket resolves with CancelledError
+controller.abort(); // ticket resolves with CancelledError
 ```
 
-Cancellation wins over everything else: if you abort while a timeout is also firing, the result is `CancelledError`. A cancelled request is never retried.
+Cancellation wins over everything else. A cancelled request is never retried.
 
-## Error handling
+### Error handling
 
-Errors are a closed hierarchy under `RequestError`, so an `instanceof` chain covers every failure mode:
+Errors are a closed hierarchy under `RequestError`:
 
 | Error | Meaning | Notable fields |
 | --- | --- | --- |
@@ -340,110 +366,63 @@ import { MaxRetriesExceededError, NetworkError } from "vereda";
 
 const result = await ticket.toPromise();
 if (!result.success) {
-  const { error } = result;
-  if (error instanceof MaxRetriesExceededError) {
-    // error.lastError is the underlying AppError from the final attempt
-  } else if (error instanceof NetworkError) {
-    // error.statusCode, error.response
+  if (result.error instanceof MaxRetriesExceededError) {
+    // result.error.lastError is the underlying error from the final attempt
+  } else if (result.error instanceof NetworkError) {
+    // result.error.statusCode, result.error.response
   }
 }
 ```
 
-## Configuration reference
+## Design philosophy
 
-### `ClientConfig`
+**Fresh traffic comes first.** Retries should never starve new work. The first attempt skips the bulkhead — it exists to throttle *retry* pressure onto struggling hosts, which is where thundering herds come from.
 
-| Option | Type | Default | Description |
-| --- | --- | --- | --- |
-| `baseUrl` | `string` | — | Prepended to relative request URLs |
-| `concurrency` | `number` | `10` | Global cap on in-flight retries across partitions |
-| `trigger` | `TriggerConfig` | — | Default `timeoutMs` and `queueOnStatus` |
-| `retry` | `RetryConfig` | 3 retries, exponential backoff | Default retry policy |
-| `partitions` | `Record<string, PartitionConfig>` | — | Per-partition overrides (concurrency, queue size, trigger, retry) |
-| `logger` | `Logger` | — | Structured logger with `debug`/`info`/`warn`/`error` |
+**Backpressure beats unbounded queues.** When a partition is full, fail explicitly rather than consuming infinite memory.
 
-### `RequestOptions`
+**Cancellation is final.** A cancelled request never enters the retry loop, regardless of timeout or retry configuration.
 
-| Option | Type | Description |
-| --- | --- | --- |
-| `method` | `string` | HTTP method (set by `get`/`post`/etc.) |
-| `headers` | `Record<string, string>` | Request headers |
-| `body` | `BodyInit` | Request body |
-| `partition` | `string` | Partition name (defaults to hostname) |
-| `parse` | `(data: unknown) => T` | Validate and type the response body |
-| `trigger` | `TriggerConfig` | Per-request trigger overrides |
-| `retry` | `RetryConfig` | Per-request retry overrides |
-| `signal` | `AbortSignal` | External cancellation |
+**Validation failures aren't transient.** A response that fails your `parse` function resolves immediately — retrying would parse the same payload again.
 
-## API reference
+## Installation
 
-### `HttpClient`
-
-```typescript
-static create(config?: ClientConfig): HttpClient
-
-// HTTP methods — all return immediately with a Ticket
-get<T>(url: string, options?: RequestOptions<T>): Ticket<T>
-post<T>(url: string, body?: BodyInit, options?: RequestOptions<T>): Ticket<T>
-put<T>(url: string, body?: BodyInit, options?: RequestOptions<T>): Ticket<T>
-patch<T>(url: string, body?: BodyInit, options?: RequestOptions<T>): Ticket<T>
-delete<T>(url: string, options?: RequestOptions<T>): Ticket<T>
-request<T>(url: string, options?: RequestOptions<T>): Ticket<T>
-
-// Middleware
-use(middleware: MiddlewareFn): this
-
-// Lifecycle events
-on<K extends keyof LifecycleEventMap>(event: K, listener: (data: LifecycleEventMap[K]) => void): this
-off<K extends keyof LifecycleEventMap>(event: K, listener: (data: LifecycleEventMap[K]) => void): this
+```bash
+npm install github:riosgabriel/vereda
 ```
 
-### `Ticket<T>`
+npm runs the build during install (via the `prepare` script), so `dist/` is ready when installation finishes.
 
-```typescript
-// Properties
-readonly id: string
-readonly status: TicketStatus
-readonly signal: AbortSignal
-readonly isCancelled: boolean
+## Status
 
-// Methods
-toPromise(): Promise<Result<T>>
-cancel(): void
-
-// Events
-on(event: "done", listener: (result: Result<T>) => void): this
-on(event: "error", listener: (error: AppError) => void): this
-on(event: "update", listener: (update: TicketUpdate) => void): this
-
-// Async iterator over state changes
-subscribe(): AsyncGenerator<TicketUpdate>
-```
-
-## Design notes
-
-**Why tickets instead of promises?** A promise is a single future value. A resilient request has a lifecycle — queued, retrying, done — and you may want to observe or cancel it mid-flight. A ticket gives you that surface while still offering a plain `toPromise()` for code that just wants the answer.
-
-**Why does the first attempt skip the bulkhead?** Fresh requests should not wait behind retry traffic for a host that happens to be degraded. The bulkhead exists to throttle *retry* pressure onto struggling hosts, which is where thundering herds come from.
+> **⚠️ Early stage.** Vereda is experimental software. The API is small, tested (40 passing tests), and MIT licensed, but it has not been hardened in production yet. Pin the version you depend on.
 
 ## Development
 
 ```bash
-npm install       # install dependencies
-npm run build     # compile TypeScript to dist/
-npm test          # run the test suite (vitest)
-npm run test:watch
-npm run typecheck # tsc --noEmit
+git clone https://github.com/riosgabriel/vereda.git
+cd vereda
+npm install
+npm test          # 40 tests (vitest)
+npm run typecheck
+npm run build
+npm run format
+npm run lint
 ```
+
+Tests are self-contained: integration tests spin up `node:http` servers on ephemeral localhost ports. No network, services, or env vars needed.
 
 ## Contributing
 
-New to Vereda? You have two on-ramps:
+New to Vereda? Two on-ramps:
 
 - **Self-guided** — read [ONBOARDING.md](ONBOARDING.md), a tour that follows one request through the library.
-- **Interactive** — run the **`guide-me`** skill in your coding harness (Claude Code, OpenCode, etc.). It's bundled in the repo (`.claude/skills/` and `.opencode/skills/`), so your assistant discovers it automatically and walks you through the internals stop-by-step until you're ready for your first contribution.
+- **Interactive** — run the **`guide-me`** skill in your coding harness (Claude Code, OpenCode, etc.). It's bundled in the repo and walks you through the internals interactively.
 
-When you're ready to contribute, read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, commands, and the behavioral invariants your change must preserve.
+When you're ready, read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, commands, and the behavioral invariants your change must preserve.
+
+## Why the name?
+
+**Vereda** is Brazilian Portuguese for a narrow trail: a resilient route through terrain. That maps directly to what the library does: give your requests a reliable path through flaky networks, retries, and backpressure. *veh-REH-da.*
 
 ## License
 
