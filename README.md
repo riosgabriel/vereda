@@ -23,6 +23,8 @@ Vereda is early-stage software. The API is small, tested (40 passing tests), and
 
 ## Why Vereda
 
+The name **vereda** comes from Brazilian Portuguese — it means a narrow trail or pathway, a resilient route through terrain. That maps directly to what the library does: give your requests a reliable path through flaky networks, retries, and backpressure. Easy for English speakers: veh-REH-da.
+
 `fetch` gives you one attempt at a request. Production code needs more: retry flaky networks, back off when a server returns 429, cap how many calls hit a struggling host, and give up cleanly when a request hangs. Most codebases grow a tangle of `setTimeout`, `try/catch`, and ad-hoc queues around `fetch` to get there.
 
 Vereda puts that machinery in one place:
