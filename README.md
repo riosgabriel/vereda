@@ -35,7 +35,7 @@ Vereda puts that machinery in one place:
 
 Vereda is built on Node's global `fetch` and `node:events`. It runs on Node 18+ and is ESM-only. It is not a browser client.
 
-**What Relay does not do.** No response caching, no request deduplication, no streaming response helpers, no browser support. It is deliberately narrow: queueing, retries, isolation, and typed results on top of `fetch`.
+**What Vereda does not do.** No response caching, no request deduplication, no streaming response helpers, no browser support. It is deliberately narrow: queueing, retries, isolation, and typed results on top of `fetch`.
 
 ## Table of Contents
 
