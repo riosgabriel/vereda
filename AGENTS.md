@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Relay: resilient HTTP client for Node.js (queuing, retries, bulkhead isolation) built on global `fetch`. ESM-only, Node 18+, zero runtime dependencies. Not published to npm (the `relay` npm name is an unrelated package); installed from GitHub, where the `prepare` script builds `dist/`.
+Vereda: resilient HTTP client for Node.js (queuing, retries, bulkhead isolation) built on global `fetch`. ESM-only, Node 18+, zero runtime dependencies. Not published to npm; installed from GitHub, where the `prepare` script builds `dist/`.
 
 ## Commands
 
@@ -38,7 +38,7 @@ Request flow: `client.get()` returns a `Ticket` synchronously → first attempt 
 - `retryWhen` is consulted after **every** failed attempt, including attempt 0.
 - `ValidationError` (failed `parse`) resolves immediately and is never retried.
 - Cancellation wins over timeouts/retries; a cancelled ticket is never retried.
-- `ticket.toPromise()` never rejects — failures are a `Result` union with the closed `RelayError` hierarchy (`src/core/errors.ts`).
+- `ticket.toPromise()` never rejects — failures are a `Result` union with the closed `RequestError` hierarchy (`src/core/errors.ts`).
 
 → To onboard a contributor using this mental model, see **Onboarding contributors (for LLMs)** below and `ONBOARDING.md`.
 
@@ -61,7 +61,7 @@ An LLM can stand in for a library's docs website: interactively walk a new contr
 - `retryWhen` is consulted after *every* failed attempt, including attempt 0.
 - `ValidationError` (failed `parse`) resolves immediately and is never retried.
 - Cancellation wins over timeouts/retries; a cancelled ticket is never retried.
-- `ticket.toPromise()` never rejects — failures are a `Result` union with the closed `RelayError` hierarchy (`src/core/errors.ts`).
+- `ticket.toPromise()` never rejects — failures are a `Result` union with the closed `RequestError` hierarchy (`src/core/errors.ts`).
 
 **Key file per concern** (for "where do I look?" questions)
 - Public API / `Ticket` / errors: `src/core/` (`index.ts`, `client.ts`, `errors.ts`, `types.ts`)

@@ -1,7 +1,7 @@
 export { HttpClient } from "./client.js";
 export type { ClientConfig, RequestOptions, Result, ParseFn, Logger, BackoffFn, BackoffOptions, TriggerConfig, RetryConfig, PartitionConfig, LifecycleEventMap } from "./types.js";
 export {
-  RelayError,
+  RequestError,
   NetworkError,
   ValidationError,
   TimeoutError,

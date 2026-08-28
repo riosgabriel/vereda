@@ -5,7 +5,7 @@ export type AppError =
   | CancelledError
   | MaxRetriesExceededError;
 
-export class RelayError extends Error {
+export class RequestError extends Error {
   public cause?: unknown;
 
   constructor(message: string, cause?: unknown) {
@@ -17,7 +17,7 @@ export class RelayError extends Error {
   }
 }
 
-export class NetworkError extends RelayError {
+export class NetworkError extends RequestError {
   public readonly statusCode?: number;
   public readonly response?: Response;
 
@@ -31,7 +31,7 @@ export class NetworkError extends RelayError {
   }
 }
 
-export class ValidationError extends RelayError {
+export class ValidationError extends RequestError {
   public readonly issues: unknown[];
 
   constructor(message: string, issues: unknown[], cause?: unknown) {
@@ -40,7 +40,7 @@ export class ValidationError extends RelayError {
   }
 }
 
-export class TimeoutError extends RelayError {
+export class TimeoutError extends RequestError {
   public readonly timeoutMs: number;
   public readonly url: string;
 
@@ -51,13 +51,13 @@ export class TimeoutError extends RelayError {
   }
 }
 
-export class CancelledError extends RelayError {
+export class CancelledError extends RequestError {
   constructor(message = "Request was cancelled") {
     super(message);
   }
 }
 
-export class MaxRetriesExceededError extends RelayError {
+export class MaxRetriesExceededError extends RequestError {
   public readonly attempts: number;
   public readonly lastError: AppError;
 

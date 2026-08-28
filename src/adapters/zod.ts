@@ -2,7 +2,7 @@ import type { ZodType, ZodTypeDef } from "zod";
 import type { ParseFn } from "../core/types.js";
 
 /**
- * Wraps a Zod schema into a ParseFn for use with relay's `parse` option.
+ * Wraps a Zod schema into a ParseFn for use with vereda's `parse` option.
  *
  * @example
  * const UserSchema = z.object({ id: z.number(), name: z.string() });
