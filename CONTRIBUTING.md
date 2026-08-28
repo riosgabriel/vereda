@@ -17,7 +17,7 @@ Requires Node 18+.
 ## Commands
 
 ```bash
-npm test          # run the full suite (vitest) — 36 tests
+npm test          # run the full suite (vitest) — 40 tests
 npm run typecheck # tsc --noEmit
 npm run build     # compile TypeScript to dist/
 npm run format    # format all files with Prettier
