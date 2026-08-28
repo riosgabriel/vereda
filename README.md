@@ -37,6 +37,28 @@ Vereda is built on Node's global `fetch` and `node:events`. It runs on Node 18+ 
 
 **What Relay does not do.** No response caching, no request deduplication, no streaming response helpers, no browser support. It is deliberately narrow: queueing, retries, isolation, and typed results on top of `fetch`.
 
+## Table of Contents
+
+- [Status](#status)
+- [Why Vereda](#why-vereda)
+- [Installation](#installation)
+- [How a request flows](#how-a-request-flows)
+- [Tickets](#tickets)
+- [Retries and backoff](#retries-and-backoff)
+- [Partitions and bulkheads](#partitions-and-bulkheads)
+- [Timeouts and queue triggers](#timeouts-and-queue-triggers)
+- [Middleware](#middleware)
+- [Schema validation](#schema-validation)
+- [Lifecycle events](#lifecycle-events)
+- [Cancellation](#cancellation)
+- [Error handling](#error-handling)
+- [Configuration reference](#configuration-reference)
+- [API reference](#api-reference)
+- [Design notes](#design-notes)
+- [Development](#development)
+- [Contributing](#contributing)
+- [License](#license)
+
 ## Installation
 
 Vereda is not published to npm yet.
