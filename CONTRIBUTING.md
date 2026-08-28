@@ -1,14 +1,14 @@
-# Contributing to Relay
+# Contributing to Vereda
 
-Thanks for your interest! Relay is a small, focused library, and we're glad to have help.
+Thanks for your interest! Vereda is a small, focused library, and we're glad to have help.
 
 **New to the codebase?** You have two on-ramps: read [ONBOARDING.md](./ONBOARDING.md) for a self-guided tour that follows one request through the whole library, or run the **`guide-me`** skill in your harness (Claude Code, OpenCode, etc.) — it's bundled in `.claude/skills/` and `.opencode/skills/` and will walk you through the internals interactively.
 
 ## Setup
 
 ```bash
-git clone https://github.com/riosgabriel/relay.git
-cd relay
+git clone https://github.com/riosgabriel/vereda.git
+cd vereda
 npm install
 ```
 
@@ -61,6 +61,6 @@ npm run lint:fix       # Run ESLint with auto-fix
 - `retryWhen` is consulted after **every** failed attempt, including attempt 0.
 - A failed `parse` (`ValidationError`) resolves immediately and is never retried.
 - Cancellation wins over timeouts and retries; a cancelled ticket is never retried.
-- `ticket.toPromise()` never rejects — failures are a `Result` union with a closed `RelayError` hierarchy.
+- `ticket.toPromise()` never rejects — failures are a `Result` union with a closed `RequestError` hierarchy.
 
 See [AGENTS.md](./AGENTS.md) for more gotchas.
