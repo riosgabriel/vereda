@@ -1,4 +1,4 @@
-import type { ZodType, ZodTypeDef } from "zod"
+import type { ZodType } from "zod"
 import type { ParseFn } from "../core/types.js"
 
 /**
@@ -11,6 +11,6 @@ import type { ParseFn } from "../core/types.js"
  *   parse: withZod(UserSchema),
  * });
  */
-export function withZod<T>(schema: ZodType<T, ZodTypeDef, unknown>): ParseFn<T> {
+export function withZod<T>(schema: ZodType<T>): ParseFn<T> {
   return (data: unknown): T => schema.parse(data)
 }
