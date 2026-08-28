@@ -6,8 +6,8 @@ on:
   pull_request:
 
 jobs:
-  ci:
-    name: ci
+  test:
+    name: test
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -33,3 +33,12 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  ci:
+    if: always()
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check matrix results
+        if: needs.test.result != 'success'
+        run: exit 1
