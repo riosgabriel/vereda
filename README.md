@@ -19,7 +19,7 @@ if (result.success) {
 
 ## Status
 
-Vereda is early-stage software. The API is small, tested (36 passing tests), and MIT licensed, but it has not been hardened in production yet. Pin the version you depend on.
+Vereda is early-stage software. The API is small, tested (40 passing tests), and MIT licensed, but it has not been hardened in production yet. Pin the version you depend on.
 
 ## Why Vereda
 
@@ -27,13 +27,15 @@ Vereda is early-stage software. The API is small, tested (36 passing tests), and
 
 Vereda puts that machinery in one place:
 
-- **Retries with exponential backoff and jitter**, on by default for every failed request
+- **Retries with exponential backoff and jitter** — on by default for every failed request
 - **Bulkhead isolation** — each host gets its own concurrency limit and queue, so one failing upstream can't starve the rest
 - **Timeouts** that cancel slow requests and hand them to the retry loop
 - **A result type instead of exceptions** — requests resolve to `{ success, data, raw }` or `{ success: false, error }` with typed error classes
-- **Observability** — lifecycle events and per-ticket status updates for anything you need to monitor
+- **Observability** — lifecycle events and per-ticket status updates for monitoring
 
 Vereda is built on Node's global `fetch` and `node:events`. It runs on Node 18+ and is ESM-only. It is not a browser client.
+
+**What Relay does not do.** No response caching, no request deduplication, no streaming response helpers, no browser support. It is deliberately narrow: queueing, retries, isolation, and typed results on top of `fetch`.
 
 ## Installation
 
@@ -63,7 +65,7 @@ client.get(url)
                                       +-- attempts exhausted --> MaxRetriesExceededError
 ```
 
-The first attempt fires immediately, outside the bulkhead. Only requests that need another attempt go through their partition's queue, which is what keeps retry traffic from hammering an already-struggling host.
+The first attempt fires immediately, outside the bulkhead. Only requests that need another attempt go through their partition's queue, which keeps retry traffic from hammering an already-struggling host.
 
 With zero configuration:
 
@@ -71,7 +73,7 @@ With zero configuration:
 | --- | --- |
 | Global concurrency | 10 in-flight retries across all partitions |
 | Per-partition concurrency | 5 |
-| Per-partition queue size | 100 waiting requests |
+| Per-partition queue size | 100 waiting retries |
 | Retries | 3 retries after the first attempt (4 total executions) |
 | Backoff | Exponential: 200ms base, 30s cap, full jitter |
 | Timeout | None |
@@ -81,7 +83,7 @@ A request is retried on any failure: network errors, non-2xx responses, timeouts
 
 ## Tickets
 
-`client.get()` and friends return synchronously with a `Ticket<T>`. The ticket tracks the request from first attempt to terminal result:
+`client.get()` returns synchronously with a `Ticket<T>`. The ticket tracks the request from first attempt to terminal result:
 
 ```typescript
 const ticket = client.get("/api/data");
@@ -115,7 +117,7 @@ type Result<T> =
   | { success: false; error: AppError };
 ```
 
-One detail worth knowing: without a `parse` function, `data` is `undefined` and the unparsed body lives on `result.raw` (the standard `Response` object). Add a `parse` function to get typed `data` — see [Schema validation](#schema-validation).
+Without a `parse` function, `data` is `undefined` and the unparsed body lives on `result.raw` (the standard `Response` object). Add a `parse` function to get typed `data` — see [Schema validation](#schema-validation).
 
 ## Retries and backoff
 
@@ -176,7 +178,7 @@ const client = HttpClient.create({
   partitions: {
     "api.external.com": {
       concurrency: 2,    // at most 2 in-flight retries
-      maxQueueSize: 10,  // at most 10 waiting requests
+      maxQueueSize: 10,  // at most 10 waiting retries
     },
     "api.internal.com": {
       concurrency: 20,
@@ -399,8 +401,6 @@ subscribe(): AsyncGenerator<TicketUpdate>
 **Why tickets instead of promises?** A promise is a single future value. A resilient request has a lifecycle — queued, retrying, done — and you may want to observe or cancel it mid-flight. A ticket gives you that surface while still offering a plain `toPromise()` for code that just wants the answer.
 
 **Why does the first attempt skip the bulkhead?** Fresh requests should not wait behind retry traffic for a host that happens to be degraded. The bulkhead exists to throttle *retry* pressure onto struggling hosts, which is where thundering herds come from.
-
-**What Vereda does not do.** No response caching, no request deduplication, no streaming response helpers, no browser support. It is deliberately narrow: queueing, retries, isolation, and typed results on top of `fetch`.
 
 ## Development
 

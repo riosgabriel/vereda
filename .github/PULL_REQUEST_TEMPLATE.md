@@ -8,12 +8,10 @@
 
 ## Testing
 
-- [ ] `npm test` passes
-- [ ] `npm run typecheck` passes
-- [ ] `npm run build` passes (if types/sources changed)
+CI automatically runs `npm test`, `npm run typecheck`, and `npm run build` — keep it green.
+Note anything that needs manual verification or isn't covered by tests.
 
-## Checklist
+## Docs / API impact
 
-- [ ] Commits are squashed/rebased into a linear history
-- [ ] No direct force-push to `main`
-- [ ] Public API changes are documented
+<!-- Delete this section if not applicable -->
+- [ ] Public API or behavior changes are documented (README / ONBOARDING / docs)
