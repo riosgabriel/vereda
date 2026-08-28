@@ -1,5 +1,5 @@
 export type AppError =
-  NetworkError | ValidationError | TimeoutError | CancelledError | MaxRetriesExceededError
+  NetworkError | ValidationError | TimeoutError | RetryableStatusError | CancelledError | MaxRetriesExceededError
 
 /**
  * Base class for failures that prevent a request from
@@ -48,6 +48,17 @@ export class TimeoutError extends RequestError {
     super(`Request to ${url} timed out after ${timeoutMs}ms`)
     this.timeoutMs = timeoutMs
     this.url = url
+  }
+}
+
+export class RetryableStatusError extends RequestError {
+  public readonly statusCode: number
+  public readonly response?: Response
+
+  constructor(statusCode: number, url: string, response?: Response) {
+    super(`Request to ${url} returned retryable status ${statusCode}`)
+    this.statusCode = statusCode
+    this.response = response
   }
 }
 
