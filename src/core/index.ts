@@ -13,7 +13,7 @@ export type {
   LifecycleEventMap,
 } from "./types.js"
 export {
-  RelayError,
+  RequestError,
   NetworkError,
   ValidationError,
   TimeoutError,

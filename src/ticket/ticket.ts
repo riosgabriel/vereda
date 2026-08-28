@@ -25,10 +25,7 @@ export type TicketUpdate =
 // first-attempt success path: client.ts calls `_markDone` directly from
 // `pending` when the initial request succeeds, so it is an intentional
 // shortcut, not a gap in the lifecycle.
-const ALLOWED_TRANSITIONS: Record<
-  TicketStatus["state"],
-  TicketStatus["state"][]
-> = {
+const ALLOWED_TRANSITIONS: Record<TicketStatus["state"], TicketStatus["state"][]> = {
   pending: ["queued", "done", "cancelled"],
   queued: ["retrying", "done", "cancelled"],
   retrying: ["retrying", "done", "cancelled"],
