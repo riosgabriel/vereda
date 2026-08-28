@@ -10,9 +10,11 @@ npx vitest run test/queue/bulkhead.test.ts      # single test file
 npx vitest run -t "name fragment"               # single test by name
 npm run typecheck                               # tsc --noEmit
 npm run build                                   # tsc -> dist/
+npm run format                                  # format all files with Prettier
+npm run lint                                    # run ESLint
 ```
 
-There is no lint or formatter configured — don't invent or run one.
+Prettier and ESLint are configured. Run `npm run format` and `npm run lint:fix` before committing.
 
 ## Gotchas
 
