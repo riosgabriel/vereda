@@ -26,7 +26,7 @@ Follow one request — `client.get("/users/1")` — from call to settled result.
 ### Stop 0 — Get the vocabulary
 **Read:** `src/core/types.ts`, `src/core/errors.ts`
 
-Skim, don't study. Everything resolves to a `Result`; errors form a closed hierarchy under `RequestError` (`NetworkError`, `TimeoutError`, `ValidationError`, `CancelledError`, `MaxRetriesExceededError`). This is your reference for the rest of the tour.
+Skim, don't study. Everything resolves to a `Result`; errors form a closed hierarchy under `RequestError` (`NetworkError`, `TimeoutError`, `RetryableStatusError`, `ValidationError`, `CancelledError`, `MaxRetriesExceededError`). This is your reference for the rest of the tour.
 
 ### Stop 1 — The entry point
 **Read:** `src/core/client.ts` → `HttpClient.request()`
