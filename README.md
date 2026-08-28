@@ -75,26 +75,25 @@ const ticket = client.get("/api/data");
                   ┌─────────────┐
                   │   pending   │
                   └──────┬──────┘
-                         │
-                         ▼
-                  ┌─────────────┐
-                  │   queued    │
-                  └──────┬──────┘
-                         │
-                         ▼
-                  ┌─────────────┐
-             ┌───►│  retrying   │
-             │    └──────┬──────┘
-             │           │
-             │           ▼
-             │      ┌─────────┐
-             └──────│ attempt │
-                    └────┬────┘
-                         │
-                         ▼
-                  ┌─────────────┐
-                  │     done    │
-                  └─────────────┘
+                         │ first attempt (outside the bulkhead)
+              ┌──────────┴──────────┐
+              │ success             │ failure / busy status
+              ▼                     ▼
+        ┌───────────┐        ┌─────────────┐
+        │   done    │        │   queued    │
+        └───────────┘        └──────┬──────┘
+                                    │ backoff
+                                    ▼
+                             ┌─────────────┐
+                             │  retrying   │
+                             └──────┬──────┘
+                                    │ attempt
+                          ┌─────────┴─────────┐
+                          ▼                   ▼
+                      success              exhausted
+                          │                   │
+                          ▼                   ▼
+                       done          MaxRetriesExceededError
 ```
 
 You can await it, stream its steps, or cancel it mid-flight:
@@ -164,6 +163,7 @@ With zero configuration:
 | Backoff | Exponential: 200ms base, 30s cap, full jitter |
 | Timeout | None |
 | Queue-on status codes | None (all non-2xx responses are retried as errors) |
+| First-attempt concurrency | Unbounded — the initial attempt bypasses the bulkhead |
 
 ## Quick start
 
@@ -186,11 +186,15 @@ if (result.success) {
 
 That's it. Vereda handles retries, backoff, timeouts, and isolation for you.
 
+Installing from GitHub runs the build via the `prepare` script, so `dist/` is ready as soon as installation finishes.
+
 ## Features
 
 ### Retries and backoff
 
-Configure retries globally, per partition, or per request. Per-request settings override partition settings, which override global ones.
+Configure retries globally or per request. Per-request settings override global ones.
+
+> **Note:** only global and per-request `retry`/`trigger` are applied today. A partition's `concurrency` and `maxQueueSize` take effect, but its `trigger` and `retry` are currently ignored.
 
 ```typescript
 const client = HttpClient.create({
@@ -235,6 +239,8 @@ When all attempts are exhausted, the ticket resolves with a `MaxRetriesExceededE
 ### Bulkhead isolation
 
 Every request is assigned to a partition, keyed by hostname by default. Each partition owns a concurrency limit plus a waiting queue. A slow or failing host fills its own queue without touching traffic to other hosts.
+
+The concurrency limit and queue govern only **retry traffic** — the initial attempt always fires immediately and is never throttled by the bulkhead.
 
 ```typescript
 const client = HttpClient.create({
@@ -331,7 +337,7 @@ client.use(async (options, next) => {
 });
 ```
 
-Middleware runs inside the timeout and cancellation wiring, so a hung middleware gets cancelled along with the request.
+Middleware receives the same `AbortSignal` the request uses, so it can participate in timeout and cancellation handling — but only if it observes or forwards that signal to the work it performs.
 
 ### Lifecycle events
 
@@ -393,14 +399,6 @@ if (!result.success) {
 **Cancellation is final.** A cancelled request never enters the retry loop, regardless of timeout or retry configuration.
 
 **Validation failures aren't transient.** A response that fails your `parse` function resolves immediately — retrying would parse the same payload again.
-
-## Installation
-
-```bash
-npm install github:riosgabriel/vereda
-```
-
-npm runs the build during install (via the `prepare` script), so `dist/` is ready when installation finishes.
 
 ## Status
 
