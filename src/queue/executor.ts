@@ -12,7 +12,7 @@ export interface ExecuteRequest {
 export type ExecuteResult =
   | { kind: "success"; result: Result<unknown> }
   | { kind: "timeout" }
-  | { kind: "queued_status"; statusCode: number; response: Response }
+  | { kind: "queued_status"; statusCode: number }
   | { kind: "cancelled" }
   | { kind: "error"; error: AppError }
 
@@ -87,7 +87,7 @@ export async function executeRequest(
 
   // Check if status code triggers queuing
   if (queueOnStatus.includes(response.status)) {
-    return { kind: "queued_status", statusCode: response.status, response }
+    return { kind: "queued_status", statusCode: response.status }
   }
 
   // Non-2xx responses are errors

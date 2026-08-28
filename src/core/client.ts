@@ -8,30 +8,12 @@ import type {
   TriggerConfig,
 } from "./types.js"
 import type { AppError } from "./errors.js"
-import { NetworkError, CancelledError, TimeoutError, RetryableStatusError } from "./errors.js"
+import { NetworkError, CancelledError, TimeoutError } from "./errors.js"
 import { BulkheadRegistry } from "../queue/bulkhead.js"
 import { executeRequest, type MiddlewareFn } from "../queue/executor.js"
 import { runRetryLoop } from "../queue/retry.js"
 import { Ticket } from "../ticket/ticket.js"
 import { nanoid } from "./nanoid.js"
-
-const RETRYABLE_STATUS_CODES = [408, 429, 500, 502, 503, 504] as const
-
-/**
- * Default retry predicate: retry network/connection failures and transient
- * statuses only. Non-2xx client errors (4xx other than 408/429) are not
- * retried by default, and callers remain responsible for non-idempotent
- * safety.
- */
-function DEFAULT_RETRY_WHEN(error: AppError): boolean {
-  if (error instanceof TimeoutError) return true
-  if (error instanceof RetryableStatusError) return true
-  if (error instanceof NetworkError) {
-    if (error.statusCode === undefined) return true
-    return (RETRYABLE_STATUS_CODES as readonly number[]).includes(error.statusCode)
-  }
-  return false
-}
 
 export class HttpClient {
   private readonly config: ClientConfig
@@ -100,9 +82,9 @@ export class HttpClient {
       }
     }
 
+    const triggerConfig = this.mergeTrigger(options)
+    const retryConfig = this.mergeRetry(options)
     const partitionName = options.partition ?? new URL(fullUrl).hostname
-    const triggerConfig = this.mergeTrigger(options, partitionName)
-    const retryConfig = this.mergeRetry(options, partitionName)
     const bulkhead = this.bulkheads.get(partitionName)
 
     this.emit("request", { ticketId, url: fullUrl, method: options.method ?? "GET" })
@@ -181,24 +163,10 @@ export class HttpClient {
         )
         return
 
-      case "timeout": {
-        const error = new TimeoutError(url, triggerConfig.timeoutMs ?? 0)
-        if (this.retryVetoed(retryConfig, error, ticket, url)) return
-        ticket._markQueued()
-        this._scheduleInBulkhead(
-          ticket,
-          url,
-          options,
-          triggerConfig,
-          retryConfig,
-          partitionName,
-          bulkhead,
-        )
-        return
-      }
-
+      case "timeout":
       case "queued_status": {
-        const error = new RetryableStatusError(result.statusCode, url, result.response)
+        // Same error construction runRetryLoop uses for these cases
+        const error = new TimeoutError(url, triggerConfig.timeoutMs ?? 0)
         if (this.retryVetoed(retryConfig, error, ticket, url)) return
         ticket._markQueued()
         this._scheduleInBulkhead(
@@ -327,28 +295,12 @@ export class HttpClient {
     return url
   }
 
-  private mergeTrigger(
-    options: RequestOptions<unknown>,
-    partitionName: string,
-  ): TriggerConfig {
-    const partition = this.config.partitions?.[partitionName]
-    return { ...this.config.trigger, ...partition?.trigger, ...options.trigger }
+  private mergeTrigger(options: RequestOptions<unknown>): TriggerConfig {
+    return { ...this.config.trigger, ...options.trigger }
   }
 
-  private mergeRetry(
-    options: RequestOptions<unknown>,
-    partitionName: string,
-  ): RetryConfig {
-    const partition = this.config.partitions?.[partitionName]
-    const merged: RetryConfig = {
-      ...this.config.retry,
-      ...partition?.retry,
-      ...options.retry,
-    }
-    if (merged.retryWhen === undefined) {
-      merged.retryWhen = DEFAULT_RETRY_WHEN
-    }
-    return merged
+  private mergeRetry(options: RequestOptions<unknown>): RetryConfig {
+    return { ...this.config.retry, ...options.retry }
   }
 
   private emit<K extends keyof LifecycleEventMap>(event: K, data: LifecycleEventMap[K]): void {

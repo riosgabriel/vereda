@@ -1,5 +1,5 @@
 import { buildBackoffFn } from "../core/backoff.js"
-import { CancelledError, MaxRetriesExceededError, TimeoutError, RetryableStatusError } from "../core/errors.js"
+import { CancelledError, MaxRetriesExceededError, TimeoutError } from "../core/errors.js"
 import type { AppError } from "../core/errors.js"
 import type { RequestOptions, RetryConfig, TriggerConfig } from "../core/types.js"
 import type { Ticket } from "../ticket/ticket.js"
@@ -73,7 +73,7 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
         break
 
       case "queued_status":
-        lastError = new RetryableStatusError(result.statusCode, url, result.response)
+        lastError = new TimeoutError(url, triggerConfig.timeoutMs ?? 0)
         break
 
       case "error":

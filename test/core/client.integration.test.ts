@@ -5,7 +5,6 @@ import {
   CancelledError,
   MaxRetriesExceededError,
   NetworkError,
-  RetryableStatusError,
   ValidationError,
 } from "../../src/core/errors.js"
 import { z } from "zod"
@@ -138,75 +137,23 @@ describe("HttpClient integration", () => {
     if (!result.success) expect(result.error).toBeInstanceOf(MaxRetriesExceededError)
   }, 10_000)
 
-  it("does not retry client errors (4xx) by default", async () => {
-    let requestCount = 0
+  it("returns NetworkError on non-2xx status (not in queueOnStatus)", async () => {
     server.setHandler((_req, res) => {
-      requestCount++
       res.writeHead(404)
       res.end("Not Found")
     })
-    const result = await client.get(`${server.url}/missing`).toPromise()
-    expect(requestCount).toBe(1)
-    expect(result.success).toBe(false)
-    if (!result.success) {
-      // 404 is not in the default retryable set, so it surfaces immediately
-      expect(result.error).toBeInstanceOf(NetworkError)
-      expect((result.error as NetworkError).statusCode).toBe(404)
-    }
-  })
-
-  it("retries transient server errors (5xx) by default", async () => {
-    let requestCount = 0
-    server.setHandler((_req, res) => {
-      requestCount++
-      res.writeHead(500)
-      res.end("Server Error")
+    // Use a client with no retry on errors to get immediate result
+    const noRetryClient = HttpClient.create({
+      retry: { maxAttempts: 1 },
     })
-    const result = await client
-      .get(`${server.url}/bad`, {
-        retry: { maxAttempts: 2, backoff: { baseDelayMs: 10, jitter: false } },
-      })
-      .toPromise()
-    expect(requestCount).toBeGreaterThan(1)
+    const result = await noRetryClient.get(`${server.url}/missing`).toPromise()
     expect(result.success).toBe(false)
     if (!result.success) {
       expect(result.error).toBeInstanceOf(MaxRetriesExceededError)
+      const underlying = (result.error as MaxRetriesExceededError).lastError
+      expect(underlying).toBeInstanceOf(NetworkError)
+      expect((underlying as NetworkError).statusCode).toBe(404)
     }
-  })
-
-  it("surfaces queueOnStatus responses as RetryableStatusError", async () => {
-    server.setHandler((_req, res) => {
-      res.writeHead(429)
-      res.end("Too Many Requests")
-    })
-    const result = await client
-      .get(`${server.url}/busy`, { retry: { maxAttempts: 1, retryWhen: () => false } })
-      .toPromise()
-    expect(result.success).toBe(false)
-    if (!result.success) {
-      expect(result.error).toBeInstanceOf(RetryableStatusError)
-      expect((result.error as RetryableStatusError).statusCode).toBe(429)
-    }
-  })
-
-  it("applies partition-level retry config", async () => {
-    let requestCount = 0
-    server.setHandler((_req, res) => {
-      requestCount++
-      res.writeHead(500)
-      res.end("Server Error")
-    })
-    const partitionedClient = HttpClient.create({
-      partitions: {
-        "busy.host": { retry: { maxAttempts: 2, backoff: { baseDelayMs: 10, jitter: false } } },
-      },
-    })
-    const result = await partitionedClient
-      .get(`${server.url}/bad`, { partition: "busy.host" })
-      .toPromise()
-    // maxAttempts: 2 → first attempt + 2 loop executions = 3 total
-    expect(requestCount).toBe(3)
-    expect(result.success).toBe(false)
   })
 
   it("retryWhen predicate stops retrying and surfaces the underlying error", async () => {

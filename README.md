@@ -234,7 +234,7 @@ retry: {
 }
 ```
 
-> **⚠️ Retries still apply to non-idempotent methods.** By default Vereda retries network/connection failures and transient statuses (`408`, `429`, `500`, `502`, `503`, `504`), and it retries `POST`, `PUT`, `PATCH`, and `DELETE` exactly like `GET`. A timeout or network error does not prove the server didn't process the request, so only enable automatic retries for operations that are safe to repeat, or constrain them further with a custom `retryWhen`.
+> **⚠️ Retries are unrestricted by default.** Vereda retries `POST`, `PUT`, `PATCH`, and `DELETE` exactly like `GET`, and by default treats *any* non-2xx response as retryable — including `400`, `401`, `403`, `404`, and `422`. A timeout or network error does not prove the server didn't process the request. Only enable automatic retries for operations that are safe to repeat, or scope them with `retryWhen` (for example, retry only on `408`, `429`, `500`, `502`, `503`, `504`).
 
 When all attempts are exhausted, the ticket resolves with a `MaxRetriesExceededError` carrying the attempt count and the last underlying error.
 
@@ -276,7 +276,7 @@ const client = HttpClient.create({
 - `timeoutMs` — a hard per-attempt timeout. The attempt is aborted and the request joins the retry loop.
 - `queueOnStatus` — status codes that mean the server is busy rather than broken. Matching responses are queued for retry without being treated as errors.
 
-> **Caveats.** A response matched by `queueOnStatus` surfaces to your handler as a `RetryableStatusError` carrying the original `statusCode` (no longer a `TimeoutError`). Vereda does not yet honor the `Retry-After` header; backoff is driven solely by `baseDelayMs`, `maxDelayMs`, and `jitter`.
+> **Caveats.** A response matched by `queueOnStatus` surfaces to your handler as a `TimeoutError`, not a status-specific error — so a `429` or `503` will appear as `TimeoutError`. Vereda also does not yet honor the `Retry-After` header; backoff is driven solely by `baseDelayMs`, `maxDelayMs`, and `jitter`.
 
 Both settings merge per request:
 
@@ -377,7 +377,6 @@ Errors are a closed hierarchy under `RequestError`:
 | --- | --- | --- |
 | `NetworkError` | Network failure or non-2xx response | `statusCode`, `response`, `cause` |
 | `TimeoutError` | Attempt exceeded `timeoutMs` | `url`, `timeoutMs` |
-| `RetryableStatusError` | Busy status matched by `queueOnStatus` (e.g. 429, 503) | `statusCode`, `response` |
 | `ValidationError` | Response body failed `parse` (never retried) | `issues` |
 | `CancelledError` | Ticket cancelled or signal aborted | — |
 | `MaxRetriesExceededError` | All attempts exhausted | `attempts`, `lastError` |
