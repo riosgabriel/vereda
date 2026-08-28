@@ -189,6 +189,8 @@ retry: {
 }
 ```
 
+> **⚠️ Retries still apply to non-idempotent methods.** By default Vereda retries network/connection failures and transient statuses (`408`, `429`, `500`, `502`, `503`, `504`), and it retries `POST`, `PUT`, `PATCH`, and `DELETE` exactly like `GET`. A timeout or network error does not prove the server didn't process the request, so only enable automatic retries for operations that are safe to repeat, or constrain them further with a custom `retryWhen`.
+
 When all attempts are exhausted, the ticket resolves with a `MaxRetriesExceededError` carrying the attempt count and the last underlying error.
 
 ## Partitions and bulkheads
@@ -232,6 +234,8 @@ const client = HttpClient.create({
 
 - `timeoutMs` — a hard per-attempt timeout. The attempt is aborted and the request joins the retry loop. No timeout is set by default.
 - `queueOnStatus` — status codes that mean the server is busy rather than broken. Matching responses are queued for retry without being treated as errors. 429 and 503 are the usual candidates.
+
+> **Caveats.** A response matched by `queueOnStatus` surfaces to your handler as a `RetryableStatusError` carrying the original `statusCode` (no longer a `TimeoutError`). Vereda does not yet honor the `Retry-After` header; backoff is driven solely by `baseDelayMs`, `maxDelayMs`, and `jitter`.
 
 Both settings merge per request, same as retry config:
 
@@ -331,6 +335,7 @@ Errors are a closed hierarchy under `RequestError`, so an `instanceof` chain cov
 | --- | --- | --- |
 | `NetworkError` | Network failure or non-2xx response | `statusCode`, `response`, `cause` |
 | `TimeoutError` | Attempt exceeded `timeoutMs` | `url`, `timeoutMs` |
+| `RetryableStatusError` | Busy status matched by `queueOnStatus` (e.g. 429, 503) | `statusCode`, `response` |
 | `ValidationError` | Response body failed `parse` (never retried) | `issues` |
 | `CancelledError` | Ticket cancelled or signal aborted | — |
 | `MaxRetriesExceededError` | All attempts exhausted | `attempts`, `lastError` |
