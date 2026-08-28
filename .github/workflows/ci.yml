@@ -6,8 +6,8 @@ on:
   pull_request:
 
 jobs:
-  ci:
-    name: ci
+  test:
+    name: test
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -15,10 +15,10 @@ jobs:
         node-version: [18.x, 20.x, 22.x]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node-version }}
 
@@ -33,3 +33,12 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  ci:
+    if: always()
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check matrix results
+        if: needs.test.result != 'success'
+        run: exit 1
