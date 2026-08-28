@@ -75,26 +75,25 @@ const ticket = client.get("/api/data");
                   ┌─────────────┐
                   │   pending   │
                   └──────┬──────┘
-                         │
-                         ▼
-                  ┌─────────────┐
-                  │   queued    │
-                  └──────┬──────┘
-                         │
-                         ▼
-                  ┌─────────────┐
-             ┌───►│  retrying   │
-             │    └──────┬──────┘
-             │           │
-             │           ▼
-             │      ┌─────────┐
-             └──────│ attempt │
-                    └────┬────┘
-                         │
-                         ▼
-                  ┌─────────────┐
-                  │     done    │
-                  └─────────────┘
+                         │ first attempt (outside the bulkhead)
+              ┌──────────┴──────────┐
+              │ success             │ failure / busy status
+              ▼                     ▼
+        ┌───────────┐        ┌─────────────┐
+        │   done    │        │   queued    │
+        └───────────┘        └──────┬──────┘
+                                    │ backoff
+                                    ▼
+                             ┌─────────────┐
+                             │  retrying   │
+                             └──────┬──────┘
+                                    │ attempt
+                          ┌─────────┴─────────┐
+                          ▼                   ▼
+                      success              exhausted
+                          │                   │
+                          ▼                   ▼
+                       done          MaxRetriesExceededError
 ```
 
 You can await it, stream its steps, or cancel it mid-flight:
@@ -164,6 +163,7 @@ With zero configuration:
 | Backoff | Exponential: 200ms base, 30s cap, full jitter |
 | Timeout | None |
 | Queue-on status codes | None (all non-2xx responses are retried as errors) |
+| First-attempt concurrency | Unbounded — the initial attempt bypasses the bulkhead |
 
 ## Quick start
 
@@ -186,11 +186,15 @@ if (result.success) {
 
 That's it. Vereda handles retries, backoff, timeouts, and isolation for you.
 
+Installing from GitHub runs the build via the `prepare` script, so `dist/` is ready as soon as installation finishes.
+
 ## Features
 
 ### Retries and backoff
 
-Configure retries globally, per partition, or per request. Per-request settings override partition settings, which override global ones.
+Configure retries globally or per request. Per-request settings override global ones.
+
+> **Note:** only global and per-request `retry`/`trigger` are applied today. A partition's `concurrency` and `maxQueueSize` take effect, but its `trigger` and `retry` are currently ignored.
 
 ```typescript
 const client = HttpClient.create({
@@ -230,11 +234,15 @@ retry: {
 }
 ```
 
+> **⚠️ Retries are unrestricted by default.** Vereda retries `POST`, `PUT`, `PATCH`, and `DELETE` exactly like `GET`, and by default treats *any* non-2xx response as retryable — including `400`, `401`, `403`, `404`, and `422`. A timeout or network error does not prove the server didn't process the request. Only enable automatic retries for operations that are safe to repeat, or scope them with `retryWhen` (for example, retry only on `408`, `429`, `500`, `502`, `503`, `504`).
+
 When all attempts are exhausted, the ticket resolves with a `MaxRetriesExceededError` carrying the attempt count and the last underlying error.
 
 ### Bulkhead isolation
 
 Every request is assigned to a partition, keyed by hostname by default. Each partition owns a concurrency limit plus a waiting queue. A slow or failing host fills its own queue without touching traffic to other hosts.
+
+The concurrency limit and queue govern only **retry traffic** — the initial attempt always fires immediately and is never throttled by the bulkhead.
 
 ```typescript
 const client = HttpClient.create({
@@ -267,6 +275,8 @@ const client = HttpClient.create({
 
 - `timeoutMs` — a hard per-attempt timeout. The attempt is aborted and the request joins the retry loop.
 - `queueOnStatus` — status codes that mean the server is busy rather than broken. Matching responses are queued for retry without being treated as errors.
+
+> **Caveats.** A response matched by `queueOnStatus` surfaces to your handler as a `TimeoutError`, not a status-specific error — so a `429` or `503` will appear as `TimeoutError`. Vereda also does not yet honor the `Retry-After` header; backoff is driven solely by `baseDelayMs`, `maxDelayMs`, and `jitter`.
 
 Both settings merge per request:
 
@@ -331,7 +341,7 @@ client.use(async (options, next) => {
 });
 ```
 
-Middleware runs inside the timeout and cancellation wiring, so a hung middleware gets cancelled along with the request.
+Middleware receives the same `AbortSignal` the request uses, so it can participate in timeout and cancellation handling — but only if it observes or forwards that signal to the work it performs.
 
 ### Lifecycle events
 
@@ -393,14 +403,6 @@ if (!result.success) {
 **Cancellation is final.** A cancelled request never enters the retry loop, regardless of timeout or retry configuration.
 
 **Validation failures aren't transient.** A response that fails your `parse` function resolves immediately — retrying would parse the same payload again.
-
-## Installation
-
-```bash
-npm install github:riosgabriel/vereda
-```
-
-npm runs the build during install (via the `prepare` script), so `dist/` is ready when installation finishes.
 
 ## Status
 
