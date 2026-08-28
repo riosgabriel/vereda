@@ -1,73 +1,69 @@
-import type { PartitionConfig } from "../core/types.js";
+import type { PartitionConfig } from "../core/types.js"
 
-type Task = () => Promise<void>;
+type Task = () => Promise<void>
 
 export class Bulkhead {
-  public readonly name: string;
-  private readonly concurrency: number;
-  private readonly maxQueueSize: number;
-  private running = 0;
-  private queue: Task[] = [];
+  public readonly name: string
+  private readonly concurrency: number
+  private readonly maxQueueSize: number
+  private running = 0
+  private queue: Task[] = []
 
   constructor(name: string, config: PartitionConfig = {}) {
-    this.name = name;
-    this.concurrency = config.concurrency ?? 5;
-    this.maxQueueSize = config.maxQueueSize ?? 100;
+    this.name = name
+    this.concurrency = config.concurrency ?? 5
+    this.maxQueueSize = config.maxQueueSize ?? 100
   }
 
   get queueSize(): number {
-    return this.queue.length;
+    return this.queue.length
   }
 
   get runningCount(): number {
-    return this.running;
+    return this.running
   }
 
   get concurrencyLimit(): number {
-    return this.concurrency;
+    return this.concurrency
   }
 
   get maxQueueSizeLimit(): number {
-    return this.maxQueueSize;
+    return this.maxQueueSize
   }
 
   canAccept(): boolean {
-    return this.queue.length < this.maxQueueSize;
+    return this.queue.length < this.maxQueueSize
   }
 
   schedule(task: Task): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!this.canAccept()) {
-        reject(
-          new Error(
-            `Bulkhead '${this.name}' queue is full (max: ${this.maxQueueSize})`
-          )
-        );
-        return;
+        reject(new Error(`Bulkhead '${this.name}' queue is full (max: ${this.maxQueueSize})`))
+        return
       }
 
       const wrapped = async () => {
         try {
-          await task();
-          resolve();
+          await task()
+          resolve()
         } catch (err) {
-          reject(err);
+          reject(err)
         }
-      };
+      }
 
-      this.queue.push(wrapped);
-      this._drain();
-    });
+      this.queue.push(wrapped)
+      this._drain()
+    })
   }
 
   private _drain(): void {
     while (this.running < this.concurrency && this.queue.length > 0) {
-      const task = this.queue.shift()!;
-      this.running++;
+      const task = this.queue.shift()!
+      this.running++
       task().finally(() => {
-        this.running--;
-        this._drain();
-      });
+        this.running--
+        this._drain()
+      })
     }
   }
 }
@@ -77,40 +73,40 @@ export class Bulkhead {
 // ---------------------------------------------------------------------------
 
 export interface BulkheadSnapshot {
-  name: string;
-  running: number;
-  queued: number;
-  concurrency: number;
-  maxQueueSize: number;
+  name: string
+  running: number
+  queued: number
+  concurrency: number
+  maxQueueSize: number
 }
 
 export class BulkheadRegistry {
-  private readonly bulkheads = new Map<string, Bulkhead>();
-  private readonly globalConfig: PartitionConfig;
-  private readonly partitionConfigs: Record<string, PartitionConfig>;
+  private readonly bulkheads = new Map<string, Bulkhead>()
+  private readonly globalConfig: PartitionConfig
+  private readonly partitionConfigs: Record<string, PartitionConfig>
 
   constructor(
     globalConfig: PartitionConfig = {},
-    partitionConfigs: Record<string, PartitionConfig> = {}
+    partitionConfigs: Record<string, PartitionConfig> = {},
   ) {
-    this.globalConfig = globalConfig;
-    this.partitionConfigs = partitionConfigs;
+    this.globalConfig = globalConfig
+    this.partitionConfigs = partitionConfigs
   }
 
   get(partitionName: string): Bulkhead {
     if (!this.bulkheads.has(partitionName)) {
-      const partitionConfig = this.partitionConfigs[partitionName] ?? {};
+      const partitionConfig = this.partitionConfigs[partitionName] ?? {}
       const merged: PartitionConfig = {
         ...this.globalConfig,
         ...partitionConfig,
-      };
-      this.bulkheads.set(partitionName, new Bulkhead(partitionName, merged));
+      }
+      this.bulkheads.set(partitionName, new Bulkhead(partitionName, merged))
     }
-    return this.bulkheads.get(partitionName)!;
+    return this.bulkheads.get(partitionName)!
   }
 
   getAll(): BulkheadSnapshot[] {
-    const result: BulkheadSnapshot[] = [];
+    const result: BulkheadSnapshot[] = []
     for (const [, bh] of this.bulkheads) {
       result.push({
         name: bh.name,
@@ -118,8 +114,8 @@ export class BulkheadRegistry {
         queued: bh.queueSize,
         concurrency: bh.concurrencyLimit,
         maxQueueSize: bh.maxQueueSizeLimit,
-      });
+      })
     }
-    return result;
+    return result
   }
 }
