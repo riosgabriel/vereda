@@ -1,11 +1,11 @@
-# Relay
+# Vereda
 
-A resilient HTTP client for Node.js. Configure retries, timeouts, and per-host concurrency limits once on the client, then make requests. Relay fires each request, absorbs failures, backs off, and retries. You await one result.
+A resilient HTTP client for Node.js. Configure retries, timeouts, and per-host concurrency limits once on the client, then make requests. Vereda fires each request, absorbs failures, backs off, and retries. You await one result.
 
-Every request returns a **Ticket** — a handle you can await, subscribe to, or cancel while Relay does the work.
+Every request returns a **Ticket** — a handle you can await, subscribe to, or cancel while Vereda does the work.
 
 ```typescript
-import { HttpClient } from "relay";
+import { HttpClient } from "vereda";
 
 const client = HttpClient.create({ baseUrl: "https://api.example.com" });
 
@@ -19,30 +19,32 @@ if (result.success) {
 
 ## Status
 
-Relay is early-stage software. The API is small, tested (36 passing tests), and MIT licensed, but it has not been hardened in production yet. Pin the version you depend on.
+Vereda is early-stage software. The API is small, tested (40 passing tests), and MIT licensed, but it has not been hardened in production yet. Pin the version you depend on.
 
-## Why Relay
+## Why Vereda
 
 `fetch` gives you one attempt at a request. Production code needs more: retry flaky networks, back off when a server returns 429, cap how many calls hit a struggling host, and give up cleanly when a request hangs. Most codebases grow a tangle of `setTimeout`, `try/catch`, and ad-hoc queues around `fetch` to get there.
 
-Relay puts that machinery in one place:
+Vereda puts that machinery in one place:
 
-- **Retries with exponential backoff and jitter**, on by default for every failed request
+- **Retries with exponential backoff and jitter** — on by default for every failed request
 - **Bulkhead isolation** — each host gets its own concurrency limit and queue, so one failing upstream can't starve the rest
 - **Timeouts** that cancel slow requests and hand them to the retry loop
 - **A result type instead of exceptions** — requests resolve to `{ success, data, raw }` or `{ success: false, error }` with typed error classes
-- **Observability** — lifecycle events and per-ticket status updates for anything you need to monitor
+- **Observability** — lifecycle events and per-ticket status updates for monitoring
 
-Relay is built on Node's global `fetch` and `node:events`. It runs on Node 18+ and is ESM-only. It is not a browser client.
+Vereda is built on Node's global `fetch` and `node:events`. It runs on Node 18+ and is ESM-only. It is not a browser client.
+
+**What Relay does not do.** No response caching, no request deduplication, no streaming response helpers, no browser support. It is deliberately narrow: queueing, retries, isolation, and typed results on top of `fetch`.
 
 ## Installation
 
-Relay is not published to npm yet. The `relay` name on npm belongs to an unrelated package — don't install that one.
+Vereda is not published to npm yet.
 
 Install from GitHub instead:
 
 ```bash
-npm install github:riosgabriel/relay
+npm install github:riosgabriel/vereda
 ```
 
 npm runs the build during install (via the `prepare` script), so `dist/` is ready when installation finishes.
@@ -63,7 +65,7 @@ client.get(url)
                                       +-- attempts exhausted --> MaxRetriesExceededError
 ```
 
-The first attempt fires immediately, outside the bulkhead. Only requests that need another attempt go through their partition's queue, which is what keeps retry traffic from hammering an already-struggling host.
+The first attempt fires immediately, outside the bulkhead. Only requests that need another attempt go through their partition's queue, which keeps retry traffic from hammering an already-struggling host.
 
 With zero configuration:
 
@@ -71,7 +73,7 @@ With zero configuration:
 | --- | --- |
 | Global concurrency | 10 in-flight retries across all partitions |
 | Per-partition concurrency | 5 |
-| Per-partition queue size | 100 waiting requests |
+| Per-partition queue size | 100 waiting retries |
 | Retries | 3 retries after the first attempt (4 total executions) |
 | Backoff | Exponential: 200ms base, 30s cap, full jitter |
 | Timeout | None |
@@ -81,7 +83,7 @@ A request is retried on any failure: network errors, non-2xx responses, timeouts
 
 ## Tickets
 
-`client.get()` and friends return synchronously with a `Ticket<T>`. The ticket tracks the request from first attempt to terminal result:
+`client.get()` returns synchronously with a `Ticket<T>`. The ticket tracks the request from first attempt to terminal result:
 
 ```typescript
 const ticket = client.get("/api/data");
@@ -115,7 +117,7 @@ type Result<T> =
   | { success: false; error: AppError };
 ```
 
-One detail worth knowing: without a `parse` function, `data` is `undefined` and the unparsed body lives on `result.raw` (the standard `Response` object). Add a `parse` function to get typed `data` — see [Schema validation](#schema-validation).
+Without a `parse` function, `data` is `undefined` and the unparsed body lives on `result.raw` (the standard `Response` object). Add a `parse` function to get typed `data` — see [Schema validation](#schema-validation).
 
 ## Retries and backoff
 
@@ -150,7 +152,7 @@ retry: {
 `retryWhen` is consulted after every failed attempt — including the first one, before any retry is scheduled. Return `false` to surface the error immediately.
 
 ```typescript
-import { NetworkError } from "relay";
+import { NetworkError } from "vereda";
 
 retry: {
   maxAttempts: 5,
@@ -176,7 +178,7 @@ const client = HttpClient.create({
   partitions: {
     "api.external.com": {
       concurrency: 2,    // at most 2 in-flight retries
-      maxQueueSize: 10,  // at most 10 waiting requests
+      maxQueueSize: 10,  // at most 10 waiting retries
     },
     "api.internal.com": {
       concurrency: 20,
@@ -220,7 +222,7 @@ client.get("/api/data", {
 Middleware wraps every attempt (including retries) in the standard onion shape: receive options, call `next`, return a `Response`.
 
 ```typescript
-import { defaultHeaders, requestLogger } from "relay/middleware";
+import { defaultHeaders, requestLogger } from "vereda/middleware";
 
 // Add default headers to every request (per-request headers win on conflict)
 client.use(defaultHeaders({
@@ -244,11 +246,11 @@ Middleware runs inside the timeout and cancellation wiring, so a hung middleware
 
 ## Schema validation
 
-Pass a `parse` function to validate and type the response body. Relay ships a Zod adapter:
+Pass a `parse` function to validate and type the response body. Vereda ships a Zod adapter:
 
 ```typescript
 import { z } from "zod";
-import { withZod } from "relay/zod";
+import { withZod } from "vereda/zod";
 
 const UserSchema = z.object({
   id: z.number(),
@@ -266,7 +268,7 @@ if (result.success) {
 
 `parse` is just `(data: unknown) => T`, so any validator that throws on failure works. A failed parse resolves the ticket with a `ValidationError` (carrying the issues) and is never retried.
 
-The core package has no dependency on Zod; only the `relay/zod` entry point imports it. Zod is an optional peer dependency — install it yourself (`npm install zod`) if you use `withZod`.
+The core package has no dependency on Zod; only the `vereda/zod` entry point imports it. Zod is an optional peer dependency — install it yourself (`npm install zod`) if you use `withZod`.
 
 ## Lifecycle events
 
@@ -299,7 +301,7 @@ Cancellation wins over everything else: if you abort while a timeout is also fir
 
 ## Error handling
 
-Errors are a closed hierarchy under `RelayError`, so an `instanceof` chain covers every failure mode:
+Errors are a closed hierarchy under `RequestError`, so an `instanceof` chain covers every failure mode:
 
 | Error | Meaning | Notable fields |
 | --- | --- | --- |
@@ -310,7 +312,7 @@ Errors are a closed hierarchy under `RelayError`, so an `instanceof` chain cover
 | `MaxRetriesExceededError` | All attempts exhausted | `attempts`, `lastError` |
 
 ```typescript
-import { MaxRetriesExceededError, NetworkError } from "relay";
+import { MaxRetriesExceededError, NetworkError } from "vereda";
 
 const result = await ticket.toPromise();
 if (!result.success) {
@@ -400,8 +402,6 @@ subscribe(): AsyncGenerator<TicketUpdate>
 
 **Why does the first attempt skip the bulkhead?** Fresh requests should not wait behind retry traffic for a host that happens to be degraded. The bulkhead exists to throttle *retry* pressure onto struggling hosts, which is where thundering herds come from.
 
-**What Relay does not do.** No response caching, no request deduplication, no streaming response helpers, no browser support. It is deliberately narrow: queueing, retries, isolation, and typed results on top of `fetch`.
-
 ## Development
 
 ```bash
@@ -414,7 +414,7 @@ npm run typecheck # tsc --noEmit
 
 ## Contributing
 
-New to Relay? You have two on-ramps:
+New to Vereda? You have two on-ramps:
 
 - **Self-guided** — read [ONBOARDING.md](ONBOARDING.md), a tour that follows one request through the library.
 - **Interactive** — run the **`guide-me`** skill in your coding harness (Claude Code, OpenCode, etc.). It's bundled in the repo (`.claude/skills/` and `.opencode/skills/`), so your assistant discovers it automatically and walks you through the internals stop-by-step until you're ready for your first contribution.

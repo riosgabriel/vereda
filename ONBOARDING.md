@@ -1,6 +1,6 @@
-# Onboarding to Relay
+# Onboarding to Vereda
 
-Welcome! This guide walks you through how Relay works by following a single request through the codebase. By the end you'll understand the architecture well enough to fix a bug or add a feature.
+Welcome! This guide walks you through how Vereda works by following a single request through the codebase. By the end you'll understand the architecture well enough to fix a bug or add a feature.
 
 Prefer to be walked through it? Ask an LLM to guide you stop-by-stop — it can open each referenced file and explain the real code as you go.
 
@@ -10,7 +10,7 @@ Prefer to be walked through it? Ask an LLM to guide you stop-by-stop — it can 
 
 ## Architecture in 30 seconds
 
-Relay is a resilient HTTP client built on Node's global `fetch`. Four ideas carry the whole design:
+Vereda is a resilient HTTP client built on Node's global `fetch`. Four ideas carry the whole design:
 
 - **Ticket** — a handle for a request in flight. You get one back synchronously from `client.get()`; you can await it, subscribe to its state changes, or cancel it.
 - **Retry** — failed requests are retried with exponential backoff and jitter, up to a configurable limit.
@@ -26,7 +26,7 @@ Follow one request — `client.get("/users/1")` — from call to settled result.
 ### Stop 0 — Get the vocabulary
 **Read:** `src/core/types.ts`, `src/core/errors.ts`
 
-Skim, don't study. Everything resolves to a `Result`; errors form a closed hierarchy under `RelayError` (`NetworkError`, `TimeoutError`, `ValidationError`, `CancelledError`, `MaxRetriesExceededError`). This is your reference for the rest of the tour.
+Skim, don't study. Everything resolves to a `Result`; errors form a closed hierarchy under `RequestError` (`NetworkError`, `TimeoutError`, `ValidationError`, `CancelledError`, `MaxRetriesExceededError`). This is your reference for the rest of the tour.
 
 ### Stop 1 — The entry point
 **Read:** `src/core/client.ts` → `HttpClient.request()`
@@ -36,7 +36,7 @@ Skim, don't study. Everything resolves to a `Result`; errors form a closed hiera
 ### Stop 2 — The handle you got back
 **Read:** `src/ticket/ticket.ts` → `Ticket`
 
-A state machine: `pending → queued → retrying → done/cancelled`. `toPromise()` never rejects; `subscribe()` and `on()` let you observe state changes; `cancel()` aborts. This is why Relay returns a ticket instead of a plain promise.
+A state machine: `pending → queued → retrying → done/cancelled`. `toPromise()` never rejects; `subscribe()` and `on()` let you observe state changes; `cancel()` aborts. This is why Vereda returns a ticket instead of a plain promise.
 
 ### Stop 3 — One attempt
 **Read:** `src/queue/executor.ts` → `executeRequest()`
