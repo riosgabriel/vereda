@@ -335,7 +335,7 @@ Errors are a closed hierarchy under `RequestError`, so an `instanceof` chain cov
 | --- | --- | --- |
 | `NetworkError` | Network failure or non-2xx response | `statusCode`, `response`, `cause` |
 | `TimeoutError` | Attempt exceeded `timeoutMs` | `url`, `timeoutMs` |
-| `RetryableStatusError` | Busy status matched by `queueOnStatus` (e.g. 429, 503) | `statusCode`, `response` |
+| `RetryableStatusError` | Busy status matched by `queueOnStatus` (e.g. 429, 503) | `statusCode`, `response` (retained for inspection; body not consumed by the library) |
 | `ValidationError` | Response body failed `parse` (never retried) | `issues` |
 | `CancelledError` | Ticket cancelled or signal aborted | — |
 | `MaxRetriesExceededError` | All attempts exhausted | `attempts`, `lastError` |

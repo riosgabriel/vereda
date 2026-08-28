@@ -22,6 +22,12 @@ const RETRYABLE_STATUS_CODES = [408, 429, 500, 502, 503, 504] as const
  * statuses only. Non-2xx client errors (4xx other than 408/429) are not
  * retried by default, and callers remain responsible for non-idempotent
  * safety.
+ *
+ * A NetworkError with `statusCode === undefined` is a connection failure
+ * (DNS, TCP, TLS, etc.) and retries unconditionally. A NetworkError with
+ * a `statusCode` set means the request reached the server and received an
+ * HTTP response (the non-2xx path in executor.ts); that status is gated on
+ * RETRYABLE_STATUS_CODES so only transient server errors are retried.
  */
 function DEFAULT_RETRY_WHEN(error: AppError): boolean {
   if (error instanceof TimeoutError) return true
@@ -327,25 +333,19 @@ export class HttpClient {
     return url
   }
 
-  private mergeTrigger(
-    options: RequestOptions<unknown>,
-    partitionName: string,
-  ): TriggerConfig {
+  private mergeTrigger(options: RequestOptions<unknown>, partitionName: string): TriggerConfig {
     const partition = this.config.partitions?.[partitionName]
     return { ...this.config.trigger, ...partition?.trigger, ...options.trigger }
   }
 
-  private mergeRetry(
-    options: RequestOptions<unknown>,
-    partitionName: string,
-  ): RetryConfig {
+  private mergeRetry(options: RequestOptions<unknown>, partitionName: string): RetryConfig {
     const partition = this.config.partitions?.[partitionName]
     const merged: RetryConfig = {
       ...this.config.retry,
       ...partition?.retry,
       ...options.retry,
     }
-    if (merged.retryWhen === undefined) {
+    if (merged.retryWhen == null) {
       merged.retryWhen = DEFAULT_RETRY_WHEN
     }
     return merged

@@ -1,5 +1,10 @@
 export type AppError =
-  NetworkError | ValidationError | TimeoutError | RetryableStatusError | CancelledError | MaxRetriesExceededError
+  | NetworkError
+  | ValidationError
+  | TimeoutError
+  | RetryableStatusError
+  | CancelledError
+  | MaxRetriesExceededError
 
 /**
  * Base class for failures that prevent a request from
@@ -53,6 +58,7 @@ export class TimeoutError extends RequestError {
 
 export class RetryableStatusError extends RequestError {
   public readonly statusCode: number
+  /** The original response. Its body is NOT consumed by the library; the stream remains unconsumed for caller inspection. */
   public readonly response?: Response
 
   constructor(statusCode: number, url: string, response?: Response) {

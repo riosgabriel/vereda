@@ -63,7 +63,8 @@ export interface RetryConfig {
    *  Called with the error from the most recent failed attempt and that
    *  attempt's zero-based number (0 = the first attempt). Consulted after
    *  every failed attempt — including the first, before any retry is
-   *  scheduled — so returning `false` surfaces the error immediately. */
+   *  scheduled — so returning `false` surfaces the error immediately.
+   *  Omit or pass `null` to use the default predicate. */
   retryWhen?: (error: AppError, attempt: number) => boolean
 }
 

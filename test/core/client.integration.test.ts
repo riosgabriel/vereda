@@ -167,7 +167,8 @@ describe("HttpClient integration", () => {
         retry: { maxAttempts: 2, backoff: { baseDelayMs: 10, jitter: false } },
       })
       .toPromise()
-    expect(requestCount).toBeGreaterThan(1)
+    // per-request maxAttempts:2 → 1 first + 2 loop = 3 total
+    expect(requestCount).toBe(3)
     expect(result.success).toBe(false)
     if (!result.success) {
       expect(result.error).toBeInstanceOf(MaxRetriesExceededError)
@@ -189,23 +190,60 @@ describe("HttpClient integration", () => {
     }
   })
 
-  it("applies partition-level retry config", async () => {
+  it("applies partition-level retry config (partition wins over global)", async () => {
     let requestCount = 0
     server.setHandler((_req, res) => {
       requestCount++
       res.writeHead(500)
       res.end("Server Error")
     })
+    // Global: no retry (maxAttempts:1 + retryWhen:false → 1 attempt)
+    // Partition: retry 2 (maxAttempts:2 + retryWhen:true → 3 attempts)
+    // If partition precedence works: 3 requests. If global wins: 1 request.
     const partitionedClient = HttpClient.create({
+      retry: { maxAttempts: 1, retryWhen: () => false },
       partitions: {
-        "busy.host": { retry: { maxAttempts: 2, backoff: { baseDelayMs: 10, jitter: false } } },
+        "busy.host": {
+          retry: {
+            maxAttempts: 2,
+            backoff: { baseDelayMs: 10, jitter: false },
+            retryWhen: () => true,
+          },
+        },
       },
     })
     const result = await partitionedClient
       .get(`${server.url}/bad`, { partition: "busy.host" })
       .toPromise()
-    // maxAttempts: 2 → first attempt + 2 loop executions = 3 total
+    // Partition wins → maxAttempts:2 → 1 first + 2 loop = 3 total
     expect(requestCount).toBe(3)
+    expect(result.success).toBe(false)
+  })
+
+  it("applies per-request retry config (per-request wins over partition)", async () => {
+    let requestCount = 0
+    server.setHandler((_req, res) => {
+      requestCount++
+      res.writeHead(500)
+      res.end("Server Error")
+    })
+    // Global: maxAttempts:1, Partition: maxAttempts:2, Per-request: maxAttempts:3
+    // If per-request precedence works: 4 requests (1 first + 3 loop)
+    // If partition wins: 3 requests. If global wins: 2 requests.
+    const client = HttpClient.create({
+      retry: { maxAttempts: 1, backoff: { baseDelayMs: 10, jitter: false } },
+      partitions: {
+        "busy.host": { retry: { maxAttempts: 2, backoff: { baseDelayMs: 10, jitter: false } } },
+      },
+    })
+    const result = await client
+      .get(`${server.url}/bad`, {
+        partition: "busy.host",
+        retry: { maxAttempts: 3, backoff: { baseDelayMs: 10, jitter: false } },
+      })
+      .toPromise()
+    // Per-request wins → maxAttempts:3 → 1 first + 3 loop = 4 total
+    expect(requestCount).toBe(4)
     expect(result.success).toBe(false)
   })
 
