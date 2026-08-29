@@ -17,7 +17,7 @@ Requires Node 18+.
 ## Commands
 
 ```bash
-npm test          # run the full suite (vitest) — 40 tests
+npm test          # run the full suite (vitest)
 npm run typecheck # tsc --noEmit
 npm run build     # compile TypeScript to dist/
 npm run format    # format all files with Prettier
@@ -40,6 +40,7 @@ Tests are self-contained: integration tests spin up `node:http` servers on ephem
 - Every relative import in `src/` and `test/` must use the `.js` extension (NodeNext ESM), even when importing a `.ts` file.
 - `npm run typecheck` skips `**/*.test.ts`; run the tests to keep test code type-safe.
 - Zod is an optional peer dependency. Only `src/adapters/zod.ts` may import it; `src/core/` must stay zod-free.
+- CI runs `npm run lint` and `npm run format:check` — make sure both pass before pushing.
 
 ## Code Style
 

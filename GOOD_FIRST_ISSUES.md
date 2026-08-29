@@ -4,14 +4,7 @@ A small, curated list of verified starter tasks for new contributors. Every item
 
 > This list is intentionally small and **verified**. Do not add an item unless you have confirmed the gap exists in the code or tests. If you want something else, open an issue or ask in the issue tracker.
 
-## 1. Fix the README test-count claim — docs
-
-- **Where:** `README.md:22` says "tested (36 passing tests)".
-- **Reality:** the suite has **30** passing tests across 4 files (`npx vitest run`).
-- **Task:** change "36 passing tests" to "30 passing tests".
-- **Why it's good:** tiny, verifiable, and it teaches the docs-vs-code trust rule from `ONBOARDING.md`.
-
-## 2. Add unit tests for the built-in middleware helpers — tests
+## 1. Add unit tests for the built-in middleware helpers — tests
 
 - **Where:** `src/middleware/index.ts` exports `defaultHeaders` and `requestLogger`.
 - **Reality:** only a *custom* middleware is exercised today (`test/core/client.integration.test.ts:227`). The two built-in helpers have no dedicated test.
