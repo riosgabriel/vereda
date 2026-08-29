@@ -372,8 +372,8 @@ describe("HttpClient integration", () => {
     expect(result.success).toBe(false)
     // maxAttempts = 4 → first attempt + 3 retries → 3 retry events
     expect(retryEvents).toHaveLength(maxAttempts - 1)
-    // Attempts should be 0, 1, 2 (increasing)
-    expect(retryEvents.map((e) => e.attempt)).toEqual([0, 1, 2])
+    // Attempts are 1-based server hit count: 1, 2, 3
+    expect(retryEvents.map((e) => e.attempt)).toEqual([1, 2, 3])
     // All delays should be positive
     for (const event of retryEvents) {
       expect(event.delayMs).toBeGreaterThan(0)

@@ -41,7 +41,7 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
       }
 
       const delayMs = backoffFn(attempt - 1)
-      onRetry?.(attempt - 1, delayMs, lastError)
+      onRetry?.(attempt, delayMs, lastError)
       ticket._markRetrying(attempt, delayMs)
       await sleep(delayMs)
     }
