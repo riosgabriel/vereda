@@ -2,7 +2,7 @@
 
 Thanks for your interest! Vereda is a small, focused library, and we're glad to have help.
 
-**New to the codebase?** You have two on-ramps: read [ONBOARDING.md](./ONBOARDING.md) for a self-guided tour that follows one request through the whole library, or run the **`guide-me`** skill in your harness (Claude Code, OpenCode, etc.) — it's bundled in `.claude/skills/` and `.opencode/skills/` and will walk you through the internals interactively.
+**New to the codebase?** You have two on-ramps: read [ONBOARDING.md](./ONBOARDING.md) for a self-guided tour that follows one request through the whole library, or run the **`guide-me`** skill in your harness (Claude Code, OpenCode, etc.) — it's bundled in `.opencode/skills/` and will walk you through the internals interactively.
 
 ## Setup
 
