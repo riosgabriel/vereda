@@ -160,7 +160,7 @@ With zero configuration:
 | Setting | Default |
 | --- | --- |
 | Global concurrency | 10 in-flight retries across all partitions |
-| Per-partition concurrency | 5 |
+| Per-partition concurrency | 10 |
 | Per-partition queue size | 100 waiting retries |
 | Retries | 3 retries after the first attempt (4 total executions) |
 | Backoff | Exponential: 200ms base, 30s cap, full jitter |
