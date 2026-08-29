@@ -337,4 +337,16 @@ describe("HttpClient integration", () => {
     // remaining attempts: 2 requests instead of 4.
     expect(requestCount).toBe(2)
   }, 5_000)
+
+  it("resolves relative URL without baseUrl as a ticket error", async () => {
+    const clientNoBase = HttpClient.create()
+    const ticket = clientNoBase.get("/relative")
+    const result = await ticket.toPromise()
+
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error).toBeInstanceOf(NetworkError)
+    }
+    // Should not throw — the error is on the ticket, not in the call
+  })
 })

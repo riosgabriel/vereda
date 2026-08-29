@@ -69,7 +69,6 @@ export class HttpClient {
   // ---------------------------------------------------------------------------
 
   request<T>(url: string, options: RequestOptions<T> = {}): Ticket<T> {
-    const fullUrl = this.resolveUrl(url)
     const ticketId = nanoid()
     const ticket = new Ticket<T>(ticketId)
 
@@ -82,28 +81,11 @@ export class HttpClient {
       }
     }
 
-    const triggerConfig = this.mergeTrigger(options)
-    const retryConfig = this.mergeRetry(options)
-    const partitionName = options.partition ?? new URL(fullUrl).hostname
-    const bulkhead = this.bulkheads.get(partitionName)
-
-    this.emit("request", { ticketId, url: fullUrl, method: options.method ?? "GET" })
-    this.logger?.info("Request initiated", {
-      ticketId,
-      url: fullUrl,
-      method: options.method ?? "GET",
-      partition: partitionName,
-    })
-
     // Fire and forget — first attempt runs immediately; queued if slow/failed
     this._fireFirstAttempt(
-      fullUrl,
+      url,
       options as RequestOptions<unknown>,
-      triggerConfig,
-      retryConfig,
       ticket as Ticket<unknown>,
-      partitionName,
-      bulkhead,
     ).catch((err: unknown) => {
       // Catch any unexpected throws and surface them as ticket failures
       const error = new NetworkError(err instanceof Error ? err.message : "Unexpected error", {
@@ -120,14 +102,37 @@ export class HttpClient {
   private async _fireFirstAttempt(
     url: string,
     options: RequestOptions<unknown>,
-    triggerConfig: TriggerConfig,
-    retryConfig: RetryConfig,
     ticket: Ticket<unknown>,
-    partitionName: string,
-    bulkhead: ReturnType<BulkheadRegistry["get"]>,
   ): Promise<void> {
+    // Resolve URL and partition inside the async path so relative URLs
+    // without a baseUrl surface as ticket errors instead of throwing.
+    let fullUrl: string
+    let partitionName: string
+    try {
+      fullUrl = this.resolveUrl(url)
+      partitionName = options.partition ?? new URL(fullUrl).hostname
+    } catch (err) {
+      const error = new NetworkError(err instanceof Error ? err.message : "Invalid URL", {
+        cause: err,
+      })
+      this.emit("failure", { ticketId: ticket.id, url, error })
+      ticket._markDone({ success: false, error })
+      return
+    }
+
+    const triggerConfig = this.mergeTrigger(options)
+    const retryConfig = this.mergeRetry(options)
+    const bulkhead = this.bulkheads.get(partitionName)
+
+    this.emit("request", { ticketId: ticket.id, url: fullUrl, method: options.method ?? "GET" })
+    this.logger?.info("Request initiated", {
+      ticketId: ticket.id,
+      url: fullUrl,
+      method: options.method ?? "GET",
+      partition: partitionName,
+    })
     const result = await executeRequest(
-      { url, options, triggerConfig, signal: ticket.signal },
+      { url: fullUrl, options, triggerConfig, signal: ticket.signal },
       this.middlewares,
     )
 

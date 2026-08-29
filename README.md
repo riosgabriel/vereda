@@ -23,8 +23,9 @@
 import { HttpClient } from "vereda";
 
 const client = HttpClient.create({
-  retry: { maxAttempts: 5 },
-  trigger: { timeoutMs: 5_000, queueOnStatus: [429, 503] },
+  baseUrl: "https://api.example.com",
+  retry: { maxRetries: 5 },
+  timeout: { attemptMs: 5_000 },
   partitions: {
     "api.example.com": { concurrency: 5, maxQueueSize: 50 },
   },
@@ -36,6 +37,8 @@ if (result.success) {
   console.log(result.raw.status); // resilient by default, after up to 5 retries
 }
 ```
+
+> **Note:** Config names shown here (`retry.maxRetries`, `timeout.attemptMs`) are the 1.0 target names. Current code uses `maxAttempts` and `trigger.timeoutMs` — these will be renamed as part of the 1.0 effort.
 
 ## Why Vereda?
 
@@ -164,6 +167,8 @@ With zero configuration:
 | Timeout | None |
 | Queue-on status codes | None (all non-2xx responses are retried as errors) |
 | First-attempt concurrency | Unbounded — the initial attempt bypasses the bulkhead |
+
+> **Note:** This README describes the upcoming 1.0 API surface. Some config names in code samples (`retry.maxRetries`, `timeout.attemptMs`, `retry.retryOnStatus`) are being renamed from their current names (`maxAttempts`, `trigger.timeoutMs`, `trigger.queueOnStatus`) as part of the 1.0 effort. The behavior and defaults described here are accurate.
 
 ## Quick start
 
@@ -402,7 +407,7 @@ if (!result.success) {
 
 ## Status
 
-> **⚠️ Early stage.** Vereda is experimental software. The API is small, tested (40 passing tests), and MIT licensed, but it has not been hardened in production yet. Pin the version you depend on.
+> **⚠️ Early stage.** Vereda is experimental software. The API is small, tested, and MIT licensed, but it has not been hardened in production yet. Pin the version you depend on.
 
 ## Development
 
@@ -410,7 +415,7 @@ if (!result.success) {
 git clone https://github.com/riosgabriel/vereda.git
 cd vereda
 npm install
-npm test          # 40 tests (vitest)
+npm test          # vitest run
 npm run typecheck
 npm run build
 npm run format
