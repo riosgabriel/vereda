@@ -12,10 +12,11 @@ export interface RetryJobOptions {
   retryConfig: RetryConfig
   ticket: Ticket<unknown>
   middleware: MiddlewareFn[]
+  onRetry?: (attempt: number, delayMs: number, error: AppError) => void
 }
 
 export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
-  const { url, requestOptions, triggerConfig, retryConfig, ticket, middleware } = job
+  const { url, requestOptions, triggerConfig, retryConfig, ticket, middleware, onRetry } = job
 
   const maxAttempts = retryConfig.maxAttempts ?? 3
   const backoffFn = buildBackoffFn(retryConfig.backoff)
@@ -40,6 +41,7 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
       }
 
       const delayMs = backoffFn(attempt - 1)
+      onRetry?.(attempt - 1, delayMs, lastError)
       ticket._markRetrying(attempt, delayMs)
       await sleep(delayMs)
     }

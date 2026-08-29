@@ -349,4 +349,34 @@ describe("HttpClient integration", () => {
     }
     // Should not throw — the error is on the ticket, not in the call
   })
+
+  it('emits "retry" event N−1 times with increasing attempt on repeated 503', async () => {
+    const maxAttempts = 4
+    server.setHandler((_req, res) => {
+      res.writeHead(503, { "Content-Type": "application/json" })
+      res.end(JSON.stringify({ error: "unavailable" }))
+    })
+
+    const retryClient = HttpClient.create({
+      trigger: { queueOnStatus: [503] },
+      retry: { maxAttempts, backoff: { baseDelayMs: 10, jitter: false } },
+    })
+
+    const retryEvents: { attempt: number; delayMs: number }[] = []
+    retryClient.on("retry", (data) => {
+      retryEvents.push({ attempt: data.attempt, delayMs: data.delayMs })
+    })
+
+    const result = await retryClient.get(`${server.url}/retry-event`).toPromise()
+
+    expect(result.success).toBe(false)
+    // maxAttempts = 4 → first attempt + 3 retries → 3 retry events
+    expect(retryEvents).toHaveLength(maxAttempts - 1)
+    // Attempts should be 0, 1, 2 (increasing)
+    expect(retryEvents.map((e) => e.attempt)).toEqual([0, 1, 2])
+    // All delays should be positive
+    for (const event of retryEvents) {
+      expect(event.delayMs).toBeGreaterThan(0)
+    }
+  }, 10_000)
 })

@@ -229,6 +229,9 @@ export class HttpClient {
           retryConfig,
           ticket,
           middleware: this.middlewares,
+          onRetry: (attempt, delayMs, error) => {
+            this.emit("retry", { ticketId: ticket.id, url, attempt, delayMs, error })
+          },
         })
 
         const status = ticket.status

@@ -84,7 +84,7 @@ export interface Logger {
 
 export type LifecycleEventMap = {
   request: { ticketId: string; url: string; method: string }
-  retry: { ticketId: string; url: string; attempt: number; delayMs: number }
+  retry: { ticketId: string; url: string; attempt: number; delayMs: number; error: AppError }
   success: { ticketId: string; url: string; attempt: number }
   failure: { ticketId: string; url: string; error: AppError }
 }
