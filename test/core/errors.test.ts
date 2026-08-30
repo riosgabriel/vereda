@@ -8,7 +8,6 @@ import {
   MaxRetriesExceededError,
   HttpError,
   RetryableStatusError,
-  DeadlineExceededError,
   QueueFullError,
   ConfigurationError,
   type AppError,
@@ -37,12 +36,6 @@ describe("Error classes", () => {
   it("TimeoutError has kind 'timeout'", () => {
     const err = new TimeoutError("http://x", 500)
     expect(err.kind).toBe("timeout")
-    expect(err).toBeInstanceOf(RequestError)
-  })
-
-  it("DeadlineExceededError has kind 'deadline'", () => {
-    const err = new DeadlineExceededError("http://x", 3000)
-    expect(err.kind).toBe("deadline")
     expect(err).toBeInstanceOf(RequestError)
   })
 
@@ -83,14 +76,13 @@ describe("Error classes", () => {
       "http",
       "retryable_status",
       "timeout",
-      "deadline",
       "validation",
       "cancelled",
       "queue_full",
       "configuration",
       "max_retries",
     ] as const
-    expect(expectedKinds).toHaveLength(10)
+    expect(expectedKinds).toHaveLength(9)
     // Every member of AppError["kind"] must be in expectedKinds
     const kind: AppError["kind"] = "network"
     expect(expectedKinds).toContain(kind)
