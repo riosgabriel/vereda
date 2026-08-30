@@ -86,7 +86,6 @@ export async function executeRequest(
 
   // Check if status code is retryable (was "queued_status", now typed error)
   if (retryOnStatus.includes(response.status)) {
-    const retryAfterMs = parseRetryAfter(response.headers.get("retry-after"))
     // Cancel the response body since caller won't read it
     try {
       await response.body?.cancel()
@@ -99,7 +98,6 @@ export async function executeRequest(
         `HTTP ${response.status} ${response.statusText}`,
         response.status,
         response,
-        retryAfterMs,
       ),
     }
   }
@@ -195,21 +193,6 @@ function mergeSignals(...signals: AbortSignal[]): AbortSignal {
     signal.addEventListener("abort", () => controller.abort(), { once: true })
   }
   return controller.signal
-}
-
-function parseRetryAfter(header: string | null): number | undefined {
-  if (!header) return undefined
-  // Numeric seconds (non-negative integer per HTTP spec)
-  const trimmed = header.trim()
-  if (/^\d+$/.test(trimmed)) {
-    return Number(trimmed) * 1000
-  }
-  // HTTP-date
-  const date = new Date(trimmed)
-  if (!Number.isNaN(date.getTime())) {
-    return Math.max(0, date.getTime() - Date.now())
-  }
-  return undefined
 }
 
 function extractIssues(err: unknown): unknown[] {

@@ -27,9 +27,8 @@ describe("Error classes", () => {
   })
 
   it("RetryableStatusError has kind 'retryable_status'", () => {
-    const err = new RetryableStatusError("rate limited", 429, new Response(), 2000)
+    const err = new RetryableStatusError("rate limited", 429, new Response())
     expect(err.kind).toBe("retryable_status")
-    expect(err.retryAfterMs).toBe(2000)
     expect(err).toBeInstanceOf(RequestError)
   })
 
