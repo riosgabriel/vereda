@@ -1,4 +1,4 @@
-import { NetworkError, ValidationError } from "../core/errors.js"
+import { HttpError, NetworkError, RetryableStatusError, ValidationError } from "../core/errors.js"
 import type { AppError } from "../core/errors.js"
 import type { RequestOptions, Result, TriggerConfig } from "../core/types.js"
 
@@ -12,14 +12,13 @@ export interface ExecuteRequest {
 export type ExecuteResult =
   | { kind: "success"; result: Result<unknown> }
   | { kind: "timeout" }
-  | { kind: "queued_status"; statusCode: number }
   | { kind: "cancelled" }
   | { kind: "error"; error: AppError }
 
 /**
  * Executes a single HTTP request attempt.
  * Returns a discriminated union describing what happened,
- * so the caller (executor loop) can decide whether to retry or resolve.
+ * so the caller (retry loop) can decide whether to retry or resolve.
  */
 export async function executeRequest(
   req: ExecuteRequest,
@@ -32,7 +31,7 @@ export async function executeRequest(
   }
 
   const timeoutMs = triggerConfig.timeoutMs
-  const queueOnStatus = triggerConfig.queueOnStatus ?? []
+  const retryOnStatus = triggerConfig.queueOnStatus ?? []
 
   // Build the fetch call wrapped in middleware
   const fetchCall = buildFetchCall(url, options)
@@ -85,19 +84,33 @@ export async function executeRequest(
     }
   }
 
-  // Check if status code triggers queuing
-  if (queueOnStatus.includes(response.status)) {
-    return { kind: "queued_status", statusCode: response.status }
+  // Check if status code is retryable (was "queued_status", now typed error)
+  if (retryOnStatus.includes(response.status)) {
+    // Cancel the response body since caller won't read it
+    try {
+      await response.body?.cancel()
+    } catch {
+      /* ignore — best effort */
+    }
+    return {
+      kind: "error",
+      error: new RetryableStatusError(
+        `HTTP ${response.status} ${response.statusText}`,
+        response.status,
+        response,
+      ),
+    }
   }
 
-  // Non-2xx responses are errors
+  // Non-2xx responses are non-retryable errors
   if (!response.ok) {
     return {
       kind: "error",
-      error: new NetworkError(`HTTP ${response.status} ${response.statusText}`, {
-        statusCode: response.status,
+      error: new HttpError(
+        `HTTP ${response.status} ${response.statusText}`,
+        response.status,
         response,
-      }),
+      ),
     }
   }
 

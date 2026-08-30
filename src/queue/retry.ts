@@ -85,10 +85,6 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
         lastError = new TimeoutError(url, triggerConfig.timeoutMs ?? 0)
         break
 
-      case "queued_status":
-        lastError = new TimeoutError(url, triggerConfig.timeoutMs ?? 0)
-        break
-
       case "error":
         lastError = result.error
         break

@@ -3,8 +3,10 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest"
 import { HttpClient } from "../../src/core/client.js"
 import {
   CancelledError,
+  HttpError,
   MaxRetriesExceededError,
   NetworkError,
+  RetryableStatusError,
   ValidationError,
 } from "../../src/core/errors.js"
 import { z } from "zod"
@@ -137,29 +139,27 @@ describe("HttpClient integration", () => {
     if (!result.success) expect(result.error).toBeInstanceOf(MaxRetriesExceededError)
   }, 10_000)
 
-  it("returns NetworkError on non-2xx status (not in queueOnStatus)", async () => {
+  it("returns HttpError on non-2xx status (not in queueOnStatus)", async () => {
     server.setHandler((_req, res) => {
       res.writeHead(404)
       res.end("Not Found")
     })
-    // Use a client with no retry on errors to get immediate result
+    // 404 is not in queueOnStatus → HttpError, non-retryable → resolves immediately
     const noRetryClient = HttpClient.create({
       retry: { maxRetries: 1 },
     })
     const result = await noRetryClient.get(`${server.url}/missing`).toPromise()
     expect(result.success).toBe(false)
     if (!result.success) {
-      expect(result.error).toBeInstanceOf(MaxRetriesExceededError)
-      const underlying = (result.error as MaxRetriesExceededError).lastError
-      expect(underlying).toBeInstanceOf(NetworkError)
-      expect((underlying as NetworkError).statusCode).toBe(404)
+      expect(result.error).toBeInstanceOf(HttpError)
+      expect((result.error as HttpError).statusCode).toBe(404)
     }
   })
 
   it("retryWhen predicate stops retrying and surfaces the underlying error", async () => {
     server.setHandler((_req, res) => {
-      res.writeHead(500)
-      res.end("Server Error")
+      res.writeHead(429)
+      res.end("rate limited")
     })
 
     const result = await client
@@ -167,16 +167,16 @@ describe("HttpClient integration", () => {
         retry: {
           maxRetries: 3,
           backoff: { baseDelayMs: 10, jitter: false },
-          retryWhen: (err) => !(err instanceof NetworkError && err.statusCode === 500),
+          retryWhen: (err) => !(err instanceof RetryableStatusError && err.statusCode === 429),
         },
       })
       .toPromise()
 
     expect(result.success).toBe(false)
     if (!result.success) {
-      // Should surface the NetworkError, not MaxRetriesExceededError
-      expect(result.error).toBeInstanceOf(NetworkError)
-      expect((result.error as NetworkError).statusCode).toBe(500)
+      // Should surface the RetryableStatusError, not MaxRetriesExceededError
+      expect(result.error).toBeInstanceOf(RetryableStatusError)
+      expect((result.error as RetryableStatusError).statusCode).toBe(429)
     }
   })
 
@@ -186,11 +186,12 @@ describe("HttpClient integration", () => {
       let requestCount = 0
       iso.setHandler((_req, res) => {
         requestCount++
-        res.writeHead(500)
-        res.end("Server Error")
+        res.writeHead(429)
+        res.end("rate limited")
       })
 
       const isoClient = HttpClient.create({
+        trigger: { queueOnStatus: [429] },
         retry: { maxRetries: 3, backoff: { baseDelayMs: 10, jitter: false } },
       })
 
@@ -200,8 +201,6 @@ describe("HttpClient integration", () => {
           retry: {
             maxRetries: 3,
             backoff: { baseDelayMs: 10, jitter: false },
-            // First failure is vetoed by retryVetoed (attempt 0), then the
-            // predicate sees the retry attempt number (1, 2, …).
             retryWhen: (_err, attempt) => {
               attemptsSeen.push(attempt)
               return attempt < 2
@@ -215,8 +214,8 @@ describe("HttpClient integration", () => {
       expect(requestCount).toBe(3)
       expect(result.success).toBe(false)
       if (!result.success) {
-        expect(result.error).toBeInstanceOf(NetworkError)
-        expect((result.error as NetworkError).statusCode).toBe(500)
+        expect(result.error).toBeInstanceOf(RetryableStatusError)
+        expect((result.error as RetryableStatusError).statusCode).toBe(429)
       }
     } finally {
       await iso.close()
@@ -229,11 +228,12 @@ describe("HttpClient integration", () => {
       let requestCount = 0
       iso.setHandler((_req, res) => {
         requestCount++
-        res.writeHead(500)
-        res.end("Server Error")
+        res.writeHead(429)
+        res.end("rate limited")
       })
 
       const isoClient = HttpClient.create({
+        trigger: { queueOnStatus: [429] },
         retry: { maxRetries: 3, backoff: { baseDelayMs: 10, jitter: false } },
       })
 
@@ -250,8 +250,8 @@ describe("HttpClient integration", () => {
       expect(requestCount).toBe(1)
       expect(result.success).toBe(false)
       if (!result.success) {
-        expect(result.error).toBeInstanceOf(NetworkError)
-        expect((result.error as NetworkError).statusCode).toBe(500)
+        expect(result.error).toBeInstanceOf(RetryableStatusError)
+        expect((result.error as RetryableStatusError).statusCode).toBe(429)
       }
     } finally {
       await iso.close()
@@ -336,8 +336,8 @@ describe("HttpClient integration", () => {
     let requestCount = 0
     server.setHandler((_req, res) => {
       requestCount++
-      res.writeHead(500)
-      res.end("Server Error")
+      res.writeHead(429)
+      res.end("rate limited")
     })
 
     const controller = new AbortController()
@@ -351,9 +351,9 @@ describe("HttpClient integration", () => {
 
     expect(result.success).toBe(false)
     if (!result.success) expect(result.error).toBeInstanceOf(CancelledError)
-    // The first retry now applies backoff (baseDelayMs: 200). The abort
-    // fires ~50 ms after the first request, during the first retry's
-    // backoff, so the retry never fires: only 1 request total.
+    // 429 is retryable → queues for retry with 200ms backoff. The abort
+    // fires ~50 ms after the first request, during the backoff, so the
+    // retry never fires: only 1 request total.
     expect(requestCount).toBe(1)
   }, 5_000)
 

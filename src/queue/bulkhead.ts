@@ -1,3 +1,4 @@
+import { QueueFullError } from "../core/errors.js"
 import type { PartitionConfig } from "../core/types.js"
 
 type Task = () => Promise<void>
@@ -38,7 +39,7 @@ export class Bulkhead {
   schedule(task: Task): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!this.canAccept()) {
-        reject(new Error(`Bulkhead '${this.name}' queue is full (max: ${this.maxQueueSize})`))
+        reject(new QueueFullError(this.name, this.queue.length, this.maxQueueSize))
         return
       }
 
