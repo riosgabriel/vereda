@@ -15,11 +15,17 @@ export type {
 export {
   RequestError,
   NetworkError,
-  ValidationError,
+  HttpError,
+  RetryableStatusError,
   TimeoutError,
+  DeadlineExceededError,
+  ValidationError,
   CancelledError,
+  QueueFullError,
+  ConfigurationError,
   MaxRetriesExceededError,
 } from "./errors.js"
 export type { AppError } from "./errors.js"
+export { validateConfig } from "./validate.js"
 export { Ticket, createTicket } from "../ticket/ticket.js"
 export type { TicketStatus, TicketUpdate, TicketController } from "../ticket/ticket.js"
