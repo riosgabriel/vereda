@@ -8,11 +8,11 @@ import type {
   TriggerConfig,
 } from "./types.js"
 import type { AppError } from "./errors.js"
-import { NetworkError, CancelledError, TimeoutError } from "./errors.js"
+import { NetworkError, CancelledError, TimeoutError, ValidationError } from "./errors.js"
 import { BulkheadRegistry } from "../queue/bulkhead.js"
 import { executeRequest, type MiddlewareFn } from "../queue/executor.js"
 import { runRetryLoop } from "../queue/retry.js"
-import { Ticket } from "../ticket/ticket.js"
+import { Ticket, createTicket, type TicketController } from "../ticket/ticket.js"
 import { nanoid } from "./nanoid.js"
 
 export class HttpClient {
@@ -70,7 +70,7 @@ export class HttpClient {
 
   request<T>(url: string, options: RequestOptions<T> = {}): Ticket<T> {
     const ticketId = nanoid()
-    const ticket = new Ticket<T>(ticketId)
+    const { ticket, controller } = createTicket<T>(ticketId)
 
     // Wire external cancellation: aborting options.signal cancels the ticket
     if (options.signal) {
@@ -86,13 +86,14 @@ export class HttpClient {
       url,
       options as RequestOptions<unknown>,
       ticket as Ticket<unknown>,
+      controller as TicketController<unknown>,
     ).catch((err: unknown) => {
       // Catch any unexpected throws and surface them as ticket failures
       const error = new NetworkError(err instanceof Error ? err.message : "Unexpected error", {
         cause: err,
       })
       if (ticket.status.state !== "done" && !ticket.isCancelled) {
-        ;(ticket as Ticket<unknown>)._markDone({ success: false, error })
+        controller.markDone({ success: false, error } as never)
       }
     })
 
@@ -103,6 +104,7 @@ export class HttpClient {
     url: string,
     options: RequestOptions<unknown>,
     ticket: Ticket<unknown>,
+    controller: TicketController<unknown>,
   ): Promise<void> {
     // Resolve URL and partition inside the async path so relative URLs
     // without a baseUrl surface as ticket errors instead of throwing.
@@ -116,7 +118,7 @@ export class HttpClient {
         cause: err,
       })
       this.emit("failure", { ticketId: ticket.id, url, error })
-      ticket._markDone({ success: false, error })
+      controller.markDone({ success: false, error } as never)
       return
     }
 
@@ -140,25 +142,26 @@ export class HttpClient {
       case "success":
         this.emit("success", { ticketId: ticket.id, url, attempt: 1 })
         this.logger?.info("Request succeeded", { ticketId: ticket.id, url })
-        ticket._markDone(result.result)
+        controller.markDone(result.result)
         return
 
       case "cancelled":
-        ticket._markDone({ success: false, error: new CancelledError() })
+        controller.markDone({ success: false, error: new CancelledError() } as never)
         return
 
       case "error":
         // ValidationError is not retriable — resolve immediately
-        if (result.error.constructor.name === "ValidationError") {
+        if (result.error instanceof ValidationError) {
           this.emit("failure", { ticketId: ticket.id, url, error: result.error })
-          ticket._markDone({ success: false, error: result.error })
+          controller.markDone({ success: false, error: result.error } as never)
           return
         }
         // Let the consumer veto retrying before the request is queued
-        if (this.retryVetoed(retryConfig, result.error, ticket, url)) return
-        ticket._markQueued()
+        if (this.retryVetoed(retryConfig, result.error, ticket, controller, url)) return
+        controller.markQueued()
         this._scheduleInBulkhead(
           ticket,
+          controller,
           url,
           options,
           triggerConfig,
@@ -172,10 +175,11 @@ export class HttpClient {
       case "queued_status": {
         // Same error construction runRetryLoop uses for these cases
         const error = new TimeoutError(url, triggerConfig.timeoutMs ?? 0)
-        if (this.retryVetoed(retryConfig, error, ticket, url)) return
-        ticket._markQueued()
+        if (this.retryVetoed(retryConfig, error, ticket, controller, url)) return
+        controller.markQueued()
         this._scheduleInBulkhead(
           ticket,
+          controller,
           url,
           options,
           triggerConfig,
@@ -195,11 +199,12 @@ export class HttpClient {
     retryConfig: RetryConfig,
     error: AppError,
     ticket: Ticket<unknown>,
+    controller: TicketController<unknown>,
     url: string,
   ): boolean {
     if (retryConfig.retryWhen && !retryConfig.retryWhen(error, 0)) {
       this.emit("failure", { ticketId: ticket.id, url, error })
-      ticket._markDone({ success: false, error })
+      controller.markDone({ success: false, error } as never)
       return true
     }
     return false
@@ -207,6 +212,7 @@ export class HttpClient {
 
   private _scheduleInBulkhead(
     ticket: Ticket<unknown>,
+    controller: TicketController<unknown>,
     url: string,
     options: RequestOptions<unknown>,
     triggerConfig: TriggerConfig,
@@ -228,6 +234,7 @@ export class HttpClient {
           triggerConfig,
           retryConfig,
           ticket,
+          controller,
           middleware: this.middlewares,
           onRetry: (attempt, delayMs, error) => {
             this.emit("retry", { ticketId: ticket.id, url, attempt, delayMs, error })
@@ -252,7 +259,7 @@ export class HttpClient {
         const error = new NetworkError(err instanceof Error ? err.message : "Queue full", {
           cause: err,
         })
-        ticket._markDone({ success: false, error })
+        controller.markDone({ success: false, error } as never)
       })
   }
 

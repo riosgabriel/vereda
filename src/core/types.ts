@@ -57,7 +57,7 @@ export interface PartitionConfig {
 // ---------------------------------------------------------------------------
 
 export interface RetryConfig {
-  maxAttempts?: number
+  maxRetries?: number
   backoff?: BackoffFn | BackoffOptions
   /** Optional predicate to decide whether a failed attempt should be retried.
    *  Called with the error from the most recent failed attempt and that

@@ -33,6 +33,20 @@ const ALLOWED_TRANSITIONS: Record<TicketStatus["state"], TicketStatus["state"][]
   done: [],
 }
 
+// ---------------------------------------------------------------------------
+// TicketController — the only way to mutate a ticket's lifecycle
+// ---------------------------------------------------------------------------
+
+export interface TicketController<T> {
+  markQueued(): void
+  markRetrying(attempt: number, delayMs: number): void
+  markDone(result: Result<T>): void
+}
+
+// ---------------------------------------------------------------------------
+// Ticket
+// ---------------------------------------------------------------------------
+
 export class Ticket<T> {
   public readonly id: string
 
@@ -43,6 +57,7 @@ export class Ticket<T> {
   private _resolve!: (result: Result<T>) => void
   private _promise: Promise<Result<T>>
 
+  /** @internal — use `createTicket()` to obtain a ticket and its controller. */
   constructor(id: string) {
     this.id = id
     this._promise = new Promise<Result<T>>((resolve) => {
@@ -71,6 +86,8 @@ export class Ticket<T> {
     return this._abortController.signal
   }
 
+  // -- Event subscriptions --------------------------------------------------
+
   on(event: "done", listener: (result: Result<T>) => void): this
   on(event: "error", listener: (error: AppError) => void): this
   on(event: "update", listener: (update: TicketUpdate) => void): this
@@ -81,10 +98,17 @@ export class Ticket<T> {
     return this
   }
 
-  off(event: string, listener: (...args: unknown[]) => void): this {
-    this.emitter.off(event, listener)
+  off(event: "done", listener: (result: Result<T>) => void): this
+  off(event: "error", listener: (error: AppError) => void): this
+  off(event: "update", listener: (update: TicketUpdate) => void): this
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  off(event: string, listener: (...args: any[]) => void): this {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this.emitter.off(event, listener as (...args: any[]) => void)
     return this
   }
+
+  // -- Public API ------------------------------------------------------------
 
   cancel(): void {
     if (this._cancelled) return
@@ -145,17 +169,23 @@ export class Ticket<T> {
     }
   }
 
-  _markQueued(): void {
+  get isCancelled(): boolean {
+    return this._cancelled
+  }
+
+  // -- Internal mutators (private, accessed via TicketController) ------------
+
+  private markQueued(): void {
     if (!this.applyTransition({ state: "queued" })) return
     this.emitter.emit("update", { type: "queued" } as TicketUpdate)
   }
 
-  _markRetrying(attempt: number, delayMs: number): void {
+  private markRetrying(attempt: number, delayMs: number): void {
     if (!this.applyTransition({ state: "retrying", attempt })) return
     this.emitter.emit("update", { type: "retrying", attempt, delayMs } as TicketUpdate)
   }
 
-  _markDone(result: Result<T>): void {
+  private markDone(result: Result<T>): void {
     if (!this.applyTransition({ state: "done", result })) return
     this.emitter.emit("update", { type: "done", result } as TicketUpdate)
     this.emitter.emit("done", result)
@@ -164,8 +194,25 @@ export class Ticket<T> {
     }
     this._resolve(result)
   }
+}
 
-  get isCancelled(): boolean {
-    return this._cancelled
+// ---------------------------------------------------------------------------
+// Factory — the only public way to get a ticket and its controller
+// ---------------------------------------------------------------------------
+
+export function createTicket<T>(id: string): {
+  ticket: Ticket<T>
+  controller: TicketController<T>
+} {
+  const ticket = new Ticket<T>(id)
+
+  // Bind the private methods to the ticket instance and expose them
+  // through the controller interface.
+  const controller: TicketController<T> = {
+    markQueued: () => ticket["markQueued"](),
+    markRetrying: (attempt, delayMs) => ticket["markRetrying"](attempt, delayMs),
+    markDone: (result) => ticket["markDone"](result),
   }
+
+  return { ticket, controller }
 }

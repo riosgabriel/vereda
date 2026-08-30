@@ -44,7 +44,7 @@ describe("HttpClient integration", () => {
     server = await createTestServer()
     client = HttpClient.create({
       trigger: { timeoutMs: 100, queueOnStatus: [429, 503] },
-      retry: { maxAttempts: 3, backoff: { baseDelayMs: 10, jitter: false } },
+      retry: { maxRetries: 3, backoff: { baseDelayMs: 10, jitter: false } },
     })
   })
 
@@ -121,7 +121,7 @@ describe("HttpClient integration", () => {
 
     const slowClient = HttpClient.create({
       trigger: { timeoutMs: 50 },
-      retry: { maxAttempts: 2, backoff: { baseDelayMs: 10, jitter: false } },
+      retry: { maxRetries: 2, backoff: { baseDelayMs: 10, jitter: false } },
     })
 
     const result = await slowClient.get(`${server.url}/slow`).toPromise()
@@ -144,7 +144,7 @@ describe("HttpClient integration", () => {
     })
     // Use a client with no retry on errors to get immediate result
     const noRetryClient = HttpClient.create({
-      retry: { maxAttempts: 1 },
+      retry: { maxRetries: 1 },
     })
     const result = await noRetryClient.get(`${server.url}/missing`).toPromise()
     expect(result.success).toBe(false)
@@ -165,7 +165,7 @@ describe("HttpClient integration", () => {
     const result = await client
       .get(`${server.url}/bad`, {
         retry: {
-          maxAttempts: 3,
+          maxRetries: 3,
           backoff: { baseDelayMs: 10, jitter: false },
           retryWhen: (err) => !(err instanceof NetworkError && err.statusCode === 500),
         },
@@ -191,14 +191,14 @@ describe("HttpClient integration", () => {
       })
 
       const isoClient = HttpClient.create({
-        retry: { maxAttempts: 3, backoff: { baseDelayMs: 10, jitter: false } },
+        retry: { maxRetries: 3, backoff: { baseDelayMs: 10, jitter: false } },
       })
 
       const attemptsSeen: number[] = []
       const result = await isoClient
         .get(`${iso.url}/bad`, {
           retry: {
-            maxAttempts: 3,
+            maxRetries: 3,
             backoff: { baseDelayMs: 10, jitter: false },
             // First failure is vetoed by retryVetoed (attempt 0), then the
             // predicate sees the retry attempt number (1, 2, …).
@@ -234,13 +234,13 @@ describe("HttpClient integration", () => {
       })
 
       const isoClient = HttpClient.create({
-        retry: { maxAttempts: 3, backoff: { baseDelayMs: 10, jitter: false } },
+        retry: { maxRetries: 3, backoff: { baseDelayMs: 10, jitter: false } },
       })
 
       const result = await isoClient
         .get(`${iso.url}/bad`, {
           retry: {
-            maxAttempts: 3,
+            maxRetries: 3,
             backoff: { baseDelayMs: 10, jitter: false },
             retryWhen: () => false,
           },
@@ -343,7 +343,7 @@ describe("HttpClient integration", () => {
     const controller = new AbortController()
     const ticket = client.get(`${server.url}/backoff-abort`, {
       signal: controller.signal,
-      retry: { maxAttempts: 3, backoff: { baseDelayMs: 200, jitter: false } },
+      retry: { maxRetries: 3, backoff: { baseDelayMs: 200, jitter: false } },
     })
     setTimeout(() => controller.abort(), 50)
 
@@ -370,7 +370,7 @@ describe("HttpClient integration", () => {
   })
 
   it('emits "retry" event for every retry with increasing attempt on repeated 503', async () => {
-    const maxAttempts = 4
+    const maxRetries = 4
     server.setHandler((_req, res) => {
       res.writeHead(503, { "Content-Type": "application/json" })
       res.end(JSON.stringify({ error: "unavailable" }))
@@ -378,7 +378,7 @@ describe("HttpClient integration", () => {
 
     const retryClient = HttpClient.create({
       trigger: { queueOnStatus: [503] },
-      retry: { maxAttempts, backoff: { baseDelayMs: 10, jitter: false } },
+      retry: { maxRetries, backoff: { baseDelayMs: 10, jitter: false } },
     })
 
     const retryEvents: { attempt: number; delayMs: number }[] = []
@@ -389,8 +389,8 @@ describe("HttpClient integration", () => {
     const result = await retryClient.get(`${server.url}/retry-event`).toPromise()
 
     expect(result.success).toBe(false)
-    // maxAttempts = 4 → 4 retries → 4 retry events (one per loop iteration)
-    expect(retryEvents).toHaveLength(maxAttempts)
+    // maxRetries = 4 → 4 retries → 4 retry events (one per loop iteration)
+    expect(retryEvents).toHaveLength(maxRetries)
     // Zero-based retry index: 0, 1, 2, 3
     expect(retryEvents.map((e) => e.attempt)).toEqual([0, 1, 2, 3])
     // All delays should be positive
@@ -409,7 +409,7 @@ describe("HttpClient integration", () => {
 
     const retryClient = HttpClient.create({
       trigger: { queueOnStatus: [503] },
-      retry: { maxAttempts: 1, backoff: { baseDelayMs: 50, jitter: false } },
+      retry: { maxRetries: 1, backoff: { baseDelayMs: 50, jitter: false } },
     })
 
     const ticket = retryClient.get(`${server.url}/backoff-test`)
@@ -424,7 +424,7 @@ describe("HttpClient integration", () => {
     ])
 
     expect(result.success).toBe(false)
-    // maxAttempts: 1 → first attempt + 1 retry → 2 server hits
+    // maxRetries: 1 → first attempt + 1 retry → 2 server hits
     expect(requestTimestamps).toHaveLength(2)
     // Second hit arrives ≥ 45 ms after the first (backoff: 50 ms, no jitter)
     expect(requestTimestamps[1] - requestTimestamps[0]).toBeGreaterThanOrEqual(45)
