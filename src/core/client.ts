@@ -8,12 +8,20 @@ import type {
   TriggerConfig,
 } from "./types.js"
 import type { AppError } from "./errors.js"
-import { NetworkError, CancelledError, TimeoutError, ValidationError } from "./errors.js"
+import {
+  NetworkError,
+  HttpError,
+  CancelledError,
+  TimeoutError,
+  ValidationError,
+  QueueFullError,
+} from "./errors.js"
 import { BulkheadRegistry } from "../queue/bulkhead.js"
 import { executeRequest, type MiddlewareFn } from "../queue/executor.js"
 import { runRetryLoop } from "../queue/retry.js"
 import { Ticket, createTicket, type TicketController } from "../ticket/ticket.js"
 import { nanoid } from "./nanoid.js"
+import { validateConfig } from "./validate.js"
 
 export class HttpClient {
   private readonly config: ClientConfig
@@ -32,6 +40,7 @@ export class HttpClient {
   }
 
   static create(config: ClientConfig = {}): HttpClient {
+    validateConfig(config)
     return new HttpClient(config)
   }
 
@@ -150,13 +159,14 @@ export class HttpClient {
         return
 
       case "error":
-        // ValidationError is not retriable — resolve immediately
-        if (result.error instanceof ValidationError) {
+        // Non-retryable errors resolve immediately
+        if (result.error instanceof ValidationError || result.error instanceof HttpError) {
           this.emit("failure", { ticketId: ticket.id, url, error: result.error })
           controller.markDone({ success: false, error: result.error } as never)
           return
         }
-        // Let the consumer veto retrying before the request is queued
+        // Retryable errors (NetworkError, RetryableStatusError, TimeoutError)
+        // and other retriable kinds go through retryWhen then bulkhead
         if (this.retryVetoed(retryConfig, result.error, ticket, controller, url)) return
         controller.markQueued()
         this._scheduleInBulkhead(
@@ -171,9 +181,7 @@ export class HttpClient {
         )
         return
 
-      case "timeout":
-      case "queued_status": {
-        // Same error construction runRetryLoop uses for these cases
+      case "timeout": {
         const error = new TimeoutError(url, triggerConfig.timeoutMs ?? 0)
         if (this.retryVetoed(retryConfig, error, ticket, controller, url)) return
         controller.markQueued()
@@ -256,9 +264,15 @@ export class HttpClient {
         }
       })
       .catch((err: unknown) => {
-        const error = new NetworkError(err instanceof Error ? err.message : "Queue full", {
+        if (err instanceof QueueFullError) {
+          this.emit("failure", { ticketId: ticket.id, url, error: err })
+          controller.markDone({ success: false, error: err } as never)
+          return
+        }
+        const error = new NetworkError(err instanceof Error ? err.message : "Queue error", {
           cause: err,
         })
+        this.emit("failure", { ticketId: ticket.id, url, error })
         controller.markDone({ success: false, error } as never)
       })
   }
