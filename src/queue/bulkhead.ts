@@ -39,7 +39,8 @@ export class Bulkhead {
   schedule(task: Task): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!this.canAccept()) {
-        throw new QueueFullError(this.name, this.queue.length, this.maxQueueSize)
+        reject(new QueueFullError(this.name, this.queue.length, this.maxQueueSize))
+        return
       }
 
       const wrapped = async () => {

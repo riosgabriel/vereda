@@ -199,11 +199,13 @@ function mergeSignals(...signals: AbortSignal[]): AbortSignal {
 
 function parseRetryAfter(header: string | null): number | undefined {
   if (!header) return undefined
-  // Numeric seconds
-  const seconds = Number(header)
-  if (!Number.isNaN(seconds)) return seconds * 1000
+  // Numeric seconds (non-negative integer per HTTP spec)
+  const trimmed = header.trim()
+  if (/^\d+$/.test(trimmed)) {
+    return Number(trimmed) * 1000
+  }
   // HTTP-date
-  const date = new Date(header)
+  const date = new Date(trimmed)
   if (!Number.isNaN(date.getTime())) {
     return Math.max(0, date.getTime() - Date.now())
   }
