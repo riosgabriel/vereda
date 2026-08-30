@@ -128,14 +128,15 @@ describe("Ticket", () => {
     expect(ticket.status.state).toBe("cancelled")
   })
 
-  it("off() removes listener with matching type signature", () => {
-    const { ticket } = createTicket<string>("t1")
+  it("off() removes listener so it no longer receives events", async () => {
+    const { ticket, controller } = createTicket<string>("t1")
+    const fakeResponse = new Response('"ok"', { status: 200 })
     const listener = vi.fn()
     ticket.on("done", listener)
     ticket.off("done", listener)
-    // The actual removal is delegated to EventEmitter which is well-tested.
-    // This test verifies the off() overloads compile with typed listeners.
-    expect(typeof ticket.off).toBe("function")
+    controller.markDone({ success: true, data: "ok", raw: fakeResponse })
+    await Promise.resolve()
+    expect(listener).not.toHaveBeenCalled()
   })
 
   it("ticket._markDone is not accessible from outside", () => {

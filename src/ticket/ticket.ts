@@ -209,6 +209,9 @@ export function createTicket<T>(id: string): {
   // Bind the private methods to the ticket instance and expose them
   // through the controller interface.
   const controller: TicketController<T> = {
+    // Bracket notation accesses private methods — the type boundary prevents
+    // external callers from reaching these, while the controller provides
+    // a clean compile-time API for internal use.
     markQueued: () => ticket["markQueued"](),
     markRetrying: (attempt, delayMs) => ticket["markRetrying"](attempt, delayMs),
     markDone: (result) => ticket["markDone"](result),
