@@ -3,6 +3,7 @@ import { CancelledError, MaxRetriesExceededError, TimeoutError } from "../core/e
 import type { AppError } from "../core/errors.js"
 import type { RequestOptions, RetryConfig, TriggerConfig } from "../core/types.js"
 import type { Ticket } from "../ticket/ticket.js"
+import type { TicketController } from "../ticket/ticket.js"
 import { executeRequest, type MiddlewareFn } from "./executor.js"
 
 export interface RetryJobOptions {
@@ -11,43 +12,53 @@ export interface RetryJobOptions {
   triggerConfig: TriggerConfig
   retryConfig: RetryConfig
   ticket: Ticket<unknown>
+  controller: TicketController<unknown>
   middleware: MiddlewareFn[]
   onRetry?: (attempt: number, delayMs: number, error: AppError) => void
 }
 
 export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
-  const { url, requestOptions, triggerConfig, retryConfig, ticket, middleware, onRetry } = job
+  const {
+    url,
+    requestOptions,
+    triggerConfig,
+    retryConfig,
+    ticket,
+    controller,
+    middleware,
+    onRetry,
+  } = job
 
-  const maxAttempts = retryConfig.maxAttempts ?? 3
+  const maxRetries = retryConfig.maxRetries ?? 3
   const backoffFn = buildBackoffFn(retryConfig.backoff)
 
   let lastError: AppError = new TimeoutError(url, triggerConfig.timeoutMs ?? 0)
 
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
     if (ticket.isCancelled) {
-      ticket._markDone({ success: false, error: new CancelledError() })
+      controller.markDone({ success: false, error: new CancelledError() } as never)
       return
     }
 
     if (attempt > 0) {
-      // Let the consumer decide whether to keep retrying before paying for
-      // backoff. The loop's attempt k is overall execution k+1 (the first
-      // attempt ran outside the loop, vetted by the client), so `attempt`
-      // here is the overall zero-based number of the execution that
-      // produced `lastError`.
+      // Consult retryWhen before paying for backoff. The first retry skips
+      // this check — the client already vetoed via retryVetoed before queuing.
       if (retryConfig.retryWhen && !retryConfig.retryWhen(lastError, attempt)) {
-        ticket._markDone({ success: false, error: lastError })
+        controller.markDone({ success: false, error: lastError } as never)
         return
       }
-
-      const delayMs = backoffFn(attempt - 1)
-      onRetry?.(attempt, delayMs, lastError)
-      ticket._markRetrying(attempt, delayMs)
-      await sleep(delayMs)
     }
 
+    // All retries (including the first) get backoff. The first retry
+    // skips the retryWhen check above — the client already vetted via
+    // retryVetoed before queuing.
+    const delayMs = backoffFn(attempt)
+    onRetry?.(attempt, delayMs, lastError)
+    controller.markRetrying(attempt, delayMs)
+    await sleep(delayMs)
+
     if (ticket.isCancelled) {
-      ticket._markDone({ success: false, error: new CancelledError() })
+      controller.markDone({ success: false, error: new CancelledError() } as never)
       return
     }
 
@@ -63,11 +74,11 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 
     switch (result.kind) {
       case "success":
-        ticket._markDone(result.result)
+        controller.markDone(result.result)
         return
 
       case "cancelled":
-        ticket._markDone({ success: false, error: new CancelledError() })
+        controller.markDone({ success: false, error: new CancelledError() } as never)
         return
 
       case "timeout":
@@ -84,11 +95,12 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
     }
   }
 
-  // All attempts exhausted
-  ticket._markDone({
+  // All retries exhausted — total attempts = 1 (first) + maxRetries (loop)
+  const totalAttempts = maxRetries + 1
+  controller.markDone({
     success: false,
-    error: new MaxRetriesExceededError(maxAttempts, lastError),
-  })
+    error: new MaxRetriesExceededError(totalAttempts, lastError),
+  } as never)
 }
 
 function sleep(ms: number): Promise<void> {

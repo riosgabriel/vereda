@@ -21,5 +21,5 @@ export {
   MaxRetriesExceededError,
 } from "./errors.js"
 export type { AppError } from "./errors.js"
-export { Ticket } from "../ticket/ticket.js"
-export type { TicketStatus, TicketUpdate } from "../ticket/ticket.js"
+export { Ticket, createTicket } from "../ticket/ticket.js"
+export type { TicketStatus, TicketUpdate, TicketController } from "../ticket/ticket.js"

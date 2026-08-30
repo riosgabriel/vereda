@@ -57,13 +57,13 @@ export interface PartitionConfig {
 // ---------------------------------------------------------------------------
 
 export interface RetryConfig {
-  maxAttempts?: number
+  maxRetries?: number
   backoff?: BackoffFn | BackoffOptions
   /** Optional predicate to decide whether a failed attempt should be retried.
-   *  Called with the error from the most recent failed attempt and that
-   *  attempt's zero-based number (0 = the first attempt). Consulted after
-   *  every failed attempt — including the first, before any retry is
-   *  scheduled — so returning `false` surfaces the error immediately. */
+   *  Called with the error and the zero-based attempt number:
+   *  - 0 = the first attempt (called client-side before the retry loop)
+   *  - 1, 2, … = retries (called inside the loop, after attempt 0)
+   *  Returning `false` surfaces the error immediately without retrying. */
   retryWhen?: (error: AppError, attempt: number) => boolean
 }
 
@@ -84,7 +84,9 @@ export interface Logger {
 
 export type LifecycleEventMap = {
   request: { ticketId: string; url: string; method: string }
-  /** 1-based server hit count (1 = first retry after the initial attempt) */
+  /** Zero-based retry index (0 = first retry after the initial attempt).
+   *  Note: retryWhen's attempt parameter uses a different numbering —
+   *  0 = first attempt, 1 = first retry, etc. */
   retry: { ticketId: string; url: string; attempt: number; delayMs: number; error: AppError }
   success: { ticketId: string; url: string; attempt: number }
   failure: { ticketId: string; url: string; error: AppError }
