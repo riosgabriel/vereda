@@ -181,61 +181,80 @@ describe("HttpClient integration", () => {
   })
 
   it("retryWhen receives the failed attempt's zero-based number", async () => {
-    let requestCount = 0
-    server.setHandler((_req, res) => {
-      requestCount++
-      res.writeHead(500)
-      res.end("Server Error")
-    })
-
-    const attemptsSeen: number[] = []
-    const result = await client
-      .get(`${server.url}/bad`, {
-        retry: {
-          maxAttempts: 3,
-          backoff: { baseDelayMs: 10, jitter: false },
-          // Allow retries after the first two failures, reject after the third
-          retryWhen: (_err, attempt) => {
-            attemptsSeen.push(attempt)
-            return attempt < 2
-          },
-        },
+    const iso = await createTestServer()
+    try {
+      let requestCount = 0
+      iso.setHandler((_req, res) => {
+        requestCount++
+        res.writeHead(500)
+        res.end("Server Error")
       })
-      .toPromise()
 
-    // Failed attempts are numbered 0, 1, 2 — the predicate sees each one
-    expect(attemptsSeen).toEqual([0, 1, 2])
-    expect(requestCount).toBe(3)
-    expect(result.success).toBe(false)
-    if (!result.success) {
-      expect(result.error).toBeInstanceOf(NetworkError)
-      expect((result.error as NetworkError).statusCode).toBe(500)
+      const isoClient = HttpClient.create({
+        retry: { maxAttempts: 3, backoff: { baseDelayMs: 10, jitter: false } },
+      })
+
+      const attemptsSeen: number[] = []
+      const result = await isoClient
+        .get(`${iso.url}/bad`, {
+          retry: {
+            maxAttempts: 3,
+            backoff: { baseDelayMs: 10, jitter: false },
+            // First failure is vetoed by retryVetoed (attempt 0), then the
+            // predicate sees the retry attempt number (1, 2, …).
+            retryWhen: (_err, attempt) => {
+              attemptsSeen.push(attempt)
+              return attempt < 2
+            },
+          },
+        })
+        .toPromise()
+
+      // retryVetoed passes 0, loop retries pass 1 then 2 (rejected)
+      expect(attemptsSeen).toEqual([0, 1, 2])
+      expect(requestCount).toBe(3)
+      expect(result.success).toBe(false)
+      if (!result.success) {
+        expect(result.error).toBeInstanceOf(NetworkError)
+        expect((result.error as NetworkError).statusCode).toBe(500)
+      }
+    } finally {
+      await iso.close()
     }
   })
 
   it("retryWhen rejecting the first failure prevents any retry", async () => {
-    let requestCount = 0
-    server.setHandler((_req, res) => {
-      requestCount++
-      res.writeHead(500)
-      res.end("Server Error")
-    })
-
-    const result = await client
-      .get(`${server.url}/bad`, {
-        retry: {
-          maxAttempts: 3,
-          backoff: { baseDelayMs: 10, jitter: false },
-          retryWhen: () => false,
-        },
+    const iso = await createTestServer()
+    try {
+      let requestCount = 0
+      iso.setHandler((_req, res) => {
+        requestCount++
+        res.writeHead(500)
+        res.end("Server Error")
       })
-      .toPromise()
 
-    expect(requestCount).toBe(1)
-    expect(result.success).toBe(false)
-    if (!result.success) {
-      expect(result.error).toBeInstanceOf(NetworkError)
-      expect((result.error as NetworkError).statusCode).toBe(500)
+      const isoClient = HttpClient.create({
+        retry: { maxAttempts: 3, backoff: { baseDelayMs: 10, jitter: false } },
+      })
+
+      const result = await isoClient
+        .get(`${iso.url}/bad`, {
+          retry: {
+            maxAttempts: 3,
+            backoff: { baseDelayMs: 10, jitter: false },
+            retryWhen: () => false,
+          },
+        })
+        .toPromise()
+
+      expect(requestCount).toBe(1)
+      expect(result.success).toBe(false)
+      if (!result.success) {
+        expect(result.error).toBeInstanceOf(NetworkError)
+        expect((result.error as NetworkError).statusCode).toBe(500)
+      }
+    } finally {
+      await iso.close()
     }
   })
 
@@ -332,10 +351,10 @@ describe("HttpClient integration", () => {
 
     expect(result.success).toBe(false)
     if (!result.success) expect(result.error).toBeInstanceOf(CancelledError)
-    // The first retry fires immediately (loop attempt 0 has no backoff),
-    // so the abort lands during the first backoff window and stops the
-    // remaining attempts: 2 requests instead of 4.
-    expect(requestCount).toBe(2)
+    // The first retry now applies backoff (baseDelayMs: 200). The abort
+    // fires ~50 ms after the first request, during the first retry's
+    // backoff, so the retry never fires: only 1 request total.
+    expect(requestCount).toBe(1)
   }, 5_000)
 
   it("resolves relative URL without baseUrl as a ticket error", async () => {
@@ -350,7 +369,7 @@ describe("HttpClient integration", () => {
     // Should not throw — the error is on the ticket, not in the call
   })
 
-  it('emits "retry" event N−1 times with increasing attempt on repeated 503', async () => {
+  it('emits "retry" event for every retry with increasing attempt on repeated 503', async () => {
     const maxAttempts = 4
     server.setHandler((_req, res) => {
       res.writeHead(503, { "Content-Type": "application/json" })
@@ -370,13 +389,46 @@ describe("HttpClient integration", () => {
     const result = await retryClient.get(`${server.url}/retry-event`).toPromise()
 
     expect(result.success).toBe(false)
-    // maxAttempts = 4 → first attempt + 3 retries → 3 retry events
-    expect(retryEvents).toHaveLength(maxAttempts - 1)
-    // Attempts are 1-based server hit count: 1, 2, 3
-    expect(retryEvents.map((e) => e.attempt)).toEqual([1, 2, 3])
+    // maxAttempts = 4 → 4 retries → 4 retry events (one per loop iteration)
+    expect(retryEvents).toHaveLength(maxAttempts)
+    // Zero-based retry index: 0, 1, 2, 3
+    expect(retryEvents.map((e) => e.attempt)).toEqual([0, 1, 2, 3])
     // All delays should be positive
     for (const event of retryEvents) {
       expect(event.delayMs).toBeGreaterThan(0)
     }
+  }, 10_000)
+
+  it("first retry gets backoff and retrying update", async () => {
+    const requestTimestamps: number[] = []
+    server.setHandler((_req, res) => {
+      requestTimestamps.push(Date.now())
+      res.writeHead(503, { "Content-Type": "application/json" })
+      res.end(JSON.stringify({ error: "unavailable" }))
+    })
+
+    const retryClient = HttpClient.create({
+      trigger: { queueOnStatus: [503] },
+      retry: { maxAttempts: 1, backoff: { baseDelayMs: 50, jitter: false } },
+    })
+
+    const ticket = retryClient.get(`${server.url}/backoff-test`)
+    const updateTypes: string[] = []
+    const [result] = await Promise.all([
+      ticket.toPromise(),
+      (async () => {
+        for await (const u of ticket.subscribe()) {
+          updateTypes.push(u.type)
+        }
+      })(),
+    ])
+
+    expect(result.success).toBe(false)
+    // maxAttempts: 1 → first attempt + 1 retry → 2 server hits
+    expect(requestTimestamps).toHaveLength(2)
+    // Second hit arrives ≥ 45 ms after the first (backoff: 50 ms, no jitter)
+    expect(requestTimestamps[1] - requestTimestamps[0]).toBeGreaterThanOrEqual(45)
+    // Ticket updates: queued, retrying, done
+    expect(updateTypes).toEqual(["queued", "retrying", "done"])
   }, 10_000)
 })

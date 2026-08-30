@@ -30,21 +30,21 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
     }
 
     if (attempt > 0) {
-      // Let the consumer decide whether to keep retrying before paying for
-      // backoff. The loop's attempt k is overall execution k+1 (the first
-      // attempt ran outside the loop, vetted by the client), so `attempt`
-      // here is the overall zero-based number of the execution that
-      // produced `lastError`.
+      // Consult retryWhen before paying for backoff. The first retry skips
+      // this check — the client already vetoed via retryVetoed before queuing.
       if (retryConfig.retryWhen && !retryConfig.retryWhen(lastError, attempt)) {
         ticket._markDone({ success: false, error: lastError })
         return
       }
-
-      const delayMs = backoffFn(attempt - 1)
-      onRetry?.(attempt, delayMs, lastError)
-      ticket._markRetrying(attempt, delayMs)
-      await sleep(delayMs)
     }
+
+    // All retries (including the first) get backoff. The first retry
+    // skips the retryWhen check above — the client already vetted via
+    // retryVetoed before queuing.
+    const delayMs = backoffFn(attempt)
+    onRetry?.(attempt, delayMs, lastError)
+    ticket._markRetrying(attempt, delayMs)
+    await sleep(delayMs)
 
     if (ticket.isCancelled) {
       ticket._markDone({ success: false, error: new CancelledError() })
