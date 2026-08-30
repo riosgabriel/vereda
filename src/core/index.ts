@@ -7,7 +7,7 @@ export type {
   Logger,
   BackoffFn,
   BackoffOptions,
-  TriggerConfig,
+  TimeoutConfig,
   RetryConfig,
   PartitionConfig,
   LifecycleEventMap,

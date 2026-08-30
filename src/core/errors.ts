@@ -47,11 +47,13 @@ export class HttpError extends RequestError {
 export class RetryableStatusError extends RequestError {
   public readonly statusCode: number
   public readonly response: Response
+  public readonly retryAfterMs?: number
 
-  constructor(message: string, statusCode: number, response: Response) {
+  constructor(message: string, statusCode: number, response: Response, retryAfterMs?: number) {
     super("retryable_status", message)
     this.statusCode = statusCode
     this.response = response
+    this.retryAfterMs = retryAfterMs
   }
 }
 

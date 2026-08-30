@@ -8,8 +8,8 @@ export function validateConfig(config: ClientConfig): void {
     }
   }
 
-  if (config.trigger?.timeoutMs !== undefined && config.trigger.timeoutMs <= 0) {
-    throw new ConfigurationError("trigger.timeoutMs must be positive")
+  if (config.timeout?.attemptMs !== undefined && config.timeout.attemptMs <= 0) {
+    throw new ConfigurationError("timeout.attemptMs must be positive")
   }
 
   validateRetryConfig(config.retry, "retry")
@@ -21,6 +21,10 @@ function validateRetryConfig(retry: RetryConfig | undefined, prefix: string): vo
 
   if (retry.maxRetries !== undefined && retry.maxRetries < 0) {
     throw new ConfigurationError(`${prefix}.maxRetries must be non-negative`)
+  }
+
+  if (retry.retryOnStatus !== undefined && !Array.isArray(retry.retryOnStatus)) {
+    throw new ConfigurationError(`${prefix}.retryOnStatus must be an array`)
   }
 
   if (retry.backoff && typeof retry.backoff === "object") {
@@ -47,6 +51,9 @@ function validatePartitions(partitions: Record<string, PartitionConfig> | undefi
     }
     if (config.maxQueueSize !== undefined && config.maxQueueSize < 1) {
       throw new ConfigurationError(`partitions.${name}.maxQueueSize must be at least 1`)
+    }
+    if (config.timeout?.attemptMs !== undefined && config.timeout.attemptMs <= 0) {
+      throw new ConfigurationError(`partitions.${name}.timeout.attemptMs must be positive`)
     }
     validateRetryConfig(config.retry, `partitions.${name}.retry`)
   }

@@ -1,11 +1,13 @@
 import { HttpError, NetworkError, RetryableStatusError, ValidationError } from "../core/errors.js"
 import type { AppError } from "../core/errors.js"
-import type { RequestOptions, Result, TriggerConfig } from "../core/types.js"
+import type { RequestOptions, Result, RetryConfig } from "../core/types.js"
 
 export interface ExecuteRequest {
   url: string
   options: RequestOptions<unknown>
-  triggerConfig: TriggerConfig
+  retryConfig: RetryConfig
+  /** Per-attempt timeout in ms. */
+  timeoutMs?: number
   signal: AbortSignal
 }
 
@@ -24,16 +26,16 @@ export async function executeRequest(
   req: ExecuteRequest,
   middleware: MiddlewareFn[],
 ): Promise<ExecuteResult> {
-  const { url, options, triggerConfig, signal } = req
+  const { url, options, retryConfig, timeoutMs, signal } = req
 
   if (signal.aborted || options.signal?.aborted) {
     return { kind: "cancelled" }
   }
 
-  const timeoutMs = triggerConfig.timeoutMs
-  const retryOnStatus = triggerConfig.queueOnStatus ?? []
+  const retryOnStatus = (retryConfig.retryOnStatus ?? [408, 425, 429, 500, 502, 503, 504]) as number[]
 
   // Build the fetch call wrapped in middleware
+  // Body factory will be resolved by the retry loop per attempt
   const fetchCall = buildFetchCall(url, options)
   const composed = composeMiddleware(middleware, fetchCall)
 
@@ -92,12 +94,26 @@ export async function executeRequest(
     } catch {
       /* ignore — best effort */
     }
+    // Parse Retry-After header (seconds or HTTP-date)
+    let retryAfterMs: number | undefined
+    const retryAfter = response.headers.get("retry-after")
+    if (retryAfter !== null) {
+      const delaySec = parseInt(retryAfter, 10)
+      if (!isNaN(delaySec) && delaySec > 0) {
+        retryAfterMs = delaySec * 1000
+      } else {
+        // Could be an HTTP-date, try to parse remaining time
+        // For now, skip detailed date parsing
+        retryAfterMs = undefined
+      }
+    }
     return {
       kind: "error",
       error: new RetryableStatusError(
         `HTTP ${response.status} ${response.statusText}`,
         response.status,
         response,
+        retryAfterMs,
       ),
     }
   }
@@ -203,4 +219,23 @@ function extractIssues(err: unknown): unknown[] {
     return (err as { issues: unknown[] }).issues
   }
   return [err]
+}
+
+/**
+ * Resolve body: invoke factory if function, set duplex: "half" for streams.
+ * Returns the resolved BodyInit, or undefined if no body.
+ */
+function resolveBody(body: BodyInit | (() => BodyInit) | undefined): BodyInit | undefined {
+  if (body === undefined) {
+    return undefined
+  }
+  if (typeof body === "function") {
+    const resolved = body()
+    // If a ReadableStream is supplied via factory, set duplex: "half"
+    if (resolved instanceof ReadableStream) {
+      ;(resolved as any).duplex = "half"
+    }
+    return resolved
+  }
+  return body
 }

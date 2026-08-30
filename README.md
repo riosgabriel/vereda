@@ -167,8 +167,43 @@ With zero configuration:
 | Timeout | None |
 | Queue-on status codes | None (all non-2xx responses are retried as errors) |
 | First-attempt concurrency | Unbounded — the initial attempt bypasses the bulkhead |
+| **What gets retried** | **By default: network errors, timeouts, and status codes 408, 425, 429, 500, 502, 503, 504. Non-idempotent methods (POST, PATCH, CONNECT) are not retried unless `retry.idempotent: true` or an `Idempotency-Key` header is present.** |
 
 > **Note:** This README describes the upcoming 1.0 API surface. Some config names in code samples (`retry.maxRetries`, `timeout.attemptMs`, `retry.retryOnStatus`) are being renamed from their current names (`maxAttempts`, `trigger.timeoutMs`, `trigger.queueOnStatus`) as part of the 1.0 effort. The behavior and defaults described here are accurate.
+
+### What gets retried
+
+| Condition | Retried? |
+| --- | --- |
+| Network error (e.g. DNS failure, connection refused) | ✅ Yes, by default |
+| Timeout (attempt exceeded `timeout.attemptMs`) | ✅ Yes, by default |
+| Status 408 (Request Timeout) | ✅ Yes, by default |
+| Status 425 (Unassigned) | ✅ Yes, by default |
+| Status 429 (Too Many Requests) | ✅ Yes, by default |
+| Status 500 (Internal Server Error) | ✅ Yes, by default |
+| Status 502 (Bad Gateway) | ✅ Yes, by default |
+| Status 503 (Service Unavailable) | ✅ Yes, by default |
+| Status 504 (Gateway Timeout) | ✅ Yes, by default |
+| Status 4xx (other than 408, 425, 429) | ❌ No, resolved as `HttpError` |
+| Status 404 (Not Found) | ❌ No, resolved as `HttpError` |
+| `ValidationError` (parse failed) | ❌ No, never retried |
+| Non-idempotent method (POST, PATCH, CONNECT) without `retry.idempotent: true` or `Idempotency-Key` header | ❌ No |
+| Idempotent method (GET, HEAD, OPTIONS, PUT, DELETE, TRACE) | ✅ Yes, by default |
+
+```typescript
+import { HttpClient, defaultRetryPolicy } from "vereda";
+
+// Custom policy that only retries 5xx
+const client = HttpClient.create({
+  retry: {
+    maxRetries: 3,
+    retryOnStatus: [500, 502, 503],
+    idempotent: true, // Allow retrying POST even without Idempotency-Key
+  },
+});
+
+// Use defaultRetryPolicy to extend or modify the default behavior
+const customPolicy = defaultRetryPolicy
 
 ## Quick start
 

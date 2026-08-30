@@ -1,0 +1,1661 @@
+<title>Vereda Review</title>
+<link
+  rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
+/>
+<style>
+  :root {
+    --bg: #f4f6f8;
+    --surface: #ffffff;
+    --ink: #1b2430;
+    --muted: #5b6876;
+    --line: #d7dee5;
+    --accent: #2e6b4e;
+    --accent-soft: #e3efe8;
+    --high: #b3261e;
+    --high-soft: #f8e6e4;
+    --med: #a8690f;
+    --med-soft: #f8edd9;
+    --low: #4b6076;
+    --low-soft: #e5ebf1;
+    --code-bg: #eef2f5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141a21;
+      --surface: #1c242d;
+      --ink: #e6ebf0;
+      --muted: #9aa8b6;
+      --line: #2e3946;
+      --accent: #6fbf94;
+      --accent-soft: #1f3229;
+      --high: #f08a82;
+      --high-soft: #3a1f1d;
+      --med: #e3b15a;
+      --med-soft: #3a2e17;
+      --low: #9db2c7;
+      --low-soft: #243040;
+      --code-bg: #242e38;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141a21;
+    --surface: #1c242d;
+    --ink: #e6ebf0;
+    --muted: #9aa8b6;
+    --line: #2e3946;
+    --accent: #6fbf94;
+    --accent-soft: #1f3229;
+    --high: #f08a82;
+    --high-soft: #3a1f1d;
+    --med: #e3b15a;
+    --med-soft: #3a2e17;
+    --low: #9db2c7;
+    --low-soft: #243040;
+    --code-bg: #242e38;
+  }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family:
+      "IBM Plex Sans",
+      system-ui,
+      -apple-system,
+      Segoe UI,
+      sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    margin: 0;
+  }
+  .wrap {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: "IBM Plex Serif", Georgia, serif;
+    text-wrap: balance;
+    margin: 0;
+  }
+  h1 {
+    font-size: 2rem;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+  .part {
+    margin-top: 64px;
+    padding-top: 24px;
+    border-top: 3px solid var(--accent);
+  }
+  .part h2 {
+    font-size: 1.6rem;
+    font-weight: 600;
+    border: 0;
+    padding: 0;
+    margin: 0;
+  }
+  .part .eyebrow {
+    margin-bottom: 6px;
+  }
+  h2 {
+    font-size: 1.35rem;
+    font-weight: 600;
+    margin-top: 48px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--line);
+  }
+  h3 {
+    font-size: 1.05rem;
+    font-weight: 600;
+  }
+  h4 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+  }
+  p {
+    margin: 0;
+  }
+  .eyebrow {
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  header {
+    display: grid;
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 20px;
+    color: var(--muted);
+    font-size: 0.85rem;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+  }
+  .baseline {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+    margin-top: 8px;
+  }
+  .stat {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 12px 14px;
+  }
+  .stat b {
+    display: block;
+    font-size: 1.25rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat span {
+    color: var(--muted);
+    font-size: 0.8rem;
+  }
+  .stat.ok b {
+    color: var(--accent);
+  }
+  .lede {
+    max-width: 68ch;
+    color: var(--muted);
+  }
+  .parts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px;
+    margin-top: 6px;
+  }
+  .parts a {
+    display: block;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 14px 16px;
+    text-decoration: none;
+    color: var(--ink);
+  }
+  .parts a b {
+    display: block;
+    font-family: "IBM Plex Serif", Georgia, serif;
+    font-size: 1.05rem;
+    margin-bottom: 4px;
+  }
+  .parts a span {
+    color: var(--muted);
+    font-size: 0.88rem;
+  }
+  .parts a:hover {
+    border-color: var(--accent);
+  }
+  code {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.86em;
+    background: var(--code-bg);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+  pre {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    background: var(--code-bg);
+    border-radius: 6px;
+    padding: 12px 14px;
+    overflow-x: auto;
+    margin: 10px 0 0;
+  }
+  pre code {
+    background: none;
+    padding: 0;
+    font-size: inherit;
+  }
+  .tablewrap {
+    overflow-x: auto;
+    margin-top: 16px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--surface);
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.88rem;
+  }
+  th,
+  td {
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  th {
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  tr:last-child td {
+    border-bottom: 0;
+  }
+  td.n {
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+    width: 2ch;
+  }
+  td a {
+    color: inherit;
+    text-decoration: none;
+  }
+  td a:hover {
+    text-decoration: underline;
+  }
+  .pill {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .pill.high {
+    background: var(--high-soft);
+    color: var(--high);
+  }
+  .pill.med {
+    background: var(--med-soft);
+    color: var(--med);
+  }
+  .pill.low {
+    background: var(--low-soft);
+    color: var(--low);
+  }
+  .pill.ver {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  .finding {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--low);
+    border-radius: 6px;
+    padding: 18px 20px;
+    margin-top: 16px;
+    display: grid;
+    gap: 10px;
+  }
+  .finding.high {
+    border-left-color: var(--high);
+  }
+  .finding.med {
+    border-left-color: var(--med);
+  }
+  .finding .head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px 12px;
+  }
+  .finding .head .num,
+  .rec .head .num {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+  .finding p,
+  .finding li,
+  .rec p {
+    max-width: 72ch;
+  }
+  .finding ul,
+  .rec ul {
+    margin: 0;
+    padding-left: 20px;
+  }
+  .fix {
+    border-top: 1px dashed var(--line);
+    padding-top: 10px;
+    color: var(--muted);
+  }
+  .fix strong {
+    color: var(--accent);
+  }
+  .where {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+  .rec {
+    padding: 14px 0;
+    border-bottom: 1px solid var(--line);
+    display: grid;
+    gap: 6px;
+  }
+  .rec:last-child {
+    border-bottom: 0;
+  }
+  .rec .head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .recgroup {
+    margin-top: 8px;
+  }
+  .intro {
+    max-width: 70ch;
+    color: var(--muted);
+    margin-top: 12px;
+  }
+  ol.order {
+    padding-left: 22px;
+    max-width: 70ch;
+  }
+  ol.order li {
+    margin-bottom: 6px;
+  }
+  .checklist {
+    list-style: none;
+    padding: 0;
+    margin: 16px 0 0;
+    display: grid;
+    gap: 8px;
+    max-width: 76ch;
+  }
+  .checklist li {
+    display: grid;
+    grid-template-columns: 22px 1fr;
+    gap: 10px;
+    align-items: start;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 10px 14px;
+  }
+  .checklist li .box {
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid var(--muted);
+    border-radius: 3px;
+    margin-top: 4px;
+  }
+  .checklist li.opt {
+    opacity: 0.75;
+  }
+  .solid {
+    background: var(--accent-soft);
+    border-radius: 6px;
+    padding: 16px 20px;
+    margin-top: 16px;
+  }
+  .solid p {
+    max-width: 72ch;
+  }
+  a {
+    color: var(--accent);
+  }
+  a:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Code review · road to a production-ready 1.0.0</p>
+    <h1>Vereda Review</h1>
+    <div class="meta">
+      <span>2026-08-29</span><span>main @ 847435f</span
+      ><span>src/ · test/ · docs · CI · packaging</span>
+    </div>
+    <p class="lede">
+      Part 1 lists 25 defects in the code as it exists today. Part 2 lists what the library still
+      needs before <code>1.0.0</code> can honestly mean "safe to depend on in production", and ends
+      with a definition of done. Every item tagged <span class="pill ver">verified</span> was
+      reproduced with a script against the real code, not inferred from reading. The baseline was
+      green before the review started.
+    </p>
+    <div class="baseline">
+      <div class="stat ok"><b>40 / 40</b><span>vitest passing</span></div>
+      <div class="stat ok"><b>clean</b><span>tsc --noEmit · eslint</span></div>
+      <div class="stat"><b>6 · 11 · 8</b><span>defects: high · medium · low</span></div>
+      <div class="stat"><b>27</b><span>production-readiness items</span></div>
+    </div>
+    <div class="parts">
+      <a href="#part1"
+        ><b>Part 1 — Defects</b
+        ><span
+          >Bugs and gaps in current behavior, ranked by severity, each with a suggested fix.</span
+        ></a
+      >
+      <a href="#part2"
+        ><b>Part 2 — Production readiness</b
+        ><span
+          >Resilience semantics, operability, API freeze, packaging, quality gates, docs.</span
+        ></a
+      >
+      <a href="#dod"
+        ><b>1.0.0 definition of done</b
+        ><span>Ordered checklist; each step unblocks the next.</span></a
+      >
+    </div>
+  </header>
+
+  <section class="part" id="part1">
+    <p class="eyebrow">Part 1</p>
+    <h2>Defects</h2>
+    <p class="intro">
+      Severity: <b>High</b> = wrong behavior a normal user will hit or a documented feature that
+      does not exist. <b>Medium</b> = incorrect or misleading behavior in edge cases, leaks, API
+      holes. <b>Low</b> = polish, docs drift, hygiene.
+    </p>
+  </section>
+
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Severity</th>
+          <th>Area</th>
+          <th>Finding</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="n">1</td>
+          <td><span class="pill high">High</span></td>
+          <td>Client</td>
+          <td>
+            <a href="#f1"
+              >Relative URL without <code>baseUrl</code> throws synchronously — the README hero
+              example crashes</a
+            >
+          </td>
+        </tr>
+        <tr>
+          <td class="n">2</td>
+          <td><span class="pill high">High</span></td>
+          <td>Config</td>
+          <td>
+            <a href="#f2"
+              >"Global concurrency" is not a global cap; it becomes the per-partition default (10,
+              not the documented 5)</a
+            >
+          </td>
+        </tr>
+        <tr>
+          <td class="n">3</td>
+          <td><span class="pill high">High</span></td>
+          <td>Events</td>
+          <td>
+            <a href="#f3"
+              ><code>retry</code> lifecycle event is declared and documented but never emitted</a
+            >
+          </td>
+        </tr>
+        <tr>
+          <td class="n">4</td>
+          <td><span class="pill high">High</span></td>
+          <td>Errors</td>
+          <td>
+            <a href="#f4">Busy statuses (429/503) are reported as <code>TimeoutError</code></a>
+          </td>
+        </tr>
+        <tr>
+          <td class="n">5</td>
+          <td><span class="pill high">High</span></td>
+          <td>Queue</td>
+          <td>
+            <a href="#f5"
+              >A bulkhead slot is held for the whole retry loop, including backoff sleeps</a
+            >
+          </td>
+        </tr>
+        <tr>
+          <td class="n">22</td>
+          <td><span class="pill high">High</span></td>
+          <td>Safety</td>
+          <td>
+            <a href="#f22"
+              >POST/PATCH and all 4xx are retried by default; stream bodies fail on every attempt</a
+            >
+          </td>
+        </tr>
+        <tr>
+          <td class="n">6</td>
+          <td><span class="pill med">Medium</span></td>
+          <td>Queue</td>
+          <td>
+            <a href="#f6"
+              >First retry runs with zero backoff and emits no <code>retrying</code> update</a
+            >
+          </td>
+        </tr>
+        <tr>
+          <td class="n">7</td>
+          <td><span class="pill med">Medium</span></td>
+          <td>Leaks</td>
+          <td>
+            <a href="#f7">Abort listeners accumulate on ticket and caller signals; never removed</a>
+          </td>
+        </tr>
+        <tr>
+          <td class="n">8</td>
+          <td><span class="pill med">Medium</span></td>
+          <td>Errors</td>
+          <td>
+            <a href="#f8"><code>MaxRetriesExceededError.attempts</code> undercounts by one</a>
+          </td>
+        </tr>
+        <tr>
+          <td class="n">9</td>
+          <td><span class="pill med">Medium</span></td>
+          <td>Timeout</td>
+          <td>
+            <a href="#f9"><code>timeoutMs</code> does not cover body reading</a>
+          </td>
+        </tr>
+        <tr>
+          <td class="n">10</td>
+          <td><span class="pill med">Medium</span></td>
+          <td>Types</td>
+          <td>
+            <a href="#f10"
+              ><code>Result&lt;T&gt;.data</code> is typed <code>T</code> but is
+              <code>undefined</code> without <code>parse</code></a
+            >
+          </td>
+        </tr>
+        <tr>
+          <td class="n">11</td>
+          <td><span class="pill med">Medium</span></td>
+          <td>Middleware</td>
+          <td><a href="#f11">Middleware cannot see the URL; README example does not compile</a></td>
+        </tr>
+        <tr>
+          <td class="n">12</td>
+          <td><span class="pill med">Medium</span></td>
+          <td>Errors</td>
+          <td>
+            <a href="#f12">Queue-full is a generic <code>NetworkError</code></a>
+          </td>
+        </tr>
+        <tr>
+          <td class="n">13</td>
+          <td><span class="pill med">Medium</span></td>
+          <td>Events</td>
+          <td>
+            <a href="#f13"
+              ><code>success</code> after retries emits <code>attempt: -1</code>; cancellations emit
+              nothing</a
+            >
+          </td>
+        </tr>
+        <tr>
+          <td class="n">23</td>
+          <td><span class="pill med">Medium</span></td>
+          <td>Config</td>
+          <td>
+            <a href="#f23"
+              ><code>PartitionConfig.trigger</code>/<code>retry</code> ignored; no config validation
+              (<code>maxAttempts: 0</code> → "failed after 0 attempts")</a
+            >
+          </td>
+        </tr>
+        <tr>
+          <td class="n">24</td>
+          <td><span class="pill med">Medium</span></td>
+          <td>Queue</td>
+          <td>
+            <a href="#f24"
+              >Partition key is <code>hostname</code>, not <code>host</code> — ports share one
+              bulkhead</a
+            >
+          </td>
+        </tr>
+        <tr>
+          <td class="n">14</td>
+          <td><span class="pill low">Low</span></td>
+          <td>Tooling</td>
+          <td>
+            <a href="#f14"
+              ><code>pnpm-workspace.yaml</code> holds a literal placeholder that breaks
+              <code>pnpm test</code></a
+            >
+          </td>
+        </tr>
+        <tr>
+          <td class="n">15</td>
+          <td><span class="pill low">Low</span></td>
+          <td>CI</td>
+          <td><a href="#f15">CI ignores the lockfile and never runs lint or format check</a></td>
+        </tr>
+        <tr>
+          <td class="n">16</td>
+          <td><span class="pill low">Low</span></td>
+          <td>Code</td>
+          <td>
+            <a href="#f16"
+              ><code>ValidationError</code> detected via <code>constructor.name</code></a
+            >
+          </td>
+        </tr>
+        <tr>
+          <td class="n">17</td>
+          <td><span class="pill low">Low</span></td>
+          <td>Docs</td>
+          <td><a href="#f17">Stale test counts in AGENTS.md and GOOD_FIRST_ISSUES.md</a></td>
+        </tr>
+        <tr>
+          <td class="n">18</td>
+          <td><span class="pill low">Low</span></td>
+          <td>API</td>
+          <td>
+            <a href="#f18"
+              ><code>Ticket.off()</code> rejects the listener types <code>on()</code> accepts</a
+            >
+          </td>
+        </tr>
+        <tr>
+          <td class="n">19</td>
+          <td><span class="pill low">Low</span></td>
+          <td>Ops</td>
+          <td><a href="#f19">Bulkhead snapshot exists but is not exposed</a></td>
+        </tr>
+        <tr>
+          <td class="n">20</td>
+          <td><span class="pill low">Low</span></td>
+          <td>Resources</td>
+          <td><a href="#f20">Response bodies on busy/non-2xx responses are never consumed</a></td>
+        </tr>
+        <tr>
+          <td class="n">21</td>
+          <td><span class="pill low">Low</span></td>
+          <td>Tests</td>
+          <td><a href="#f21">Coverage gaps that would have caught #1, #2, #3, #8, #22</a></td>
+        </tr>
+        <tr>
+          <td class="n">25</td>
+          <td><span class="pill low">Low</span></td>
+          <td>API</td>
+          <td>
+            <a href="#f25"
+              ><code>Ticket._markDone</code> and friends are public — consumers can corrupt ticket
+              state</a
+            >
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>High</h2>
+
+  <section class="finding high" id="f1">
+    <div class="head">
+      <span class="num">#1</span>
+      <h3>Relative URL without <code>baseUrl</code> throws synchronously</h3>
+      <span class="pill ver">verified</span>
+    </div>
+    <p class="where">src/core/client.ts:87</p>
+    <p>
+      <code>new URL(fullUrl).hostname</code> picks the partition. With no <code>baseUrl</code>, a
+      relative path is an invalid URL and <code>client.get("/users/1")</code> throws
+      <code>TypeError: Invalid URL</code> before a ticket is returned. The README's first code block
+      is exactly this case, and it breaks the "<code>toPromise()</code> never rejects" contract —
+      this is the one error a caller must <code>try/catch</code>.
+    </p>
+    <pre><code>HttpClient.create().get("/users/1")  →  throws "Invalid URL"</code></pre>
+    <p class="fix">
+      <strong>Suggestion</strong> Resolve the partition inside the async path so the error lands in
+      the ticket as a <code>Result</code> (a <code>ConfigurationError</code>), or validate in
+      <code>request()</code> and return an already-failed ticket. Add <code>baseUrl</code> to the
+      README example.
+    </p>
+  </section>
+
+  <section class="finding high" id="f2">
+    <div class="head">
+      <span class="num">#2</span>
+      <h3>"Global concurrency" is the per-partition default</h3>
+      <span class="pill ver">verified</span>
+    </div>
+    <p class="where">src/core/client.ts:28-31 · src/queue/bulkhead.ts:99-102</p>
+    <p>
+      <code>{ concurrency: config.concurrency ?? 10 }</code> is passed as the global
+      <code>PartitionConfig</code> and spread into every partition. There is no cross-partition cap
+      anywhere: 8 partitions × 10 = 80 concurrent retries. The README defaults table says
+      per-partition concurrency is 5; that <code>Bulkhead</code> default is unreachable from
+      <code>HttpClient</code>, so the real default is 10.
+    </p>
+    <pre><code>HttpClient.create({ concurrency: 10 }) → partition "a.example".concurrencyLimit = 10   (docs: 5)</code></pre>
+    <p class="fix">
+      <strong>Suggestion</strong> Implement a real global semaphore each bulkhead acquires before
+      running (global cap <em>and</em> per-partition cap, both enforced) and rename the
+      per-partition default to <code>defaultPartition: PartitionConfig</code>. Generate the README
+      defaults table from code.
+    </p>
+  </section>
+
+  <section class="finding high" id="f3">
+    <div class="head">
+      <span class="num">#3</span>
+      <h3><code>retry</code> lifecycle event is never emitted</h3>
+      <span class="pill ver">verified</span>
+    </div>
+    <p class="where">src/core/types.ts:87 · src/core/client.ts (no emit site)</p>
+    <p>
+      <code>LifecycleEventMap.retry</code> is typed and documented, but
+      <code>grep '"retry"' src/</code> returns nothing. <code>client.on("retry", …)</code> never
+      fires, so fleet-level retry metrics — the stated purpose of lifecycle events — are impossible.
+    </p>
+    <pre><code>maxAttempts=12, all 429 → 'retry' lifecycle events emitted: 0</code></pre>
+    <p class="fix">
+      <strong>Suggestion</strong> <code>runRetryLoop</code> takes an
+      <code>onRetry(attempt, delayMs, error)</code> callback invoked beside
+      <code>ticket._markRetrying</code>. Add a test asserting event count equals retry count.
+    </p>
+  </section>
+
+  <section class="finding high" id="f4">
+    <div class="head">
+      <span class="num">#4</span>
+      <h3>Busy status codes surface as <code>TimeoutError</code></h3>
+      <span class="pill ver">verified</span>
+    </div>
+    <p class="where">src/core/client.ts:166-169 · src/queue/retry.ts:75-77</p>
+    <p>
+      <code>queued_status</code> is collapsed into
+      <code>new TimeoutError(url, timeoutMs ?? 0)</code>. A 429 with no timeout configured yields
+      <em>"timed out after 0ms"</em>. <code>retryWhen</code> cannot express "retry on 429 but not on
+      timeout", <code>lastError</code> misreports what happened, and the <code>Response</code> (with
+      any <code>Retry-After</code>) is dropped. Commit <code>a6b4c0c</code> added a
+      <code>RetryableStatusError</code> for this and was reverted in <code>19bbf2c</code>.
+    </p>
+    <pre><code>503 ×4, queueOnStatus:[503] → lastError = TimeoutError "timed out after 1000ms"</code></pre>
+    <p class="fix">
+      <strong>Suggestion</strong> Add
+      <code>RetryableStatusError { statusCode, response, retryAfterMs? }</code> to the
+      <code>AppError</code> union; honor <code>Retry-After</code> (R1).
+    </p>
+  </section>
+
+  <section class="finding high" id="f5">
+    <div class="head">
+      <span class="num">#5</span>
+      <h3>Bulkhead slot held during backoff sleep</h3>
+      <span class="pill ver">verified</span>
+    </div>
+    <p class="where">src/core/client.ts:218-242 · src/queue/retry.ts:44</p>
+    <p>
+      The entire <code>runRetryLoop</code> runs as one <code>bulkhead.schedule()</code> task, so
+      <code>await sleep(delayMs)</code> holds the slot. With the default 30 s cap, a partition of
+      concurrency 5 can have all 5 slots occupied by tickets doing nothing. The README describes the
+      limit as "in-flight retries"; it is really "retry loops, including their idle time".
+    </p>
+    <pre><code>concurrency:1, two failing tickets, baseDelayMs:300 → during sleep: running=1 queued=1</code></pre>
+    <p class="fix">
+      <strong>Suggestion</strong> Schedule each attempt through the bulkhead and sleep outside it
+      (release → sleep → re-acquire) so slots are always doing network work.
+    </p>
+  </section>
+
+  <section class="finding high" id="f22">
+    <div class="head">
+      <span class="num">#22</span>
+      <h3>Unsafe retry defaults: non-idempotent methods, 4xx, stream bodies</h3>
+      <span class="pill ver">verified</span>
+    </div>
+    <p class="where">src/queue/retry.ts · src/queue/executor.ts:94-101, 147-156</p>
+    <ul>
+      <li>
+        <b>Non-idempotent methods are retried.</b> <code>post()</code>/<code>patch()</code> use the
+        same loop as GET. A POST that timed out <em>after</em> the server processed it is replayed
+        up to 3 more times by default — duplicate orders, duplicate payments. Nothing warns about
+        this.
+      </li>
+      <li>
+        <b>All non-2xx are retried.</b> A 404 or 400 is retried 4 times with backoff. Client errors
+        are deterministic; retrying wastes the latency budget and server capacity. The README states
+        "all non-2xx responses are retried" as if it were a feature.
+      </li>
+      <li>
+        <b>Stream bodies fail on every attempt.</b> A <code>ReadableStream</code> body is rejected
+        by undici without <code>duplex: "half"</code>; the <code>TypeError</code> becomes a
+        <code>NetworkError</code> and is retried 4 times. Even with <code>duplex</code>, a one-shot
+        stream is consumed on attempt 1 and replayed empty.
+      </li>
+    </ul>
+    <pre><code>404 → server hits: 4 | MaxRetriesExceededError
+POST with ReadableStream body → MaxRetriesExceededError, server received 0 bodies</code></pre>
+    <p class="fix">
+      <strong>Suggestion</strong> Conservative default policy: retry network errors, timeouts,
+      408/425/429/5xx; never other 4xx; retry non-idempotent methods only on opt-in (<code
+        >retry: { idempotent: true }</code
+      >
+      or an <code>Idempotency-Key</code> header). Reject <code>ReadableStream</code> bodies with a
+      <code>ConfigurationError</code> unless a <code>body: () =&gt; BodyInit</code> factory is
+      supplied. Document as a "What gets retried" table (D2).
+    </p>
+  </section>
+
+  <h2>Medium</h2>
+
+  <section class="finding med" id="f6">
+    <div class="head">
+      <span class="num">#6</span>
+      <h3>First retry has zero backoff and no <code>retrying</code> update</h3>
+      <span class="pill ver">verified</span>
+    </div>
+    <p class="where">src/queue/retry.ts:31</p>
+    <p>
+      Backoff and <code>_markRetrying</code> only apply when <code>attempt &gt; 0</code>, but loop
+      iteration 0 is already the second execution. The first retry fires 6 ms after queuing with no
+      backoff and no event — for <code>queueOnStatus: [429]</code> the client immediately re-hits a
+      server that just said "slow down". With <code>maxAttempts: 1</code> the stream is just
+      <code>queued, done</code>.
+    </p>
+    <p class="fix">
+      <strong>Suggestion</strong> Treat every loop iteration as a retry:
+      <code>backoffFn(attempt)</code> and <code>_markRetrying(attempt + 1, …)</code>.
+    </p>
+  </section>
+
+  <section class="finding med" id="f7">
+    <div class="head">
+      <span class="num">#7</span>
+      <h3>Abort listeners accumulate and are never removed</h3>
+      <span class="pill ver">verified</span>
+    </div>
+    <p class="where">src/queue/executor.ts:173-183 · src/core/client.ts:81</p>
+    <p>
+      <code>mergeSignals</code> adds <code>{ once: true }</code> listeners to the ticket signal and
+      <code>options.signal</code> on every attempt; they fire only on abort, so on success or
+      exhaustion they persist. The client also adds a listener to the caller's signal that is never
+      removed when the ticket resolves. A long-lived shared signal (e.g. server shutdown) grows
+      without bound.
+    </p>
+    <pre><code>maxAttempts=8 → 9 listeners on ticket.signal; 10 on the caller's AbortSignal after done</code></pre>
+    <p class="fix">
+      <strong>Suggestion</strong> Use <code>AbortSignal.any()</code> (Node ≥ 20) or return a cleanup
+      from <code>mergeSignals</code> called in <code>finally</code>; drop the external listener in
+      <code>_markDone</code>/<code>cancel</code>.
+    </p>
+  </section>
+
+  <section class="finding med" id="f8">
+    <div class="head">
+      <span class="num">#8</span>
+      <h3><code>MaxRetriesExceededError.attempts</code> off by one</h3>
+      <span class="pill ver">verified</span>
+    </div>
+    <p class="where">src/queue/retry.ts:88</p>
+    <p>
+      Passes <code>maxAttempts</code>, but total executions are <code>maxAttempts + 1</code>.
+      Message says "failed after 3 attempts"; the server received 4 requests. README says "<code
+        >maxAttempts: 3</code
+      >
+      → 4 total executions", so error and docs disagree.
+    </p>
+    <p class="fix">
+      <strong>Suggestion</strong> Report total executions, and rename to <code>maxRetries</code> (or
+      make <code>maxAttempts</code> mean total) so the name matches the number — before 1.0, since
+      it is breaking.
+    </p>
+  </section>
+
+  <section class="finding med" id="f9">
+    <div class="head">
+      <span class="num">#9</span>
+      <h3><code>timeoutMs</code> does not cover body reading</h3>
+    </div>
+    <p class="where">src/queue/executor.ts:55-59, 108</p>
+    <p>
+      The timeout is cleared once headers arrive; <code>response.json()</code> runs with no deadline
+      and outside any signal. A server that sends headers then trickles the body hangs the ticket
+      indefinitely whenever <code>parse</code> is set.
+    </p>
+    <p class="fix">
+      <strong>Suggestion</strong> Keep the timeout signal alive until the body is consumed; add
+      <code>totalTimeoutMs</code> for the whole ticket (R3).
+    </p>
+  </section>
+
+  <section class="finding med" id="f10">
+    <div class="head">
+      <span class="num">#10</span>
+      <h3><code>Result&lt;T&gt;.data</code> lies without <code>parse</code></h3>
+    </div>
+    <p class="where">src/queue/executor.ts:136</p>
+    <p>
+      Returns <code>data: undefined</code> typed as <code>T</code>.
+      <code>client.get&lt;User&gt;("/u")</code> makes <code>result.data.name</code> a
+      <code>string</code> to the compiler and a <code>TypeError</code> at runtime.
+    </p>
+    <p class="fix">
+      <strong>Suggestion</strong> Overloads: <code>get(url)</code> →
+      <code>Ticket&lt;undefined&gt;</code>; <code>get(url, { parse })</code> →
+      <code>Ticket&lt;T&gt;</code>.
+    </p>
+  </section>
+
+  <section class="finding med" id="f11">
+    <div class="head">
+      <span class="num">#11</span>
+      <h3>Middleware cannot see the URL</h3>
+    </div>
+    <p class="where">src/queue/executor.ts:144-156 · README "Middleware"</p>
+    <p>
+      <code>MiddlewareFn</code> receives <code>RequestOptions</code>, which has no <code>url</code>.
+      The README example <code>console.log("Request:", options.url)</code> is a type error for
+      anyone who copies it, and middleware cannot rewrite URLs (signing, prefixes).
+    </p>
+    <p class="fix">
+      <strong>Suggestion</strong> Pass a request object
+      <code>{ url, method, headers, body, signal, attempt, ticketId }</code> that middleware may
+      modify (A2).
+    </p>
+  </section>
+
+  <section class="finding med" id="f12">
+    <div class="head">
+      <span class="num">#12</span>
+      <h3>Queue-full is an anonymous <code>NetworkError</code></h3>
+    </div>
+    <p class="where">src/core/client.ts:244</p>
+    <p>
+      Bulkhead rejection becomes <code>NetworkError("Bulkhead 'x' queue is full …")</code> with no
+      <code>statusCode</code>. Callers cannot separate local backpressure from a network failure
+      without string matching; <code>retryWhen</code> never sees it.
+    </p>
+    <p class="fix">
+      <strong>Suggestion</strong>
+      <code>QueueFullError { partition, queueSize, maxQueueSize }</code> in the
+      <code>AppError</code> union.
+    </p>
+  </section>
+
+  <section class="finding med" id="f13">
+    <div class="head">
+      <span class="num">#13</span>
+      <h3>Lifecycle event inconsistencies</h3>
+    </div>
+    <p class="where">src/core/client.ts:107-115, 141-143, 232</p>
+    <ul>
+      <li>
+        <code>success</code> after retries carries <code>attempt: -1</code> as a sentinel; the type
+        says <code>number</code>.
+      </li>
+      <li>
+        Cancellation emits no lifecycle event, so a metrics consumer sees <code>request</code> with
+        no terminal event.
+      </li>
+      <li>
+        The catch-all in <code>request()</code> resolves the ticket but emits no
+        <code>failure</code>.
+      </li>
+    </ul>
+    <p class="fix">
+      <strong>Suggestion</strong> Exactly one terminal event per ticket (<code>success</code> |
+      <code>failure</code> | <code>cancelled</code>) carrying <code>attempts</code>,
+      <code>durationMs</code>, <code>partition</code> (O1).
+    </p>
+  </section>
+
+  <section class="finding med" id="f23">
+    <div class="head">
+      <span class="num">#23</span>
+      <h3><code>PartitionConfig.trigger</code>/<code>retry</code> ignored; no config validation</h3>
+      <span class="pill ver">verified</span>
+    </div>
+    <p class="where">src/core/types.ts:46-53 · src/core/client.ts:25-36</p>
+    <p>
+      <code>PartitionConfig</code> declares <code>trigger</code> and <code>retry</code>; the README
+      admits they are "currently ignored". A type that accepts settings that do nothing is a trap.
+      Nothing validates configuration either: negative <code>concurrency</code>,
+      <code>maxQueueSize: 0</code>, <code>timeoutMs: -1</code>,
+      <code>baseDelayMs &gt; maxDelayMs</code> are accepted silently.
+    </p>
+    <pre><code>maxAttempts: 0 → MaxRetriesExceededError "Request failed after 0 attempts: … timed out after 0ms"</code></pre>
+    <p class="fix">
+      <strong>Suggestion</strong> Implement the global → partition → request merge (the reverted
+      <code>a6b4c0c</code> did) or remove the fields. Validate in
+      <code>HttpClient.create()</code> and throw <code>ConfigurationError</code> naming the key —
+      construction time is the one place throwing is right.
+    </p>
+  </section>
+
+  <section class="finding med" id="f24">
+    <div class="head">
+      <span class="num">#24</span>
+      <h3>Partition key ignores the port</h3>
+      <span class="pill ver">verified</span>
+    </div>
+    <p class="where">src/core/client.ts:87</p>
+    <p>
+      Bulkheads are keyed by <code>hostname</code>. <code>http://svc:8080</code> and
+      <code>http://svc:9090</code> are different services but share one queue and concurrency limit;
+      the failure of one throttles the other.
+    </p>
+    <p class="fix">
+      <strong>Suggestion</strong> Key by <code>origin</code> (scheme + host + port) by default; keep
+      <code>partition</code> as the explicit override.
+    </p>
+  </section>
+
+  <h2>Low</h2>
+
+  <section class="finding" id="f14">
+    <div class="head">
+      <span class="num">#14</span>
+      <h3><code>pnpm-workspace.yaml</code> contains a literal placeholder</h3>
+      <span class="pill ver">verified</span>
+    </div>
+    <pre><code>allowBuilds:
+  esbuild: set this to true or false</code></pre>
+    <p>
+      pnpm's hint text was committed verbatim. <code>pnpm test</code>, <code>pnpm lint</code> and
+      <code>pnpm typecheck</code> all fail locally with <code>ERR_PNPM_IGNORED_BUILDS</code>. Set
+      <code>esbuild: true</code> or delete the file.
+    </p>
+  </section>
+
+  <section class="finding" id="f15">
+    <div class="head">
+      <span class="num">#15</span>
+      <h3>CI ignores the lockfile and skips lint/format</h3>
+    </div>
+    <p class="where">.github/workflows/ci.yml</p>
+    <p>
+      <code>npm install</code> reads neither <code>pnpm-lock.yaml</code> nor a committed
+      <code>package-lock.json</code> (gitignored), so CI versions float. ESLint and
+      <code>prettier --check</code> are documented as pre-commit steps but never enforced. Node 18
+      (EOL April 2025) is the advertised floor.
+    </p>
+  </section>
+
+  <section class="finding" id="f16">
+    <div class="head">
+      <span class="num">#16</span>
+      <h3><code>ValidationError</code> detected by <code>constructor.name</code></h3>
+    </div>
+    <p class="where">src/core/client.ts:147</p>
+    <p>
+      The class is imported in the same module; use <code>instanceof</code>. Name checks break under
+      minification and subclassing.
+    </p>
+  </section>
+
+  <section class="finding" id="f17">
+    <div class="head">
+      <span class="num">#17</span>
+      <h3>Stale test counts in contributor docs</h3>
+    </div>
+    <ul>
+      <li>
+        <code>AGENTS.md:25</code> "claims 36 tests; suite has 30" — both stale; the suite has 40 and
+        README says 40.
+      </li>
+      <li>
+        <code>GOOD_FIRST_ISSUES.md</code> #1 asks a newcomer to change "36" to "30" — obsolete, in a
+        file that promises every item is verified.
+      </li>
+      <li>
+        <code>CONTRIBUTING.md:5</code> cites <code>.claude/skills/</code>; only
+        <code>.opencode/skills/guide-me</code> is tracked in git.
+      </li>
+    </ul>
+  </section>
+
+  <section class="finding" id="f18">
+    <div class="head">
+      <span class="num">#18</span>
+      <h3><code>Ticket.off()</code> signature mismatch</h3>
+    </div>
+    <p class="where">src/ticket/ticket.ts:84</p>
+    <p>
+      <code>on()</code> accepts <code>(result: Result&lt;T&gt;) =&gt; void</code>;
+      <code>off(event, listener: (...args: unknown[]) =&gt; void)</code> rejects that function under
+      <code>strictFunctionTypes</code>. Mirror the overloads.
+    </p>
+  </section>
+
+  <section class="finding" id="f19">
+    <div class="head">
+      <span class="num">#19</span>
+      <h3>Bulkhead snapshot not exposed</h3>
+    </div>
+    <p class="where">src/queue/bulkhead.ts:108</p>
+    <p>
+      <code>BulkheadRegistry.getAll()</code> returns
+      <code>{ running, queued, concurrency, maxQueueSize }</code> but
+      <code>HttpClient.bulkheads</code> is private. It is the only way to see backpressure before it
+      becomes queue-full errors.
+    </p>
+  </section>
+
+  <section class="finding" id="f20">
+    <div class="head">
+      <span class="num">#20</span>
+      <h3>Unconsumed response bodies</h3>
+    </div>
+    <p class="where">src/queue/executor.ts:89-101</p>
+    <p>
+      On <code>queued_status</code> and non-2xx the <code>Response</code> is dropped or returned
+      without <code>body.cancel()</code>. Undici keeps the connection busy until the body drains or
+      is GC'd; sustained 429s can hold sockets.
+    </p>
+  </section>
+
+  <section class="finding" id="f21">
+    <div class="head">
+      <span class="num">#21</span>
+      <h3>Test coverage gaps</h3>
+    </div>
+    <p>
+      Nothing exercises: queue-full through <code>HttpClient</code>; the
+      <code>retry</code> lifecycle event (#3); partition config through the client (#2);
+      <code>defaultHeaders</code>/<code>requestLogger</code>; <code>subscribe()</code> on a terminal
+      ticket; <code>Ticket.off()</code>; relative URLs (#1); the <code>attempts</code> value (#8);
+      POST retry semantics (#22).
+    </p>
+  </section>
+
+  <section class="finding" id="f25">
+    <div class="head">
+      <span class="num">#25</span>
+      <h3>Internal ticket mutators are public API</h3>
+    </div>
+    <p class="where">src/ticket/ticket.ts:148-166</p>
+    <p>
+      <code>_markDone</code>, <code>_markQueued</code>, <code>_markRetrying</code> are public
+      methods on the exported class; any consumer or middleware can resolve someone else's ticket.
+      Move them behind a module-private symbol or a <code>TicketController</code> handed only to the
+      client; mark <code>@internal</code> and enable <code>stripInternal</code>.
+    </p>
+  </section>
+
+  <section class="part" id="part2">
+    <p class="eyebrow">Part 2</p>
+    <h2>Production readiness</h2>
+    <p class="intro">
+      Fixing Part 1 gives a <em>correct</em> library. The items below separate "correct" from "I
+      would put this in front of production traffic and sleep at night". Each is concrete enough to
+      become an issue.
+    </p>
+  </section>
+
+  <h2>R · Resilience semantics</h2>
+  <div class="recgroup">
+    <div class="rec">
+      <div class="head">
+        <span class="num">R1</span>
+        <h4>Honor <code>Retry-After</code></h4>
+      </div>
+      <p>
+        When a 429/503 carries <code>Retry-After</code> (seconds or HTTP-date), use it as that
+        retry's delay (capped by <code>maxDelayMs</code>) instead of the computed exponential value.
+        Requires #4 so the response reaches the retry loop.
+      </p>
+    </div>
+    <div class="rec">
+      <div class="head">
+        <span class="num">R2</span>
+        <h4>Conservative, documented default retry policy</h4>
+      </div>
+      <p>
+        Retry: network errors, timeouts, 408, 425, 429, 5xx. Do not retry: other 4xx,
+        <code>ValidationError</code>, non-idempotent methods without opt-in. Export
+        <code>defaultRetryPolicy</code> so users extend rather than rewrite it (#22).
+      </p>
+    </div>
+    <div class="rec">
+      <div class="head">
+        <span class="num">R3</span>
+        <h4>Total deadline</h4>
+      </div>
+      <p>
+        Add <code>totalTimeoutMs</code> for the whole ticket (all attempts plus queue time)
+        alongside the per-attempt <code>timeoutMs</code>. Without it,
+        <code>maxAttempts: 5</code> with a 30 s cap can take minutes. The ticket resolves with a
+        <code>DeadlineExceededError</code> when it fires, even while queued.
+      </p>
+    </div>
+    <div class="rec">
+      <div class="head">
+        <span class="num">R4</span>
+        <h4>Retry budget</h4>
+      </div>
+      <p>
+        Per-partition budget ("retries may be at most 20% of requests over a sliding window")
+        prevents retry storms when a dependency is fully down — where exponential backoff alone is
+        not enough. Opt-in, off by default.
+      </p>
+    </div>
+    <div class="rec">
+      <div class="head">
+        <span class="num">R5</span>
+        <h4>Circuit breaker (optional)</h4>
+      </div>
+      <p>
+        With #19 exposing partition health, a simple breaker (open after N consecutive failures,
+        half-open probe after cooldown) is a small addition and the most-requested feature of this
+        class of library. Opt-in per partition.
+      </p>
+    </div>
+    <div class="rec">
+      <div class="head">
+        <span class="num">R6</span>
+        <h4>Bulkhead for first attempts (opt-in)</h4>
+      </div>
+      <p>
+        Keep the unbounded-first-attempt default, but offer
+        <code>limitFirstAttempts: true</code> per partition for callers who need a hard cap on
+        connections to a fragile dependency.
+      </p>
+    </div>
+  </div>
+
+  <h2>O · Operability</h2>
+  <div class="recgroup">
+    <div class="rec">
+      <div class="head">
+        <span class="num">O1</span>
+        <h4>One terminal event per ticket, with timings</h4>
+      </div>
+      <p>
+        <code>success</code>/<code>failure</code>/<code>cancelled</code> carry
+        <code>attempts</code>, <code>durationMs</code>, <code>queuedMs</code>,
+        <code>partition</code>, <code>statusCode</code> — what a metrics adapter needs (#13).
+      </p>
+    </div>
+    <div class="rec">
+      <div class="head">
+        <span class="num">O2</span>
+        <h4>Metrics adapter surface</h4>
+      </div>
+      <p>
+        <code>client.on(…)</code> suits logs, not metrics. Provide a
+        <code>MetricsSink</code> interface (<code>counter</code>, <code>histogram</code>,
+        <code>gauge</code>) fed by the client plus partition gauges from #19. Ship an OpenTelemetry
+        example.
+      </p>
+    </div>
+    <div class="rec">
+      <div class="head">
+        <span class="num">O3</span>
+        <h4>Structured, redacted logging</h4>
+      </div>
+      <p>
+        The logger receives full URLs; query strings often carry tokens. Redact query parameters by
+        default, never log headers. Use the unused <code>debug</code> level for per-attempt detail
+        so <code>info</code> stays quiet in production.
+      </p>
+    </div>
+    <div class="rec">
+      <div class="head">
+        <span class="num">O4</span>
+        <h4>Graceful shutdown</h4>
+      </div>
+      <p>
+        <code>client.close({ drain?, timeoutMs? })</code>: stop accepting requests, optionally wait
+        for in-flight tickets, cancel the rest, clear timers. <code>unref()</code> backoff timers so
+        a pending retry never keeps a process alive.
+      </p>
+    </div>
+    <div class="rec">
+      <div class="head">
+        <span class="num">O5</span>
+        <h4>Injectable <code>fetch</code></h4>
+      </div>
+      <p>
+        <code>HttpClient.create({ fetch })</code> — needed for undici <code>Agent</code> tuning
+        (keep-alive, connection limits, proxies), socket-free tests, and platforms whose global
+        <code>fetch</code> differs. Also the cleanest place for tracing headers.
+      </p>
+    </div>
+  </div>
+
+  <h2>A · API and type surface</h2>
+  <div class="recgroup">
+    <div class="rec">
+      <div class="head">
+        <span class="num">A1</span>
+        <h4>Freeze the error model</h4>
+      </div>
+      <p>
+        Add a string <code>kind</code> discriminant to every <code>AppError</code> (<code
+          >"network" | "timeout" | "retryable_status" | "validation" | "cancelled" | "max_retries" |
+          "queue_full" | "configuration"</code
+        >). <code>instanceof</code> fails across duplicated bundles; a discriminant does not. Keep
+        the classes for stack traces.
+      </p>
+    </div>
+    <div class="rec">
+      <div class="head">
+        <span class="num">A2</span>
+        <h4>Request object for middleware</h4>
+      </div>
+      <p>
+        <code>{ url, method, headers: Headers, body, signal, attempt, ticketId }</code>; middleware
+        may return a modified request. Accept <code>HeadersInit</code> and merge case-insensitively
+        — <code>defaultHeaders</code> currently produces both <code>authorization</code> and
+        <code>Authorization</code> (#11).
+      </p>
+    </div>
+    <div class="rec">
+      <div class="head">
+        <span class="num">A3</span>
+        <h4>Honest generics</h4>
+      </div>
+      <p>
+        <code>Ticket&lt;undefined&gt;</code> without <code>parse</code>,
+        <code>Ticket&lt;T&gt;</code> with it (#10).
+      </p>
+    </div>
+    <div class="rec">
+      <div class="head">
+        <span class="num">A4</span>
+        <h4>Replayable bodies</h4>
+      </div>
+      <p>
+        Accept <code>body: BodyInit | (() =&gt; BodyInit)</code>; reject
+        <code>ReadableStream</code> without a factory (#22).
+      </p>
+    </div>
+    <div class="rec">
+      <div class="head">
+        <span class="num">A5</span>
+        <h4>Hide internals and settle names before 1.0</h4>
+      </div>
+      <p>
+        #25; <code>maxAttempts</code> vs <code>maxRetries</code> (#8); <code>hostname</code> vs
+        <code>origin</code> default (#24); <code>concurrency</code> vs
+        <code>defaultPartition.concurrency</code> (#2). Every one of these is a breaking change
+        afterwards.
+      </p>
+    </div>
+    <div class="rec">
+      <div class="head">
+        <span class="num">A6</span>
+        <h4>Conveniences production code needs</h4>
+      </div>
+      <p>
+        <code>head()</code>, <code>options()</code>; a JSON shortcut (<code
+          >parse: json&lt;T&gt;()</code
+        >) so the common case needs no schema library; <code>AbortSignal.timeout()</code> interop.
+      </p>
+    </div>
+  </div>
+
+  <h2>P · Packaging and release</h2>
+  <div class="recgroup">
+    <div class="rec">
+      <div class="head">
+        <span class="num">P1</span>
+        <h4>Publish to npm</h4>
+      </div>
+      <p>
+        Installing from GitHub runs <code>prepare</code> → <code>tsc</code> on every consumer's
+        machine, needs devDependencies, and makes <code>files: ["dist"]</code> meaningless. 1.0
+        should be <code>npm install vereda</code> with a prebuilt <code>dist/</code>, a tag per
+        release, GitHub Releases, and npm provenance from CI.
+      </p>
+    </div>
+    <div class="rec">
+      <div class="head">
+        <span class="num">P2</span>
+        <h4><code>package.json</code> hygiene</h4>
+      </div>
+      <p>
+        <code>exports</code> with <code>"types"</code> first; <code>"sideEffects": false</code>;
+        <code>"engines": { "node": "&gt;=20" }</code>; <code>repository</code>, <code>bugs</code>,
+        <code>homepage</code>; drop <code>main</code>/<code>types</code> in favour of
+        <code>exports</code>. Run <code>publint</code> and <code>@arethetypeswrong/cli</code> in CI.
+      </p>
+    </div>
+    <div class="rec">
+      <div class="head">
+        <span class="num">P3</span>
+        <h4>Node support policy</h4>
+      </div>
+      <p>
+        Drop 18 (EOL); test 20, 22, 24; state the policy in the README. Unlocks
+        <code>AbortSignal.any</code> (#7) and <code>Promise.withResolvers</code>.
+      </p>
+    </div>
+    <div class="rec">
+      <div class="head">
+        <span class="num">P4</span>
+        <h4>Versioning and changelog</h4>
+      </div>
+      <p>
+        Explicit semver, <code>CHANGELOG.md</code> (Keep a Changelog), and a written definition of
+        what counts as breaking (error names, event payloads, defaults). Consider
+        <code>changesets</code>.
+      </p>
+    </div>
+    <div class="rec">
+      <div class="head">
+        <span class="num">P5</span>
+        <h4>Reproducible installs</h4>
+      </div>
+      <p>
+        Pick one package manager. pnpm: <code>pnpm/action-setup</code> +
+        <code>--frozen-lockfile</code> in CI and fix #14. npm: commit
+        <code>package-lock.json</code> and use <code>npm ci</code>.
+      </p>
+    </div>
+  </div>
+
+  <h2>Q · Quality gates</h2>
+  <div class="recgroup">
+    <div class="rec">
+      <div class="head">
+        <span class="num">Q1</span>
+        <h4>CI runs everything</h4>
+      </div>
+      <p>
+        Typecheck, lint, <code>prettier --check</code>, tests with coverage, build,
+        <code>publint</code>. Fail on <code>no-explicit-any</code> warnings (#15).
+      </p>
+    </div>
+    <div class="rec">
+      <div class="head">
+        <span class="num">Q2</span>
+        <h4>Coverage threshold</h4>
+      </div>
+      <p>
+        <code>@vitest/coverage-v8</code> with a floor (e.g. 90% lines on <code>src/</code>); the
+        gaps in #21 are where the bugs were.
+      </p>
+    </div>
+    <div class="rec">
+      <div class="head">
+        <span class="num">Q3</span>
+        <h4>Deterministic timing tests</h4>
+      </div>
+      <p>
+        <code>vi.useFakeTimers()</code> for backoff/timeout tests instead of real 10 ms sleeps;
+        timing tests are the first to flake on shared CI runners.
+      </p>
+    </div>
+    <div class="rec">
+      <div class="head">
+        <span class="num">Q4</span>
+        <h4>Behavioral test matrix</h4>
+      </div>
+      <p>
+        One integration test per row of the "what gets retried" table (R2): method × status × body
+        type × idempotency flag. This is the contract users depend on; it should be executable.
+      </p>
+    </div>
+    <div class="rec">
+      <div class="head">
+        <span class="num">Q5</span>
+        <h4>Concurrency and leak tests</h4>
+      </div>
+      <p>
+        Listener counts return to baseline after a ticket resolves (#7); bulkhead
+        <code>running</code> returns to 0 during backoff (#5); a global cap holds across partitions
+        (#2).
+      </p>
+    </div>
+  </div>
+
+  <h2>D · Documentation</h2>
+  <div class="recgroup">
+    <div class="rec">
+      <div class="head">
+        <span class="num">D1</span>
+        <h4>Fix contradictions</h4>
+      </div>
+      <p>
+        Hero example needs <code>baseUrl</code> (#1); defaults table (#2); middleware
+        <code>options.url</code> (#11); test counts and <code>.claude/skills</code> (#17). Generate
+        the defaults table from code in a test so it cannot drift again.
+      </p>
+    </div>
+    <div class="rec">
+      <div class="head">
+        <span class="num">D2</span>
+        <h4>"What gets retried" table and idempotency warning</h4>
+      </div>
+      <p>
+        Near the top of the README — the single most important thing a production user needs to
+        know.
+      </p>
+    </div>
+    <div class="rec">
+      <div class="head">
+        <span class="num">D3</span>
+        <h4>API reference</h4>
+      </div>
+      <p>
+        TypeDoc from the <code>@internal</code>-stripped declarations, published to GitHub Pages.
+        JSDoc every public option with its default.
+      </p>
+    </div>
+    <div class="rec">
+      <div class="head">
+        <span class="num">D4</span>
+        <h4>Operations guide</h4>
+      </div>
+      <p>
+        Sizing <code>concurrency</code>/<code>maxQueueSize</code>, choosing
+        <code>timeoutMs</code> vs <code>totalTimeoutMs</code>, reading partition snapshots, wiring
+        metrics, shutdown sequence.
+      </p>
+    </div>
+    <div class="rec">
+      <div class="head">
+        <span class="num">D5</span>
+        <h4>Update the internal docs</h4>
+      </div>
+      <p>
+        AGENTS.md "Gotchas" and ONBOARDING.md must reflect the new invariants: per-attempt bulkhead
+        scheduling, retry policy, error <code>kind</code>s.
+      </p>
+    </div>
+  </div>
+
+  <section class="part" id="dod">
+    <p class="eyebrow">Release gate</p>
+    <h2>1.0.0 definition of done</h2>
+    <p class="intro">Ordered so that each step unblocks the next.</p>
+  </section>
+  <ul class="checklist">
+    <li>
+      <span class="box"></span
+      ><span><b>Unblock local dev and the README</b> — #1, #14, #17 (D1).</span>
+    </li>
+    <li>
+      <span class="box"></span
+      ><span><b>Retry loop correctness</b> — #3, #6, #8, #16, #25; tests for each (Q5).</span>
+    </li>
+    <li>
+      <span class="box"></span
+      ><span
+        ><b>Error model</b> — #4, #12, #23 (<code>ConfigurationError</code>), A1
+        <code>kind</code> discriminant; re-land the intent of <code>a6b4c0c</code>.</span
+      >
+    </li>
+    <li>
+      <span class="box"></span
+      ><span
+        ><b>Safe defaults</b> — #22 / R2 policy, A4 replayable bodies, R1 <code>Retry-After</code>;
+        D2 table; Q4 matrix.</span
+      >
+    </li>
+    <li>
+      <span class="box"></span
+      ><span><b>Resource correctness</b> — #7, #9, #20, O4 shutdown + <code>unref</code>.</span>
+    </li>
+    <li>
+      <span class="box"></span
+      ><span
+        ><b>Concurrency semantics</b> — #2 real global cap, #5 per-attempt scheduling, #24 origin
+        key, #19 snapshot exposed; Q5 tests.</span
+      >
+    </li>
+    <li>
+      <span class="box"></span><span><b>Deadlines</b> — R3 <code>totalTimeoutMs</code>.</span>
+    </li>
+    <li>
+      <span class="box"></span
+      ><span
+        ><b>Observability</b> — #13 / O1 terminal events with timings, O2 metrics sink, O3
+        redaction, O5 injectable fetch.</span
+      >
+    </li>
+    <li>
+      <span class="box"></span
+      ><span
+        ><b>API freeze</b> — A2, A3, A5 naming decisions, A6 helpers,
+        <code>Ticket.off()</code> (#18). Publish <code>1.0.0-rc.1</code>.</span
+      >
+    </li>
+    <li>
+      <span class="box"></span><span><b>Packaging and CI</b> — P1–P5, Q1–Q3, #15.</span>
+    </li>
+    <li>
+      <span class="box"></span
+      ><span
+        ><b>Docs</b> — D3 API reference, D4 operations guide, D5 internal docs, CHANGELOG with the
+        1.0.0 entry.</span
+      >
+    </li>
+    <li class="opt">
+      <span class="box"></span
+      ><span
+        ><b>Optional for 1.0, recommended for 1.x</b> — R4 retry budget, R5 circuit breaker, R6
+        first-attempt limiting.</span
+      >
+    </li>
+  </ul>
+
+  <h2>What is already solid</h2>
+  <div class="solid">
+    <p>
+      The ticket state machine ignores illegal transitions, makes double resolution impossible, and
+      treats <code>cancel()</code> as terminal — all tested. Cancel-vs-timeout precedence in
+      <code>executeRequest</code> is correct and covered by three focused tests.
+      <code>ValidationError</code> short-circuiting and <code>retryWhen(…, 0)</code> on the first
+      failure match the documented invariants. Middleware composition is correct. The
+      zero-dependency core, ESM-only stance, and self-contained <code>node:http</code> integration
+      tests are the right foundations to build 1.0 on.
+    </p>
+  </div>
+</div>

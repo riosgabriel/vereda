@@ -29,14 +29,12 @@ export interface BackoffOptions {
 }
 
 // ---------------------------------------------------------------------------
-// Trigger conditions
+// Timeout config
 // ---------------------------------------------------------------------------
 
-export interface TriggerConfig {
-  /** Hard timeout in ms before the request is cancelled and queued */
-  timeoutMs?: number
-  /** HTTP status codes that trigger queuing (e.g. 429, 503) */
-  queueOnStatus?: number[]
+export interface TimeoutConfig {
+  /** Hard per-attempt timeout in ms before the attempt is cancelled */
+  attemptMs?: number
 }
 
 // ---------------------------------------------------------------------------
@@ -48,7 +46,7 @@ export interface PartitionConfig {
   concurrency?: number
   /** Max number of pending items in the queue before rejecting new ones */
   maxQueueSize?: number
-  trigger?: TriggerConfig
+  timeout?: TimeoutConfig
   retry?: RetryConfig
 }
 
@@ -59,6 +57,12 @@ export interface PartitionConfig {
 export interface RetryConfig {
   maxRetries?: number
   backoff?: BackoffFn | BackoffOptions
+  /** HTTP status codes that trigger retry (e.g. 429, 500, 503).
+   *  Default: [408, 425, 429, 500, 502, 503, 504] */
+  retryOnStatus?: number[]
+  /** Whether to retry non-idempotent methods (POST, PATCH, CONNECT).
+   *  Default: false. POST is also retried when an Idempotency-Key header is present. */
+  idempotent?: boolean
   /** Optional predicate to decide whether a failed attempt should be retried.
    *  Called with the error and the zero-based attempt number:
    *  - 0 = the first attempt (called client-side before the retry loop)
@@ -99,12 +103,12 @@ export type LifecycleEventMap = {
 export interface RequestOptions<T = unknown> {
   method?: string
   headers?: Record<string, string>
-  body?: BodyInit
+  body?: BodyInit | (() => BodyInit)
   /** Named bulkhead partition. Defaults to hostname. */
   partition?: string
   /** Schema parse function. Use withZod() or custom. */
   parse?: ParseFn<T>
-  trigger?: TriggerConfig
+  timeout?: TimeoutConfig
   retry?: RetryConfig
   /** Signal to cancel the request externally */
   signal?: AbortSignal
@@ -117,8 +121,8 @@ export interface RequestOptions<T = unknown> {
 export interface ClientConfig {
   /** Base URL prepended to all requests */
   baseUrl?: string
-  /** Default trigger config */
-  trigger?: TriggerConfig
+  /** Default timeout config */
+  timeout?: TimeoutConfig
   /** Default retry config */
   retry?: RetryConfig
   /** Global concurrency across all partitions */
