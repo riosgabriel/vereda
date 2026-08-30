@@ -23,7 +23,7 @@ Prettier and ESLint are configured. Run `npm run format` and `npm run lint:fix` 
 - **Zod boundary**: zod is an optional peer dependency. Only `src/adapters/zod.ts` may import it; `src/core/` must stay zod-free.
 - **`dist/` is a gitignored** build artifact — never edit `dist/`.
 - `package-lock.json` is committed (npm is the package manager). CI uses `npm ci`.
-- README prose can drift (e.g. it claims 36 tests; suite has 30). Trust code, config, and test output over README claims.
+- README prose can drift (e.g. it claims N tests; suite has a different count). Trust code, config, and test output over README claims.
 
 ## Architecture
 
