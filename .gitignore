@@ -36,3 +36,7 @@ Desktop.ini
 # Misc
 *.tgz
 *.tar.gz
+
+# Local planning docs
+PLAN.md
+TRACKER.md
