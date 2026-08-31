@@ -122,8 +122,8 @@ export class HttpClient {
       return
     }
 
-    let retryConfig: RetryConfig = this.mergeRetry()
-    let timeoutConfig: TimeoutConfig = this.mergeTimeout(options)
+    const retryConfig: RetryConfig = this.mergeRetry()
+    const timeoutConfig: TimeoutConfig = this.mergeTimeout(options)
     const bulkhead = this.bulkheads.get(partitionName)
 
     this.emit("request", { ticketId: ticket.id, url: fullUrl, method: options.method ?? "GET" })
