@@ -22,7 +22,7 @@ export function defaultRetryPolicy(
     options: RequestOptions<unknown>
     /** The retry config from the ticket/client */
     retryConfig: RetryConfig
-  }
+  },
 ): boolean {
   const { options, retryConfig } = ctx
 

@@ -1,18 +1,7 @@
 import { EventEmitter } from "node:events"
-import type {
-  ClientConfig,
-  Logger,
-  RequestOptions,
-  RetryConfig,
-  TimeoutConfig,
-} from "./types.js"
+import type { ClientConfig, Logger, RequestOptions, RetryConfig, TimeoutConfig } from "./types.js"
 import type { AppError } from "./errors.js"
-import {
-  NetworkError,
-  CancelledError,
-  TimeoutError,
-  ValidationError,
-} from "./errors.js"
+import { NetworkError, CancelledError, TimeoutError, ValidationError } from "./errors.js"
 import { BulkheadRegistry } from "../queue/bulkhead.js"
 import { executeRequest, type MiddlewareFn } from "../queue/executor.js"
 import { runRetryLoop } from "../queue/retry.js"
