@@ -7,7 +7,7 @@ export type {
   Logger,
   BackoffFn,
   BackoffOptions,
-  TriggerConfig,
+  TimeoutConfig,
   RetryConfig,
   PartitionConfig,
   LifecycleEventMap,
@@ -15,16 +15,11 @@ export type {
 export {
   RequestError,
   NetworkError,
-  HttpError,
-  RetryableStatusError,
-  TimeoutError,
   ValidationError,
+  TimeoutError,
   CancelledError,
-  QueueFullError,
-  ConfigurationError,
   MaxRetriesExceededError,
 } from "./errors.js"
 export type { AppError } from "./errors.js"
-export { validateConfig } from "./validate.js"
 export { Ticket, createTicket } from "../ticket/ticket.js"
 export type { TicketStatus, TicketUpdate, TicketController } from "../ticket/ticket.js"

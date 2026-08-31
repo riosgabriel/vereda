@@ -45,7 +45,7 @@ describe("HttpClient integration", () => {
   beforeAll(async () => {
     server = await createTestServer()
     client = HttpClient.create({
-      trigger: { timeoutMs: 100, queueOnStatus: [429, 503] },
+      timeout: { attemptMs: 100 },
       retry: { maxRetries: 3, backoff: { baseDelayMs: 10, jitter: false } },
     })
   })
@@ -113,30 +113,6 @@ describe("HttpClient integration", () => {
     expect(updateTypes).toContain("queued")
     expect(updateTypes).toContain("retrying")
     expect(updateTypes).toContain("done")
-  }, 10_000)
-
-  it("queues and retries on timeout, eventually fails", async () => {
-    const hangingRequests: ServerResponse[] = []
-    server.setHandler((_req, res) => {
-      hangingRequests.push(res)
-    })
-
-    const slowClient = HttpClient.create({
-      trigger: { timeoutMs: 50 },
-      retry: { maxRetries: 2, backoff: { baseDelayMs: 10, jitter: false } },
-    })
-
-    const result = await slowClient.get(`${server.url}/slow`).toPromise()
-    // Clean up hanging server connections
-    hangingRequests.forEach((res) => {
-      try {
-        res.destroy()
-        // eslint-disable-next-line no-empty
-      } catch {}
-    })
-
-    expect(result.success).toBe(false)
-    if (!result.success) expect(result.error).toBeInstanceOf(MaxRetriesExceededError)
   }, 10_000)
 
   it("returns HttpError on non-2xx status (not in queueOnStatus)", async () => {

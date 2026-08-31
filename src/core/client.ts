@@ -1,20 +1,17 @@
 import { EventEmitter } from "node:events"
 import type {
   ClientConfig,
-  LifecycleEventMap,
   Logger,
   RequestOptions,
   RetryConfig,
-  TriggerConfig,
+  TimeoutConfig,
 } from "./types.js"
 import type { AppError } from "./errors.js"
 import {
   NetworkError,
-  HttpError,
   CancelledError,
   TimeoutError,
   ValidationError,
-  QueueFullError,
 } from "./errors.js"
 import { BulkheadRegistry } from "../queue/bulkhead.js"
 import { executeRequest, type MiddlewareFn } from "../queue/executor.js"
@@ -57,18 +54,12 @@ export class HttpClient {
   // Lifecycle events
   // ---------------------------------------------------------------------------
 
-  on<K extends keyof LifecycleEventMap>(
-    event: K,
-    listener: (data: LifecycleEventMap[K]) => void,
-  ): this {
+  on(event: string, listener: (...args: any[]) => void): this {
     this.emitter.on(event, listener)
     return this
   }
 
-  off<K extends keyof LifecycleEventMap>(
-    event: K,
-    listener: (data: LifecycleEventMap[K]) => void,
-  ): this {
+  off(event: string, listener: (...args: any[]) => void): this {
     this.emitter.off(event, listener)
     return this
   }
@@ -131,8 +122,8 @@ export class HttpClient {
       return
     }
 
-    const triggerConfig = this.mergeTrigger(options)
-    const retryConfig = this.mergeRetry(options)
+    let retryConfig: RetryConfig = this.mergeRetry()
+    let timeoutConfig: TimeoutConfig = this.mergeTimeout(options)
     const bulkhead = this.bulkheads.get(partitionName)
 
     this.emit("request", { ticketId: ticket.id, url: fullUrl, method: options.method ?? "GET" })
@@ -143,7 +134,13 @@ export class HttpClient {
       partition: partitionName,
     })
     const result = await executeRequest(
-      { url: fullUrl, options, triggerConfig, signal: ticket.signal },
+      {
+        url: fullUrl,
+        options,
+        retryConfig,
+        timeoutConfig,
+        signal: ticket.signal,
+      },
       this.middlewares,
     )
 
@@ -160,13 +157,12 @@ export class HttpClient {
 
       case "error":
         // Non-retryable errors resolve immediately
-        if (result.error instanceof ValidationError || result.error instanceof HttpError) {
+        if (result.error instanceof ValidationError) {
           this.emit("failure", { ticketId: ticket.id, url, error: result.error })
           controller.markDone({ success: false, error: result.error } as never)
           return
         }
-        // Retryable errors (NetworkError, RetryableStatusError, TimeoutError)
-        // and other retriable kinds go through retryWhen then bulkhead
+        // Let the consumer veto retrying before the request is queued
         if (this.retryVetoed(retryConfig, result.error, ticket, controller, url)) return
         controller.markQueued()
         this._scheduleInBulkhead(
@@ -174,15 +170,15 @@ export class HttpClient {
           controller,
           url,
           options,
-          triggerConfig,
           retryConfig,
+          timeoutConfig,
           partitionName,
           bulkhead,
         )
         return
 
       case "timeout": {
-        const error = new TimeoutError(url, triggerConfig.timeoutMs ?? 0)
+        const error = new TimeoutError(url, timeoutConfig.attemptMs ?? 0)
         if (this.retryVetoed(retryConfig, error, ticket, controller, url)) return
         controller.markQueued()
         this._scheduleInBulkhead(
@@ -190,8 +186,8 @@ export class HttpClient {
           controller,
           url,
           options,
-          triggerConfig,
           retryConfig,
+          timeoutConfig,
           partitionName,
           bulkhead,
         )
@@ -223,8 +219,8 @@ export class HttpClient {
     controller: TicketController<unknown>,
     url: string,
     options: RequestOptions<unknown>,
-    triggerConfig: TriggerConfig,
     retryConfig: RetryConfig,
+    timeoutConfig: TimeoutConfig,
     partitionName: string,
     bulkhead: ReturnType<BulkheadRegistry["get"]>,
   ): void {
@@ -239,8 +235,8 @@ export class HttpClient {
         await runRetryLoop({
           url,
           requestOptions: options,
-          triggerConfig,
           retryConfig,
+          timeoutConfig: timeoutConfig,
           ticket,
           controller,
           middleware: this.middlewares,
@@ -264,16 +260,10 @@ export class HttpClient {
         }
       })
       .catch((err: unknown) => {
-        if (err instanceof QueueFullError) {
+        if (err instanceof Error) {
           this.emit("failure", { ticketId: ticket.id, url, error: err })
           controller.markDone({ success: false, error: err } as never)
-          return
         }
-        const error = new NetworkError(err instanceof Error ? err.message : "Queue error", {
-          cause: err,
-        })
-        this.emit("failure", { ticketId: ticket.id, url, error })
-        controller.markDone({ success: false, error } as never)
       })
   }
 
@@ -324,15 +314,18 @@ export class HttpClient {
     return url
   }
 
-  private mergeTrigger(options: RequestOptions<unknown>): TriggerConfig {
-    return { ...this.config.trigger, ...options.trigger }
+  private mergeRetry(): RetryConfig {
+    return { ...this.config.retry }
   }
 
-  private mergeRetry(options: RequestOptions<unknown>): RetryConfig {
-    return { ...this.config.retry, ...options.retry }
+  private mergeTimeout(options: RequestOptions<unknown>): TimeoutConfig {
+    return {
+      ...this.config.timeout,
+      attemptMs: options.timeoutMs,
+    } as TimeoutConfig
   }
 
-  private emit<K extends keyof LifecycleEventMap>(event: K, data: LifecycleEventMap[K]): void {
+  private emit(event: string, data: unknown): void {
     this.emitter.emit(event, data)
   }
 }

@@ -8,8 +8,8 @@ export function validateConfig(config: ClientConfig): void {
     }
   }
 
-  if (config.trigger?.timeoutMs !== undefined && config.trigger.timeoutMs <= 0) {
-    throw new ConfigurationError("trigger.timeoutMs must be positive")
+  if (config.timeout?.attemptMs !== undefined && config.timeout.attemptMs <= 0) {
+    throw new ConfigurationError("timeout.attemptMs must be positive")
   }
 
   validateRetryConfig(config.retry, "retry")

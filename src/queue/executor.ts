@@ -1,11 +1,12 @@
-import { HttpError, NetworkError, RetryableStatusError, ValidationError } from "../core/errors.js"
+import { NetworkError, ValidationError } from "../core/errors.js"
 import type { AppError } from "../core/errors.js"
-import type { RequestOptions, Result, TriggerConfig } from "../core/types.js"
+import type { RequestOptions, Result, RetryConfig } from "../core/types.js"
 
 export interface ExecuteRequest {
   url: string
   options: RequestOptions<unknown>
-  triggerConfig: TriggerConfig
+  retryConfig: RetryConfig
+  timeoutConfig: { attemptMs?: number }
   signal: AbortSignal
 }
 
@@ -24,14 +25,14 @@ export async function executeRequest(
   req: ExecuteRequest,
   middleware: MiddlewareFn[],
 ): Promise<ExecuteResult> {
-  const { url, options, triggerConfig, signal } = req
+  const { url, options, retryConfig, timeoutConfig, signal } = req
 
   if (signal.aborted || options.signal?.aborted) {
     return { kind: "cancelled" }
   }
 
-  const timeoutMs = triggerConfig.timeoutMs
-  const retryOnStatus = triggerConfig.queueOnStatus ?? []
+  const timeoutMs = timeoutConfig?.attemptMs
+  const retryOnStatus = retryConfig.retryOnStatus ?? []
 
   // Build the fetch call wrapped in middleware
   const fetchCall = buildFetchCall(url, options)
@@ -84,7 +85,7 @@ export async function executeRequest(
     }
   }
 
-  // Check if status code is retryable (was "queued_status", now typed error)
+  // Check if status code triggers retry (retryOnStatus)
   if (retryOnStatus.includes(response.status)) {
     // Cancel the response body since caller won't read it
     try {
@@ -94,11 +95,7 @@ export async function executeRequest(
     }
     return {
       kind: "error",
-      error: new RetryableStatusError(
-        `HTTP ${response.status} ${response.statusText}`,
-        response.status,
-        response,
-      ),
+      error: new Error(`HTTP ${response.status} ${response.statusText}`) as AppError,
     }
   }
 
@@ -106,11 +103,7 @@ export async function executeRequest(
   if (!response.ok) {
     return {
       kind: "error",
-      error: new HttpError(
-        `HTTP ${response.status} ${response.statusText}`,
-        response.status,
-        response,
-      ),
+      error: new Error(`HTTP ${response.status} ${response.statusText}`) as AppError,
     }
   }
 

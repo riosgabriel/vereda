@@ -11,7 +11,7 @@ describe("validateConfig", () => {
     expect(() =>
       validateConfig({
         concurrency: 10,
-        trigger: { timeoutMs: 1000, queueOnStatus: [429, 503] },
+        timeout: { attemptMs: 1000 },
         retry: { maxRetries: 3, backoff: { baseDelayMs: 200, maxDelayMs: 30000 } },
         partitions: {
           api: { concurrency: 5, maxQueueSize: 50 },
@@ -42,12 +42,12 @@ describe("validateConfig", () => {
     expect(() => validateConfig({ retry: { maxRetries: -1 } })).toThrow(ConfigurationError)
   })
 
-  it("rejects timeoutMs <= 0", () => {
-    expect(() => validateConfig({ trigger: { timeoutMs: 0 } })).toThrow(ConfigurationError)
+  it("rejects attemptMs <= 0", () => {
+    expect(() => validateConfig({ timeout: { attemptMs: 0 } })).toThrow(ConfigurationError)
   })
 
-  it("rejects negative timeoutMs", () => {
-    expect(() => validateConfig({ trigger: { timeoutMs: -100 } })).toThrow(ConfigurationError)
+  it("rejects negative attemptMs", () => {
+    expect(() => validateConfig({ timeout: { attemptMs: -100 } })).toThrow(ConfigurationError)
   })
 
   it("rejects baseDelayMs > maxDelayMs", () => {

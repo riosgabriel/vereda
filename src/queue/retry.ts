@@ -1,7 +1,7 @@
 import { buildBackoffFn } from "../core/backoff.js"
 import { CancelledError, MaxRetriesExceededError, TimeoutError } from "../core/errors.js"
 import type { AppError } from "../core/errors.js"
-import type { RequestOptions, RetryConfig, TriggerConfig } from "../core/types.js"
+import type { RequestOptions, RetryConfig } from "../core/types.js"
 import type { Ticket } from "../ticket/ticket.js"
 import type { TicketController } from "../ticket/ticket.js"
 import { executeRequest, type MiddlewareFn } from "./executor.js"
@@ -9,8 +9,8 @@ import { executeRequest, type MiddlewareFn } from "./executor.js"
 export interface RetryJobOptions {
   url: string
   requestOptions: RequestOptions<unknown>
-  triggerConfig: TriggerConfig
   retryConfig: RetryConfig
+  timeoutConfig: { attemptMs?: number }
   ticket: Ticket<unknown>
   controller: TicketController<unknown>
   middleware: MiddlewareFn[]
@@ -21,8 +21,8 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
   const {
     url,
     requestOptions,
-    triggerConfig,
     retryConfig,
+    timeoutConfig,
     ticket,
     controller,
     middleware,
@@ -32,7 +32,7 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
   const maxRetries = retryConfig.maxRetries ?? 3
   const backoffFn = buildBackoffFn(retryConfig.backoff)
 
-  let lastError: AppError = new TimeoutError(url, triggerConfig.timeoutMs ?? 0)
+  let lastError: AppError = new TimeoutError(url, timeoutConfig.attemptMs ?? 0)
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     if (ticket.isCancelled) {
@@ -66,7 +66,8 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
       {
         url,
         options: requestOptions,
-        triggerConfig,
+        retryConfig,
+        timeoutConfig,
         signal: ticket.signal,
       },
       middleware,
@@ -82,7 +83,7 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
         return
 
       case "timeout":
-        lastError = new TimeoutError(url, triggerConfig.timeoutMs ?? 0)
+        lastError = new TimeoutError(url, timeoutConfig.attemptMs ?? 0)
         break
 
       case "error":

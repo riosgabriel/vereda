@@ -29,31 +29,16 @@ export interface BackoffOptions {
 }
 
 // ---------------------------------------------------------------------------
-// Trigger conditions
+// Timeout config — per-attempt timeout (replaces trigger.timeoutMs)
 // ---------------------------------------------------------------------------
 
-export interface TriggerConfig {
+export interface TimeoutConfig {
   /** Hard timeout in ms before the request is cancelled and queued */
-  timeoutMs?: number
-  /** HTTP status codes that trigger queuing (e.g. 429, 503) */
-  queueOnStatus?: number[]
+  attemptMs?: number
 }
 
 // ---------------------------------------------------------------------------
-// Partition / bulkhead config
-// ---------------------------------------------------------------------------
-
-export interface PartitionConfig {
-  /** Max concurrent in-flight retries for this partition */
-  concurrency?: number
-  /** Max number of pending items in the queue before rejecting new ones */
-  maxQueueSize?: number
-  trigger?: TriggerConfig
-  retry?: RetryConfig
-}
-
-// ---------------------------------------------------------------------------
-// Retry config
+// Retry config — now includes retryOnStatus (replaces trigger.queueOnStatus)
 // ---------------------------------------------------------------------------
 
 export interface RetryConfig {
@@ -65,6 +50,42 @@ export interface RetryConfig {
    *  - 1, 2, … = retries (called inside the loop, after attempt 0)
    *  Returning `false` surfaces the error immediately without retrying. */
   retryWhen?: (error: AppError, attempt: number) => boolean
+  /** HTTP status codes that should be retried (e.g. 500, 502, 503).
+   *  Default: [408, 425, 429, 500, 502, 503, 504] */
+  retryOnStatus?: number[]
+  /** Whether to retry non-idempotent methods (POST, PATCH, etc.).
+   *  Default: false. Can be overridden per-request via options. */
+  idempotent?: boolean
+}
+
+// ---------------------------------------------------------------------------
+// Partition / bulkhead config
+// ---------------------------------------------------------------------------
+
+export interface PartitionConfig {
+  /** Max concurrent in-flight retries for this partition */
+  concurrency?: number
+  /** Max number of pending items in the queue before rejecting new ones */
+  maxQueueSize?: number
+  retry?: RetryConfig
+}
+
+// ---------------------------------------------------------------------------
+// Request options
+// ---------------------------------------------------------------------------
+
+export interface RequestOptions<T = unknown> {
+  method?: string
+  headers?: Record<string, string>
+  body?: BodyInit
+  /** Named bulkhead partition. Defaults to hostname. */
+  partition?: string
+  /** Schema parse function. Use withZod() or custom. */
+  parse?: ParseFn<T>
+  /** Hard timeout in ms for this request (overrides default) */
+  timeoutMs?: number
+  /** Signal to cancel the request externally */
+  signal?: AbortSignal
 }
 
 // ---------------------------------------------------------------------------
@@ -93,33 +114,15 @@ export type LifecycleEventMap = {
 }
 
 // ---------------------------------------------------------------------------
-// Request options
-// ---------------------------------------------------------------------------
-
-export interface RequestOptions<T = unknown> {
-  method?: string
-  headers?: Record<string, string>
-  body?: BodyInit
-  /** Named bulkhead partition. Defaults to hostname. */
-  partition?: string
-  /** Schema parse function. Use withZod() or custom. */
-  parse?: ParseFn<T>
-  trigger?: TriggerConfig
-  retry?: RetryConfig
-  /** Signal to cancel the request externally */
-  signal?: AbortSignal
-}
-
-// ---------------------------------------------------------------------------
 // Client config
 // ---------------------------------------------------------------------------
 
 export interface ClientConfig {
   /** Base URL prepended to all requests */
   baseUrl?: string
-  /** Default trigger config */
-  trigger?: TriggerConfig
-  /** Default retry config */
+  /** Default timeout config (per-attempt timeout, replaces trigger.timeoutMs) */
+  timeout?: TimeoutConfig
+  /** Default retry config (includes retryOnStatus, replaces trigger.queueOnStatus) */
   retry?: RetryConfig
   /** Global concurrency across all partitions */
   concurrency?: number
