@@ -1,5 +1,5 @@
 import { ConfigurationError } from "./errors.js"
-import type { ClientConfig, PartitionConfig, RetryConfig } from "./types.js"
+import type { ClientConfig, PartitionConfig, RetryConfig, TimeoutConfig } from "./types.js"
 
 export function validateConfig(config: ClientConfig): void {
   if (config.concurrency !== undefined) {
@@ -8,12 +8,17 @@ export function validateConfig(config: ClientConfig): void {
     }
   }
 
-  if (config.trigger?.timeoutMs !== undefined && config.trigger.timeoutMs <= 0) {
-    throw new ConfigurationError("trigger.timeoutMs must be positive")
-  }
-
+  validateTimeoutConfig(config.timeout, "timeout")
   validateRetryConfig(config.retry, "retry")
   validatePartitions(config.partitions)
+}
+
+function validateTimeoutConfig(timeout: TimeoutConfig | undefined, prefix: string): void {
+  if (!timeout) return
+
+  if (timeout.attemptMs !== undefined && timeout.attemptMs <= 0) {
+    throw new ConfigurationError(`${prefix}.attemptMs must be positive`)
+  }
 }
 
 function validateRetryConfig(retry: RetryConfig | undefined, prefix: string): void {
@@ -49,5 +54,6 @@ function validatePartitions(partitions: Record<string, PartitionConfig> | undefi
       throw new ConfigurationError(`partitions.${name}.maxQueueSize must be at least 1`)
     }
     validateRetryConfig(config.retry, `partitions.${name}.retry`)
+    validateTimeoutConfig(config.timeout, `partitions.${name}.timeout`)
   }
 }

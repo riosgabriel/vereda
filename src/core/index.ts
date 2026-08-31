@@ -7,11 +7,12 @@ export type {
   Logger,
   BackoffFn,
   BackoffOptions,
-  TriggerConfig,
+  TimeoutConfig,
   RetryConfig,
   PartitionConfig,
   LifecycleEventMap,
 } from "./types.js"
+export { DEFAULT_RETRY_ON_STATUS } from "./types.js"
 export {
   RequestError,
   NetworkError,

@@ -1,7 +1,7 @@
 import { createServer, type Server, type ServerResponse } from "node:http"
 import { describe, it, expect, beforeAll, afterAll } from "vitest"
 import { executeRequest } from "../../src/queue/executor.js"
-import type { RequestOptions, TriggerConfig } from "../../src/core/types.js"
+import type { RequestOptions, TimeoutConfig, RetryConfig } from "../../src/core/types.js"
 
 /**
  * Pins the timeout-vs-external-abort precedence in executeRequest.
@@ -43,13 +43,15 @@ describe("executeRequest timeout/abort precedence", () => {
     }
 
     const ticketController = new AbortController()
-    const triggerConfig: TriggerConfig = { timeoutMs: 30 }
+    const timeoutConfig: TimeoutConfig = { attemptMs: 30 }
+    const retryConfig: RetryConfig = {}
 
     const result = await executeRequest(
       {
         url,
         options: {} as RequestOptions<unknown>,
-        triggerConfig,
+        timeoutConfig,
+        retryConfig,
         signal: ticketController.signal,
       },
       [],
@@ -73,14 +75,16 @@ describe("executeRequest timeout/abort precedence", () => {
 
     const ticketController = new AbortController()
     const externalController = new AbortController()
-    const triggerConfig: TriggerConfig = { timeoutMs: 200 }
+    const timeoutConfig: TimeoutConfig = { attemptMs: 200 }
+    const retryConfig: RetryConfig = {}
     setTimeout(() => externalController.abort(), 20)
 
     const result = await executeRequest(
       {
         url,
         options: { signal: externalController.signal } as RequestOptions<unknown>,
-        triggerConfig,
+        timeoutConfig,
+        retryConfig,
         signal: ticketController.signal,
       },
       [],
@@ -98,13 +102,15 @@ describe("executeRequest timeout/abort precedence", () => {
     const ticketController = new AbortController()
     const externalController = new AbortController()
     externalController.abort()
-    const triggerConfig: TriggerConfig = { timeoutMs: 50 }
+    const timeoutConfig: TimeoutConfig = { attemptMs: 50 }
+    const retryConfig: RetryConfig = {}
 
     const result = await executeRequest(
       {
         url,
         options: { signal: externalController.signal } as RequestOptions<unknown>,
-        triggerConfig,
+        timeoutConfig,
+        retryConfig,
         signal: ticketController.signal,
       },
       [],

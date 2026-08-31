@@ -5,7 +5,7 @@ import type {
   Logger,
   RequestOptions,
   RetryConfig,
-  TriggerConfig,
+  TimeoutConfig,
 } from "./types.js"
 import type { AppError } from "./errors.js"
 import {
@@ -131,7 +131,7 @@ export class HttpClient {
       return
     }
 
-    const triggerConfig = this.mergeTrigger(options)
+    const timeoutConfig = this.mergeTimeout(options)
     const retryConfig = this.mergeRetry(options)
     const bulkhead = this.bulkheads.get(partitionName)
 
@@ -143,7 +143,7 @@ export class HttpClient {
       partition: partitionName,
     })
     const result = await executeRequest(
-      { url: fullUrl, options, triggerConfig, signal: ticket.signal },
+      { url: fullUrl, options, timeoutConfig, retryConfig, signal: ticket.signal },
       this.middlewares,
     )
 
@@ -174,7 +174,7 @@ export class HttpClient {
           controller,
           url,
           options,
-          triggerConfig,
+          timeoutConfig,
           retryConfig,
           partitionName,
           bulkhead,
@@ -182,7 +182,7 @@ export class HttpClient {
         return
 
       case "timeout": {
-        const error = new TimeoutError(url, triggerConfig.timeoutMs ?? 0)
+        const error = new TimeoutError(url, timeoutConfig.attemptMs ?? 0)
         if (this.retryVetoed(retryConfig, error, ticket, controller, url)) return
         controller.markQueued()
         this._scheduleInBulkhead(
@@ -190,7 +190,7 @@ export class HttpClient {
           controller,
           url,
           options,
-          triggerConfig,
+          timeoutConfig,
           retryConfig,
           partitionName,
           bulkhead,
@@ -223,7 +223,7 @@ export class HttpClient {
     controller: TicketController<unknown>,
     url: string,
     options: RequestOptions<unknown>,
-    triggerConfig: TriggerConfig,
+    timeoutConfig: TimeoutConfig,
     retryConfig: RetryConfig,
     partitionName: string,
     bulkhead: ReturnType<BulkheadRegistry["get"]>,
@@ -239,7 +239,7 @@ export class HttpClient {
         await runRetryLoop({
           url,
           requestOptions: options,
-          triggerConfig,
+          timeoutConfig,
           retryConfig,
           ticket,
           controller,
@@ -324,8 +324,8 @@ export class HttpClient {
     return url
   }
 
-  private mergeTrigger(options: RequestOptions<unknown>): TriggerConfig {
-    return { ...this.config.trigger, ...options.trigger }
+  private mergeTimeout(options: RequestOptions<unknown>): TimeoutConfig {
+    return { ...this.config.timeout, ...options.timeout }
   }
 
   private mergeRetry(options: RequestOptions<unknown>): RetryConfig {

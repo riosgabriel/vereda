@@ -1,11 +1,13 @@
 import { HttpError, NetworkError, RetryableStatusError, ValidationError } from "../core/errors.js"
 import type { AppError } from "../core/errors.js"
-import type { RequestOptions, Result, TriggerConfig } from "../core/types.js"
+import type { RequestOptions, Result, RetryConfig, TimeoutConfig } from "../core/types.js"
+import { DEFAULT_RETRY_ON_STATUS } from "../core/types.js"
 
 export interface ExecuteRequest {
   url: string
   options: RequestOptions<unknown>
-  triggerConfig: TriggerConfig
+  timeoutConfig: TimeoutConfig
+  retryConfig: RetryConfig
   signal: AbortSignal
 }
 
@@ -24,14 +26,14 @@ export async function executeRequest(
   req: ExecuteRequest,
   middleware: MiddlewareFn[],
 ): Promise<ExecuteResult> {
-  const { url, options, triggerConfig, signal } = req
+  const { url, options, timeoutConfig, retryConfig, signal } = req
 
   if (signal.aborted || options.signal?.aborted) {
     return { kind: "cancelled" }
   }
 
-  const timeoutMs = triggerConfig.timeoutMs
-  const retryOnStatus = triggerConfig.queueOnStatus ?? []
+  const timeoutMs = timeoutConfig.attemptMs
+  const retryOnStatus = retryConfig.retryOnStatus ?? [...DEFAULT_RETRY_ON_STATUS]
 
   // Build the fetch call wrapped in middleware
   const fetchCall = buildFetchCall(url, options)

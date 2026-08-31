@@ -38,8 +38,6 @@ if (result.success) {
 }
 ```
 
-> **Note:** Config names shown here (`retry.maxRetries`, `timeout.attemptMs`) are the 1.0 target names. Current code uses `maxAttempts` and `trigger.timeoutMs` — these will be renamed as part of the 1.0 effort.
-
 ## Why Vereda?
 
 `fetch` gives you one attempt. Production systems need more:
@@ -168,8 +166,6 @@ With zero configuration:
 | Queue-on status codes | None (all non-2xx responses are retried as errors) |
 | First-attempt concurrency | Unbounded — the initial attempt bypasses the bulkhead |
 
-> **Note:** This README describes the upcoming 1.0 API surface. Some config names in code samples (`retry.maxRetries`, `timeout.attemptMs`, `retry.retryOnStatus`) are being renamed from their current names (`maxAttempts`, `trigger.timeoutMs`, `trigger.queueOnStatus`) as part of the 1.0 effort. The behavior and defaults described here are accurate.
-
 ## Quick start
 
 ```bash
@@ -199,12 +195,10 @@ Installing from GitHub runs the build via the `prepare` script, so `dist/` is re
 
 Configure retries globally or per request. Per-request settings override global ones.
 
-> **Note:** only global and per-request `retry`/`trigger` are applied today. A partition's `concurrency` and `maxQueueSize` take effect, but its `trigger` and `retry` are currently ignored.
-
 ```typescript
 const client = HttpClient.create({
   retry: {
-    maxAttempts: 5,
+    maxRetries: 5,
     backoff: {
       baseDelayMs: 1000,
       maxDelayMs: 30000,
@@ -269,21 +263,24 @@ When a partition's queue is full, the ticket resolves with a `NetworkError`. Tha
 
 ```typescript
 const client = HttpClient.create({
-  trigger: {
-    timeoutMs: 5000,
-    queueOnStatus: [429, 503],
+  timeout: {
+    attemptMs: 5000,
+  },
+  retry: {
+    retryOnStatus: [429, 503],
   },
 });
 ```
 
-- `timeoutMs` — a hard per-attempt timeout. The attempt is aborted and the request joins the retry loop.
-- `queueOnStatus` — status codes that mean the server is busy rather than broken. Matching responses are queued for retry without being treated as errors.
+- `attemptMs` — a hard per-attempt timeout. The attempt is aborted and the request joins the retry loop.
+- `retryOnStatus` — status codes that mean the server is busy rather than broken. Matching responses are queued for retry without being treated as errors.
 
 Both settings merge per request:
 
 ```typescript
 client.get("/api/data", {
-  trigger: { timeoutMs: 10000, queueOnStatus: [429, 500, 502, 503, 504] },
+  timeout: { attemptMs: 10000 },
+  retry: { retryOnStatus: [429, 500, 502, 503, 504] },
 });
 ```
 
