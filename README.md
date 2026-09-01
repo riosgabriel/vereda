@@ -212,6 +212,8 @@ By default, a failed attempt is retried only when the error is transient **and**
 
 Idempotent means `GET`, `HEAD`, `OPTIONS`, `PUT`, `DELETE`, or `TRACE`. Non-idempotent methods (`POST`, `PATCH`, `CONNECT`) are retried only with `retry: { idempotent: true }` or an `Idempotency-Key` header. A user-supplied `retryWhen` is consulted after this policy and can only veto, never force, a retry. The busy-status list is `retry.retryOnStatus`.
 
+`maxRetries: 0` disables retries entirely — a failed request resolves with its own error, unwrapped.
+
 ```typescript
 const client = HttpClient.create({
   retry: {

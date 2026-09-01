@@ -110,6 +110,13 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
     }
   }
 
+  if (maxRetries === 0) {
+    // Zero retries configured/executed — surface the underlying error raw,
+    // never wrapped in MaxRetriesExceededError.
+    controller.markDone({ success: false, error: lastError } as never)
+    return
+  }
+
   // All retries exhausted — total attempts = 1 (first) + maxRetries (loop)
   const totalAttempts = maxRetries + 1
   controller.markDone({
