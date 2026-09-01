@@ -38,6 +38,7 @@ Three public entry points, mirrored by `package.json` `exports`:
 Request flow: `client.get()` returns a `Ticket` synchronously → first attempt fires **outside** the bulkhead → only retries go through the per-host partition bulkhead (`src/queue/`). Behavioral invariants — preserve these when touching retry/queue logic:
 
 - First attempt skips the bulkhead (bulkhead throttles retry traffic only).
+- Default retry policy — only `network`/`timeout`/`retryable_status` errors on idempotent requests (or `retry.idempotent`/`Idempotency-Key` opt-in) are retried; user `retryWhen` is consulted after it and can only veto.
 - `retryWhen` is consulted after **every** failed attempt, including attempt 0.
 - `ValidationError` (failed `parse`) resolves immediately and is never retried.
 - Cancellation wins over timeouts/retries; a cancelled ticket is never retried.

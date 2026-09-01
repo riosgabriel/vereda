@@ -66,6 +66,9 @@ export interface RetryConfig {
   /** HTTP status codes that trigger retry (e.g. 408, 429, 500, 502, 503, 504).
    *  Default: [408, 425, 429, 500, 502, 503, 504] */
   retryOnStatus?: number[]
+  /** Allows retrying non-idempotent methods (POST/PATCH/CONNECT). An
+   *  `Idempotency-Key` header also enables retries. Default: false. */
+  idempotent?: boolean
   /** Optional predicate to decide whether a failed attempt should be retried.
    *  Called with the error and the zero-based attempt number:
    *  - 0 = the first attempt (called client-side before the retry loop)

@@ -8,16 +8,10 @@ import type {
   TimeoutConfig,
 } from "./types.js"
 import type { AppError } from "./errors.js"
-import {
-  NetworkError,
-  HttpError,
-  CancelledError,
-  TimeoutError,
-  ValidationError,
-  QueueFullError,
-} from "./errors.js"
+import { NetworkError, CancelledError, TimeoutError, QueueFullError } from "./errors.js"
 import { BulkheadRegistry } from "../queue/bulkhead.js"
 import { executeRequest, type MiddlewareFn } from "../queue/executor.js"
+import { shouldRetry, type RetryPolicyContext } from "../queue/policy.js"
 import { runRetryLoop } from "../queue/retry.js"
 import { Ticket, createTicket, type TicketController } from "../ticket/ticket.js"
 import { nanoid } from "./nanoid.js"
@@ -159,15 +153,9 @@ export class HttpClient {
         return
 
       case "error":
-        // Non-retryable errors resolve immediately
-        if (result.error instanceof ValidationError || result.error instanceof HttpError) {
-          this.emit("failure", { ticketId: ticket.id, url, error: result.error })
-          controller.markDone({ success: false, error: result.error } as never)
-          return
-        }
-        // Retryable errors (NetworkError, RetryableStatusError, TimeoutError)
-        // and other retriable kinds go through retryWhen then bulkhead
-        if (this.retryVetoed(retryConfig, result.error, ticket, controller, url)) return
+        // Apply the unified retry gate (default policy + retryWhen). Errors
+        // that fail it (e.g. ValidationError, HttpError) resolve immediately.
+        if (this.vetoed(retryConfig, result.error, 0, options, ticket, controller, url)) return
         controller.markQueued()
         this._scheduleInBulkhead(
           ticket,
@@ -183,7 +171,7 @@ export class HttpClient {
 
       case "timeout": {
         const error = new TimeoutError(url, timeoutConfig.attemptMs ?? 0)
-        if (this.retryVetoed(retryConfig, error, ticket, controller, url)) return
+        if (this.vetoed(retryConfig, error, 0, options, ticket, controller, url)) return
         controller.markQueued()
         this._scheduleInBulkhead(
           ticket,
@@ -200,17 +188,24 @@ export class HttpClient {
     }
   }
 
-  /** Consult retryWhen after the first attempt failed (attempt 0). Returns
-   *  true if the consumer vetoed retrying — the ticket is resolved with
-   *  the error and must not be queued. */
-  private retryVetoed(
+  /** Apply the unified retry gate after the first attempt failed (attempt 0).
+   *  Returns true if the request must NOT be retried — the ticket is resolved
+   *  with the raw error and must not be queued. */
+  private vetoed(
     retryConfig: RetryConfig,
     error: AppError,
+    attempt: number,
+    options: RequestOptions<unknown>,
     ticket: Ticket<unknown>,
     controller: TicketController<unknown>,
     url: string,
   ): boolean {
-    if (retryConfig.retryWhen && !retryConfig.retryWhen(error, 0)) {
+    const ctx: RetryPolicyContext = {
+      method: options.method ?? "GET",
+      headers: options.headers,
+      idempotent: retryConfig.idempotent,
+    }
+    if (!shouldRetry(error, attempt, ctx, retryConfig.retryWhen)) {
       this.emit("failure", { ticketId: ticket.id, url, error })
       controller.markDone({ success: false, error } as never)
       return true

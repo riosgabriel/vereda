@@ -5,6 +5,7 @@ import type { RequestOptions, RetryConfig, TimeoutConfig } from "../core/types.j
 import type { Ticket } from "../ticket/ticket.js"
 import type { TicketController } from "../ticket/ticket.js"
 import { executeRequest, type MiddlewareFn } from "./executor.js"
+import { shouldRetry, type RetryPolicyContext } from "./policy.js"
 
 export interface RetryJobOptions {
   url: string
@@ -41,17 +42,22 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
     }
 
     if (attempt > 0) {
-      // Consult retryWhen before paying for backoff. The first retry skips
-      // this check — the client already vetoed via retryVetoed before queuing.
-      if (retryConfig.retryWhen && !retryConfig.retryWhen(lastError, attempt)) {
+      // Consult the default policy + retryWhen before paying for backoff.
+      // The first retry skips this check — the client already vetted the
+      // error via the same gate before queuing.
+      const ctx: RetryPolicyContext = {
+        method: requestOptions.method ?? "GET",
+        headers: requestOptions.headers,
+        idempotent: retryConfig.idempotent,
+      }
+      if (!shouldRetry(lastError, attempt, ctx, retryConfig.retryWhen)) {
         controller.markDone({ success: false, error: lastError } as never)
         return
       }
     }
 
     // All retries (including the first) get backoff. The first retry
-    // skips the retryWhen check above — the client already vetted via
-    // retryVetoed before queuing.
+    // skips the gate above — the client already vetted before queuing.
     const delayMs = backoffFn(attempt)
     onRetry?.(attempt, delayMs, lastError)
     controller.markRetrying(attempt, delayMs)

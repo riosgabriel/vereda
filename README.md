@@ -235,6 +235,8 @@ retry: {
 
 When all attempts are exhausted, the ticket resolves with a `MaxRetriesExceededError` carrying the attempt count and the last underlying error.
 
+By default only idempotent methods (`GET`, `HEAD`, `OPTIONS`, `PUT`, `DELETE`, `TRACE`) are retried. Non-idempotent methods (`POST`, `PATCH`, `CONNECT`) are not, since blindly retrying them could duplicate a side effect. Opt in with `retry: { idempotent: true }` or by sending an `Idempotency-Key` header. The underlying `defaultRetryPolicy` is exported for wrapping or inspection.
+
 ### Bulkhead isolation
 
 Every request is assigned to a partition, keyed by hostname by default. Each partition owns a concurrency limit plus a waiting queue. A slow or failing host fills its own queue without touching traffic to other hosts.
