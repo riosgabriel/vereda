@@ -239,6 +239,8 @@ By default only idempotent methods (`GET`, `HEAD`, `OPTIONS`, `PUT`, `DELETE`, `
 
 A request `body` may also be supplied as a factory (`() => BodyInit`); the factory is invoked fresh on every attempt so the payload can be replayed across retries. This is required when the body is a `ReadableStream` — passing a bare stream is a `ConfigurationError`. When a stream body is used, `duplex: "half"` is set on the fetch call automatically.
 
+Retries honor a `Retry-After` response header (seconds or HTTP-date), capped at `maxDelayMs`; without one, the configured backoff drives the delay.
+
 ### Bulkhead isolation
 
 Every request is assigned to a partition, keyed by hostname by default. Each partition owns a concurrency limit plus a waiting queue. A slow or failing host fills its own queue without touching traffic to other hosts.

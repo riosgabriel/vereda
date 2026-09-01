@@ -183,6 +183,7 @@ export class HttpClient {
           retryConfig,
           partitionName,
           bulkhead,
+          result.error,
         )
         return
 
@@ -199,6 +200,7 @@ export class HttpClient {
           retryConfig,
           partitionName,
           bulkhead,
+          error,
         )
         return
       }
@@ -239,6 +241,7 @@ export class HttpClient {
     retryConfig: RetryConfig,
     partitionName: string,
     bulkhead: ReturnType<BulkheadRegistry["get"]>,
+    firstError: AppError,
   ): void {
     this.logger?.info("Request queued for retry", {
       ticketId: ticket.id,
@@ -256,6 +259,7 @@ export class HttpClient {
           ticket,
           controller,
           middleware: this.middlewares,
+          firstError,
           onRetry: (attempt, delayMs, error) => {
             this.emit("retry", { ticketId: ticket.id, url, attempt, delayMs, error })
           },

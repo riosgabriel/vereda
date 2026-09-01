@@ -107,6 +107,7 @@ export async function executeRequest(
         `HTTP ${response.status} ${response.statusText}`,
         response.status,
         response,
+        parseRetryAfter(response.headers.get("retry-after")),
       ),
     }
   }
@@ -193,6 +194,20 @@ export function composeMiddleware(middlewares: MiddlewareFn[], core: NextFn): Ne
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Parse a `Retry-After` header value into a delay in ms, or undefined when
+ *  absent/unparseable. Integer seconds → ms; HTTP-date → ms from now, clamped
+ *  to ≥ 0; anything else (garbage, negative) → undefined. */
+export function parseRetryAfter(header: string | null): number | undefined {
+  if (!header) return undefined
+  const trimmed = header.trim()
+  if (/^\d+$/.test(trimmed)) {
+    return Number(trimmed) * 1000
+  }
+  const parsed = Date.parse(trimmed)
+  if (Number.isNaN(parsed)) return undefined
+  return Math.max(0, parsed - Date.now())
+}
 
 function isAbortError(err: unknown): boolean {
   return err instanceof Error && err.name === "AbortError"
