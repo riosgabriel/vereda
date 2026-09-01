@@ -195,6 +195,23 @@ Installing from GitHub runs the build via the `prepare` script, so `dist/` is re
 
 Configure retries globally or per request. Per-request settings override global ones.
 
+#### What gets retried
+
+By default, a failed attempt is retried only when the error is transient **and** the request is safe to repeat:
+
+| Failure | `kind` | Retried by default |
+| --- | --- | --- |
+| Network failure | `network` | Yes — idempotent requests |
+| Attempt timed out | `timeout` | Yes — idempotent requests |
+| Busy status (`408, 425, 429, 500, 502, 503, 504`) | `retryable_status` | Yes — idempotent requests |
+| Any other HTTP status (e.g. `404`) | `http` | No |
+| Response failed `parse` | `validation` | Never |
+| Cancelled | `cancelled` | Never |
+| Partition queue full | `queue_full` | Never |
+| Invalid configuration | `configuration` | Never |
+
+Idempotent means `GET`, `HEAD`, `OPTIONS`, `PUT`, `DELETE`, or `TRACE`. Non-idempotent methods (`POST`, `PATCH`, `CONNECT`) are retried only with `retry: { idempotent: true }` or an `Idempotency-Key` header. A user-supplied `retryWhen` is consulted after this policy and can only veto, never force, a retry. The busy-status list is `retry.retryOnStatus`.
+
 ```typescript
 const client = HttpClient.create({
   retry: {
