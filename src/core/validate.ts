@@ -28,6 +28,16 @@ function validateRetryConfig(retry: RetryConfig | undefined, prefix: string): vo
     throw new ConfigurationError(`${prefix}.maxRetries must be non-negative`)
   }
 
+  if (retry.retryOnStatus !== undefined) {
+    for (const status of retry.retryOnStatus) {
+      if (!Number.isInteger(status) || status < 400 || status > 599) {
+        throw new ConfigurationError(
+          `${prefix}.retryOnStatus must contain only integer HTTP error status codes (400-599)`,
+        )
+      }
+    }
+  }
+
   if (retry.backoff && typeof retry.backoff === "object") {
     const { baseDelayMs, maxDelayMs } = retry.backoff
     if (baseDelayMs !== undefined && baseDelayMs < 0) {

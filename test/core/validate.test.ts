@@ -83,4 +83,26 @@ describe("validateConfig", () => {
       ConfigurationError,
     )
   })
+
+  it("accepts empty retryOnStatus", () => {
+    expect(() => validateConfig({ retry: { retryOnStatus: [] } })).not.toThrow()
+  })
+
+  it("accepts valid retryOnStatus codes", () => {
+    expect(() => validateConfig({ retry: { retryOnStatus: [429, 503] } })).not.toThrow()
+  })
+
+  it("rejects non-error status in retryOnStatus", () => {
+    expect(() => validateConfig({ retry: { retryOnStatus: [200] } })).toThrow(ConfigurationError)
+  })
+
+  it("rejects status above 599 in retryOnStatus", () => {
+    expect(() => validateConfig({ retry: { retryOnStatus: [503, 600] } })).toThrow(
+      ConfigurationError,
+    )
+  })
+
+  it("rejects non-integer status in retryOnStatus", () => {
+    expect(() => validateConfig({ retry: { retryOnStatus: [503.5] } })).toThrow(ConfigurationError)
+  })
 })
