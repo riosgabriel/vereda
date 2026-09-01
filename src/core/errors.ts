@@ -47,11 +47,15 @@ export class HttpError extends RequestError {
 export class RetryableStatusError extends RequestError {
   public readonly statusCode: number
   public readonly response: Response
+  public readonly retryAfterMs?: number
 
-  constructor(message: string, statusCode: number, response: Response) {
+  constructor(message: string, statusCode: number, response: Response, retryAfterMs?: number) {
     super("retryable_status", message)
     this.statusCode = statusCode
     this.response = response
+    if (retryAfterMs !== undefined) {
+      this.retryAfterMs = retryAfterMs
+    }
   }
 }
 
@@ -60,7 +64,11 @@ export class TimeoutError extends RequestError {
   public readonly url: string
 
   constructor(url: string, timeoutMs: number) {
-    super("timeout", `Request to ${url} timed out after ${timeoutMs}ms`)
+    const message =
+      timeoutMs > 0
+        ? `Request to ${url} timed out after ${timeoutMs}ms`
+        : `Request to ${url} timed out (no timeout configured)`
+    super("timeout", message)
     this.timeoutMs = timeoutMs
     this.url = url
   }

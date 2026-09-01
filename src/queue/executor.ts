@@ -1,11 +1,14 @@
 import { HttpError, NetworkError, RetryableStatusError, ValidationError } from "../core/errors.js"
 import type { AppError } from "../core/errors.js"
-import type { RequestOptions, Result, TriggerConfig } from "../core/types.js"
+import type { RequestOptions, Result, RetryConfig, TimeoutConfig } from "../core/types.js"
+import { DEFAULT_RETRY_ON_STATUS } from "../core/types.js"
+import { isReadableStream } from "../core/validate.js"
 
 export interface ExecuteRequest {
   url: string
   options: RequestOptions<unknown>
-  triggerConfig: TriggerConfig
+  timeoutConfig: TimeoutConfig
+  retryConfig: RetryConfig
   signal: AbortSignal
 }
 
@@ -24,17 +27,23 @@ export async function executeRequest(
   req: ExecuteRequest,
   middleware: MiddlewareFn[],
 ): Promise<ExecuteResult> {
-  const { url, options, triggerConfig, signal } = req
+  const { url, options, timeoutConfig, retryConfig, signal } = req
 
   if (signal.aborted || options.signal?.aborted) {
     return { kind: "cancelled" }
   }
 
-  const timeoutMs = triggerConfig.timeoutMs
-  const retryOnStatus = triggerConfig.queueOnStatus ?? []
+  // Resolve a replayable body factory fresh for this attempt so every attempt
+  // gets its own materialized body. Do not mutate the caller's options.
+  const resolvedBody =
+    typeof options.body === "function" ? (options.body as () => BodyInit)() : options.body
+  const resolvedOptions = { ...options, body: resolvedBody }
+
+  const timeoutMs = timeoutConfig.attemptMs
+  const retryOnStatus = retryConfig.retryOnStatus ?? DEFAULT_RETRY_ON_STATUS
 
   // Build the fetch call wrapped in middleware
-  const fetchCall = buildFetchCall(url, options)
+  const fetchCall = buildFetchCall(url, resolvedOptions)
   const composed = composeMiddleware(middleware, fetchCall)
 
   // Race against timeout if configured
@@ -52,7 +61,7 @@ export async function executeRequest(
       )
 
       try {
-        response = await composed({ ...options, signal: mergedSignal })
+        response = await composed({ ...resolvedOptions, signal: mergedSignal })
       } finally {
         clearTimeout(timeoutId)
       }
@@ -62,7 +71,7 @@ export async function executeRequest(
       }
     } else {
       const mergedSignal = options.signal ? mergeSignals(signal, options.signal) : signal
-      response = await composed({ ...options, signal: mergedSignal })
+      response = await composed({ ...resolvedOptions, signal: mergedSignal })
     }
   } catch (err) {
     // Precedence: cancellation wins over timeout. If the ticket or the
@@ -98,6 +107,7 @@ export async function executeRequest(
         `HTTP ${response.status} ${response.statusText}`,
         response.status,
         response,
+        parseRetryAfter(response.headers.get("retry-after")),
       ),
     }
   }
@@ -159,12 +169,18 @@ export type MiddlewareFn = (options: RequestOptions<unknown>, next: NextFn) => P
 
 function buildFetchCall(url: string, _baseOptions: RequestOptions<unknown>): NextFn {
   return async (options: RequestOptions<unknown>): Promise<Response> => {
-    return fetch(url, {
+    const body = options.body as BodyInit | undefined
+    const init: RequestInit = {
       method: options.method ?? "GET",
       headers: options.headers,
-      body: options.body,
+      body,
       signal: options.signal,
-    })
+    }
+    if (isReadableStream(body)) {
+      // Node's fetch requires duplex: "half" for stream bodies.
+      ;(init as { duplex?: "half" }).duplex = "half"
+    }
+    return fetch(url, init)
   }
 }
 
@@ -178,6 +194,20 @@ export function composeMiddleware(middlewares: MiddlewareFn[], core: NextFn): Ne
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Parse a `Retry-After` header value into a delay in ms, or undefined when
+ *  absent/unparseable. Integer seconds → ms; HTTP-date → ms from now, clamped
+ *  to ≥ 0; anything else (garbage, negative) → undefined. */
+export function parseRetryAfter(header: string | null): number | undefined {
+  if (!header) return undefined
+  const trimmed = header.trim()
+  if (/^\d+$/.test(trimmed)) {
+    return Number(trimmed) * 1000
+  }
+  const parsed = Date.parse(trimmed)
+  if (Number.isNaN(parsed)) return undefined
+  return Math.max(0, parsed - Date.now())
+}
 
 function isAbortError(err: unknown): boolean {
   return err instanceof Error && err.name === "AbortError"

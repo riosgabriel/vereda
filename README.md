@@ -38,8 +38,6 @@ if (result.success) {
 }
 ```
 
-> **Note:** Config names shown here (`retry.maxRetries`, `timeout.attemptMs`) are the 1.0 target names. Current code uses `maxAttempts` and `trigger.timeoutMs` — these will be renamed as part of the 1.0 effort.
-
 ## Why Vereda?
 
 `fetch` gives you one attempt. Production systems need more:
@@ -165,10 +163,8 @@ With zero configuration:
 | Retries | 3 retries after the first attempt (4 total executions) |
 | Backoff | Exponential: 200ms base, 30s cap, full jitter |
 | Timeout | None |
-| Queue-on status codes | None (all non-2xx responses are retried as errors) |
+| Retry-on status codes | `[408, 425, 429, 500, 502, 503, 504]` |
 | First-attempt concurrency | Unbounded — the initial attempt bypasses the bulkhead |
-
-> **Note:** This README describes the upcoming 1.0 API surface. Some config names in code samples (`retry.maxRetries`, `timeout.attemptMs`, `retry.retryOnStatus`) are being renamed from their current names (`maxAttempts`, `trigger.timeoutMs`, `trigger.queueOnStatus`) as part of the 1.0 effort. The behavior and defaults described here are accurate.
 
 ## Quick start
 
@@ -199,12 +195,29 @@ Installing from GitHub runs the build via the `prepare` script, so `dist/` is re
 
 Configure retries globally or per request. Per-request settings override global ones.
 
-> **Note:** only global and per-request `retry`/`trigger` are applied today. A partition's `concurrency` and `maxQueueSize` take effect, but its `trigger` and `retry` are currently ignored.
+#### What gets retried
+
+By default, a failed attempt is retried only when the error is transient **and** the request is safe to repeat:
+
+| Failure | `kind` | Retried by default |
+| --- | --- | --- |
+| Network failure | `network` | Yes — idempotent requests |
+| Attempt timed out | `timeout` | Yes — idempotent requests |
+| Busy status (`408, 425, 429, 500, 502, 503, 504`) | `retryable_status` | Yes — idempotent requests |
+| Any other HTTP status (e.g. `404`) | `http` | No |
+| Response failed `parse` | `validation` | Never |
+| Cancelled | `cancelled` | Never |
+| Partition queue full | `queue_full` | Never |
+| Invalid configuration | `configuration` | Never |
+
+Idempotent means `GET`, `HEAD`, `OPTIONS`, `PUT`, `DELETE`, or `TRACE`. Non-idempotent methods (`POST`, `PATCH`, `CONNECT`) are retried only with `retry: { idempotent: true }` or an `Idempotency-Key` header. A user-supplied `retryWhen` is consulted after this policy and can only veto, never force, a retry. The busy-status list is `retry.retryOnStatus`.
+
+`maxRetries: 0` disables retries entirely — a failed request resolves with its own error, unwrapped.
 
 ```typescript
 const client = HttpClient.create({
   retry: {
-    maxAttempts: 5,
+    maxRetries: 5,
     backoff: {
       baseDelayMs: 1000,
       maxDelayMs: 30000,
@@ -220,7 +233,7 @@ You can also supply a custom backoff function:
 
 ```typescript
 retry: {
-  maxAttempts: 3,
+  maxRetries: 3,
   backoff: (attempt) => Math.min(100 * 2 ** attempt, 10000),
 }
 ```
@@ -240,6 +253,12 @@ retry: {
 ```
 
 When all attempts are exhausted, the ticket resolves with a `MaxRetriesExceededError` carrying the attempt count and the last underlying error.
+
+By default only idempotent methods (`GET`, `HEAD`, `OPTIONS`, `PUT`, `DELETE`, `TRACE`) are retried. Non-idempotent methods (`POST`, `PATCH`, `CONNECT`) are not, since blindly retrying them could duplicate a side effect. Opt in with `retry: { idempotent: true }` or by sending an `Idempotency-Key` header. The underlying `defaultRetryPolicy` is exported for wrapping or inspection.
+
+A request `body` may also be supplied as a factory (`() => BodyInit`); the factory is invoked fresh on every attempt so the payload can be replayed across retries. This is required when the body is a `ReadableStream` — passing a bare stream is a `ConfigurationError`. When a stream body is used, `duplex: "half"` is set on the fetch call automatically.
+
+Retries honor a `Retry-After` response header (seconds or HTTP-date), capped at `maxDelayMs`; without one, the configured backoff drives the delay.
 
 ### Bulkhead isolation
 
@@ -269,21 +288,24 @@ When a partition's queue is full, the ticket resolves with a `NetworkError`. Tha
 
 ```typescript
 const client = HttpClient.create({
-  trigger: {
-    timeoutMs: 5000,
-    queueOnStatus: [429, 503],
+  timeout: {
+    attemptMs: 5000,
+  },
+  retry: {
+    retryOnStatus: [429, 503],
   },
 });
 ```
 
-- `timeoutMs` — a hard per-attempt timeout. The attempt is aborted and the request joins the retry loop.
-- `queueOnStatus` — status codes that mean the server is busy rather than broken. Matching responses are queued for retry without being treated as errors.
+- `attemptMs` — a hard per-attempt timeout. The attempt is aborted and the request joins the retry loop.
+- `retryOnStatus` — status codes that mean the server is busy rather than broken. Matching responses are queued for retry without being treated as errors.
 
 Both settings merge per request:
 
 ```typescript
 client.get("/api/data", {
-  trigger: { timeoutMs: 10000, queueOnStatus: [429, 500, 502, 503, 504] },
+  timeout: { attemptMs: 10000 },
+  retry: { retryOnStatus: [429, 500, 502, 503, 504] },
 });
 ```
 

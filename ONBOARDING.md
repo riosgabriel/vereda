@@ -41,7 +41,7 @@ A state machine: `pending → queued → retrying → done/cancelled`. `toPromis
 ### Stop 3 — One attempt
 **Read:** `src/queue/executor.ts` → `executeRequest()`
 
-A single attempt: compose middleware around `fetch`, race a timeout if configured, check `queueOnStatus`, treat non-2xx as an error, and `parse` the body if a parser is given. It returns a discriminated union (`ExecuteResult`) so the caller decides what happens next.
+A single attempt: compose middleware around `fetch`, race a timeout if configured, check `retryOnStatus`, treat non-2xx as an error, and `parse` the body if a parser is given. It returns a discriminated union (`ExecuteResult`) so the caller decides what happens next.
 
 ### Stop 4 — The fork
 **Read:** `src/core/client.ts` → `_fireFirstAttempt()`

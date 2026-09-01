@@ -1,5 +1,22 @@
 import { ConfigurationError } from "./errors.js"
-import type { ClientConfig, PartitionConfig, RetryConfig } from "./types.js"
+import type { ClientConfig, PartitionConfig, RetryConfig, TimeoutConfig } from "./types.js"
+
+/** Realm-safe ReadableStream detection — instanceof fails across realms
+ *  (vm contexts, other copies of node:stream/web). No non-stream BodyInit
+ *  member has getReader, so duck-typing is safe here. */
+export function isReadableStream(body: unknown): body is ReadableStream {
+  return body != null && typeof (body as { getReader?: unknown }).getReader === "function"
+}
+
+/** A raw ReadableStream body cannot be replayed across retries, so it must be
+ *  supplied via a factory. Throws ConfigurationError otherwise. */
+export function validateRequestBody(body: BodyInit | (() => BodyInit) | undefined): void {
+  if (isReadableStream(body)) {
+    throw new ConfigurationError(
+      "body must be supplied as a factory (() => BodyInit) when it is a ReadableStream",
+    )
+  }
+}
 
 export function validateConfig(config: ClientConfig): void {
   if (config.concurrency !== undefined) {
@@ -8,12 +25,17 @@ export function validateConfig(config: ClientConfig): void {
     }
   }
 
-  if (config.trigger?.timeoutMs !== undefined && config.trigger.timeoutMs <= 0) {
-    throw new ConfigurationError("trigger.timeoutMs must be positive")
-  }
-
+  validateTimeoutConfig(config.timeout, "timeout")
   validateRetryConfig(config.retry, "retry")
   validatePartitions(config.partitions)
+}
+
+function validateTimeoutConfig(timeout: TimeoutConfig | undefined, prefix: string): void {
+  if (!timeout) return
+
+  if (timeout.attemptMs !== undefined && timeout.attemptMs <= 0) {
+    throw new ConfigurationError(`${prefix}.attemptMs must be positive`)
+  }
 }
 
 function validateRetryConfig(retry: RetryConfig | undefined, prefix: string): void {
@@ -21,6 +43,16 @@ function validateRetryConfig(retry: RetryConfig | undefined, prefix: string): vo
 
   if (retry.maxRetries !== undefined && retry.maxRetries < 0) {
     throw new ConfigurationError(`${prefix}.maxRetries must be non-negative`)
+  }
+
+  if (retry.retryOnStatus !== undefined) {
+    for (const status of retry.retryOnStatus) {
+      if (!Number.isInteger(status) || status < 400 || status > 599) {
+        throw new ConfigurationError(
+          `${prefix}.retryOnStatus must contain only integer HTTP error status codes (400-599)`,
+        )
+      }
+    }
   }
 
   if (retry.backoff && typeof retry.backoff === "object") {
@@ -49,5 +81,6 @@ function validatePartitions(partitions: Record<string, PartitionConfig> | undefi
       throw new ConfigurationError(`partitions.${name}.maxQueueSize must be at least 1`)
     }
     validateRetryConfig(config.retry, `partitions.${name}.retry`)
+    validateTimeoutConfig(config.timeout, `partitions.${name}.timeout`)
   }
 }

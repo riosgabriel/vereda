@@ -5,23 +5,23 @@ import type {
   Logger,
   RequestOptions,
   RetryConfig,
-  TriggerConfig,
+  TimeoutConfig,
 } from "./types.js"
 import type { AppError } from "./errors.js"
 import {
   NetworkError,
-  HttpError,
   CancelledError,
   TimeoutError,
-  ValidationError,
   QueueFullError,
+  ConfigurationError,
 } from "./errors.js"
 import { BulkheadRegistry } from "../queue/bulkhead.js"
 import { executeRequest, type MiddlewareFn } from "../queue/executor.js"
+import { shouldRetry, type RetryPolicyContext } from "../queue/policy.js"
 import { runRetryLoop } from "../queue/retry.js"
 import { Ticket, createTicket, type TicketController } from "../ticket/ticket.js"
 import { nanoid } from "./nanoid.js"
-import { validateConfig } from "./validate.js"
+import { validateConfig, validateRequestBody } from "./validate.js"
 
 export class HttpClient {
   private readonly config: ClientConfig
@@ -131,7 +131,18 @@ export class HttpClient {
       return
     }
 
-    const triggerConfig = this.mergeTrigger(options)
+    // Validate the body early in the async path so an unusable body (a raw
+    // ReadableStream) surfaces as a ticket ConfigurationError, not a throw.
+    try {
+      validateRequestBody(options.body)
+    } catch (err) {
+      const error = err as ConfigurationError
+      this.emit("failure", { ticketId: ticket.id, url, error })
+      controller.markDone({ success: false, error } as never)
+      return
+    }
+
+    const timeoutConfig = this.mergeTimeout(options)
     const retryConfig = this.mergeRetry(options)
     const bulkhead = this.bulkheads.get(partitionName)
 
@@ -143,7 +154,7 @@ export class HttpClient {
       partition: partitionName,
     })
     const result = await executeRequest(
-      { url: fullUrl, options, triggerConfig, signal: ticket.signal },
+      { url: fullUrl, options, timeoutConfig, retryConfig, signal: ticket.signal },
       this.middlewares,
     )
 
@@ -159,58 +170,61 @@ export class HttpClient {
         return
 
       case "error":
-        // Non-retryable errors resolve immediately
-        if (result.error instanceof ValidationError || result.error instanceof HttpError) {
-          this.emit("failure", { ticketId: ticket.id, url, error: result.error })
-          controller.markDone({ success: false, error: result.error } as never)
-          return
-        }
-        // Retryable errors (NetworkError, RetryableStatusError, TimeoutError)
-        // and other retriable kinds go through retryWhen then bulkhead
-        if (this.retryVetoed(retryConfig, result.error, ticket, controller, url)) return
+        // Apply the unified retry gate (default policy + retryWhen). Errors
+        // that fail it (e.g. ValidationError, HttpError) resolve immediately.
+        if (this.vetoed(retryConfig, result.error, 0, options, ticket, controller, url)) return
         controller.markQueued()
         this._scheduleInBulkhead(
           ticket,
           controller,
           url,
           options,
-          triggerConfig,
+          timeoutConfig,
           retryConfig,
           partitionName,
           bulkhead,
+          result.error,
         )
         return
 
       case "timeout": {
-        const error = new TimeoutError(url, triggerConfig.timeoutMs ?? 0)
-        if (this.retryVetoed(retryConfig, error, ticket, controller, url)) return
+        const error = new TimeoutError(url, timeoutConfig.attemptMs ?? 0)
+        if (this.vetoed(retryConfig, error, 0, options, ticket, controller, url)) return
         controller.markQueued()
         this._scheduleInBulkhead(
           ticket,
           controller,
           url,
           options,
-          triggerConfig,
+          timeoutConfig,
           retryConfig,
           partitionName,
           bulkhead,
+          error,
         )
         return
       }
     }
   }
 
-  /** Consult retryWhen after the first attempt failed (attempt 0). Returns
-   *  true if the consumer vetoed retrying — the ticket is resolved with
-   *  the error and must not be queued. */
-  private retryVetoed(
+  /** Apply the unified retry gate after the first attempt failed (attempt 0).
+   *  Returns true if the request must NOT be retried — the ticket is resolved
+   *  with the raw error and must not be queued. */
+  private vetoed(
     retryConfig: RetryConfig,
     error: AppError,
+    attempt: number,
+    options: RequestOptions<unknown>,
     ticket: Ticket<unknown>,
     controller: TicketController<unknown>,
     url: string,
   ): boolean {
-    if (retryConfig.retryWhen && !retryConfig.retryWhen(error, 0)) {
+    const ctx: RetryPolicyContext = {
+      method: options.method ?? "GET",
+      headers: options.headers,
+      idempotent: retryConfig.idempotent,
+    }
+    if (!shouldRetry(error, attempt, ctx, retryConfig.retryWhen)) {
       this.emit("failure", { ticketId: ticket.id, url, error })
       controller.markDone({ success: false, error } as never)
       return true
@@ -223,10 +237,11 @@ export class HttpClient {
     controller: TicketController<unknown>,
     url: string,
     options: RequestOptions<unknown>,
-    triggerConfig: TriggerConfig,
+    timeoutConfig: TimeoutConfig,
     retryConfig: RetryConfig,
     partitionName: string,
     bulkhead: ReturnType<BulkheadRegistry["get"]>,
+    firstError: AppError,
   ): void {
     this.logger?.info("Request queued for retry", {
       ticketId: ticket.id,
@@ -239,11 +254,12 @@ export class HttpClient {
         await runRetryLoop({
           url,
           requestOptions: options,
-          triggerConfig,
+          timeoutConfig,
           retryConfig,
           ticket,
           controller,
           middleware: this.middlewares,
+          firstError,
           onRetry: (attempt, delayMs, error) => {
             this.emit("retry", { ticketId: ticket.id, url, attempt, delayMs, error })
           },
@@ -287,7 +303,7 @@ export class HttpClient {
 
   post<T>(
     url: string,
-    body?: BodyInit,
+    body?: BodyInit | (() => BodyInit),
     options: Omit<RequestOptions<T>, "method" | "body"> = {},
   ): Ticket<T> {
     return this.request<T>(url, { ...options, method: "POST", body })
@@ -295,7 +311,7 @@ export class HttpClient {
 
   put<T>(
     url: string,
-    body?: BodyInit,
+    body?: BodyInit | (() => BodyInit),
     options: Omit<RequestOptions<T>, "method" | "body"> = {},
   ): Ticket<T> {
     return this.request<T>(url, { ...options, method: "PUT", body })
@@ -303,7 +319,7 @@ export class HttpClient {
 
   patch<T>(
     url: string,
-    body?: BodyInit,
+    body?: BodyInit | (() => BodyInit),
     options: Omit<RequestOptions<T>, "method" | "body"> = {},
   ): Ticket<T> {
     return this.request<T>(url, { ...options, method: "PATCH", body })
@@ -324,8 +340,8 @@ export class HttpClient {
     return url
   }
 
-  private mergeTrigger(options: RequestOptions<unknown>): TriggerConfig {
-    return { ...this.config.trigger, ...options.trigger }
+  private mergeTimeout(options: RequestOptions<unknown>): TimeoutConfig {
+    return { ...this.config.timeout, ...options.timeout }
   }
 
   private mergeRetry(options: RequestOptions<unknown>): RetryConfig {

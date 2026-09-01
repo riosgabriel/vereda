@@ -29,15 +29,19 @@ export interface BackoffOptions {
 }
 
 // ---------------------------------------------------------------------------
-// Trigger conditions
+// Timeout config
 // ---------------------------------------------------------------------------
 
-export interface TriggerConfig {
-  /** Hard timeout in ms before the request is cancelled and queued */
-  timeoutMs?: number
-  /** HTTP status codes that trigger queuing (e.g. 429, 503) */
-  queueOnStatus?: number[]
+export interface TimeoutConfig {
+  /** Per-attempt timeout in ms. Undefined means no per-attempt timeout. */
+  attemptMs?: number
 }
+
+// ---------------------------------------------------------------------------
+// Default retry-on-status codes (D1)
+// ---------------------------------------------------------------------------
+
+export const DEFAULT_RETRY_ON_STATUS: number[] = [408, 425, 429, 500, 502, 503, 504]
 
 // ---------------------------------------------------------------------------
 // Partition / bulkhead config
@@ -48,8 +52,8 @@ export interface PartitionConfig {
   concurrency?: number
   /** Max number of pending items in the queue before rejecting new ones */
   maxQueueSize?: number
-  trigger?: TriggerConfig
   retry?: RetryConfig
+  timeout?: TimeoutConfig
 }
 
 // ---------------------------------------------------------------------------
@@ -59,6 +63,12 @@ export interface PartitionConfig {
 export interface RetryConfig {
   maxRetries?: number
   backoff?: BackoffFn | BackoffOptions
+  /** HTTP status codes that trigger retry (e.g. 408, 429, 500, 502, 503, 504).
+   *  Default: [408, 425, 429, 500, 502, 503, 504] */
+  retryOnStatus?: number[]
+  /** Allows retrying non-idempotent methods (POST/PATCH/CONNECT). An
+   *  `Idempotency-Key` header also enables retries. Default: false. */
+  idempotent?: boolean
   /** Optional predicate to decide whether a failed attempt should be retried.
    *  Called with the error and the zero-based attempt number:
    *  - 0 = the first attempt (called client-side before the retry loop)
@@ -99,13 +109,17 @@ export type LifecycleEventMap = {
 export interface RequestOptions<T = unknown> {
   method?: string
   headers?: Record<string, string>
-  body?: BodyInit
+  /** Request body, or a factory that returns a fresh body on every attempt
+   *  (replayable body). A ReadableStream must be supplied via a factory. The
+   *  factory must return a fresh body each invocation — reusing the same
+   *  ReadableStream replays an already-consumed (empty) stream. */
+  body?: BodyInit | (() => BodyInit)
   /** Named bulkhead partition. Defaults to hostname. */
   partition?: string
   /** Schema parse function. Use withZod() or custom. */
   parse?: ParseFn<T>
-  trigger?: TriggerConfig
   retry?: RetryConfig
+  timeout?: TimeoutConfig
   /** Signal to cancel the request externally */
   signal?: AbortSignal
 }
@@ -117,10 +131,10 @@ export interface RequestOptions<T = unknown> {
 export interface ClientConfig {
   /** Base URL prepended to all requests */
   baseUrl?: string
-  /** Default trigger config */
-  trigger?: TriggerConfig
   /** Default retry config */
   retry?: RetryConfig
+  /** Default timeout config */
+  timeout?: TimeoutConfig
   /** Global concurrency across all partitions */
   concurrency?: number
   /** Per-partition overrides */
