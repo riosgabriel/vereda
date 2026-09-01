@@ -214,7 +214,7 @@ You can also supply a custom backoff function:
 
 ```typescript
 retry: {
-  maxAttempts: 3,
+  maxRetries: 3,
   backoff: (attempt) => Math.min(100 * 2 ** attempt, 10000),
 }
 ```

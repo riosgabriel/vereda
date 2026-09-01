@@ -33,7 +33,7 @@ export async function executeRequest(
   }
 
   const timeoutMs = timeoutConfig.attemptMs
-  const retryOnStatus = retryConfig.retryOnStatus ?? [...DEFAULT_RETRY_ON_STATUS]
+  const retryOnStatus = retryConfig.retryOnStatus ?? DEFAULT_RETRY_ON_STATUS
 
   // Build the fetch call wrapped in middleware
   const fetchCall = buildFetchCall(url, options)

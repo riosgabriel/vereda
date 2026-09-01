@@ -41,7 +41,7 @@ export interface TimeoutConfig {
 // Default retry-on-status codes (D1)
 // ---------------------------------------------------------------------------
 
-export const DEFAULT_RETRY_ON_STATUS = [408, 425, 429, 500, 502, 503, 504] as const
+export const DEFAULT_RETRY_ON_STATUS: number[] = [408, 425, 429, 500, 502, 503, 504]
 
 // ---------------------------------------------------------------------------
 // Partition / bulkhead config
