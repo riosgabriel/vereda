@@ -163,7 +163,7 @@ With zero configuration:
 | Retries | 3 retries after the first attempt (4 total executions) |
 | Backoff | Exponential: 200ms base, 30s cap, full jitter |
 | Timeout | None |
-| Queue-on status codes | None (all non-2xx responses are retried as errors) |
+| Retry-on status codes | `[408, 425, 429, 500, 502, 503, 504]` |
 | First-attempt concurrency | Unbounded — the initial attempt bypasses the bulkhead |
 
 ## Quick start
