@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { validateConfig } from "../../src/core/validate.js"
+import { validateConfig, validateRequestBody } from "../../src/core/validate.js"
 import { ConfigurationError } from "../../src/core/errors.js"
 
 describe("validateConfig", () => {
@@ -104,5 +104,11 @@ describe("validateConfig", () => {
 
   it("rejects non-integer status in retryOnStatus", () => {
     expect(() => validateConfig({ retry: { retryOnStatus: [503.5] } })).toThrow(ConfigurationError)
+  })
+
+  it("rejects a stream-like body via duck-typing", () => {
+    expect(() => validateRequestBody({ getReader: () => ({}) } as unknown as BodyInit)).toThrow(
+      ConfigurationError,
+    )
   })
 })

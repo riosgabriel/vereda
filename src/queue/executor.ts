@@ -2,6 +2,7 @@ import { HttpError, NetworkError, RetryableStatusError, ValidationError } from "
 import type { AppError } from "../core/errors.js"
 import type { RequestOptions, Result, RetryConfig, TimeoutConfig } from "../core/types.js"
 import { DEFAULT_RETRY_ON_STATUS } from "../core/types.js"
+import { isReadableStream } from "../core/validate.js"
 
 export interface ExecuteRequest {
   url: string
@@ -174,7 +175,7 @@ function buildFetchCall(url: string, _baseOptions: RequestOptions<unknown>): Nex
       body,
       signal: options.signal,
     }
-    if (body instanceof ReadableStream) {
+    if (isReadableStream(body)) {
       // Node's fetch requires duplex: "half" for stream bodies.
       ;(init as { duplex?: "half" }).duplex = "half"
     }

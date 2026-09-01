@@ -110,7 +110,9 @@ export interface RequestOptions<T = unknown> {
   method?: string
   headers?: Record<string, string>
   /** Request body, or a factory that returns a fresh body on every attempt
-   *  (replayable body). A ReadableStream must be supplied via a factory. */
+   *  (replayable body). A ReadableStream must be supplied via a factory. The
+   *  factory must return a fresh body each invocation — reusing the same
+   *  ReadableStream replays an already-consumed (empty) stream. */
   body?: BodyInit | (() => BodyInit)
   /** Named bulkhead partition. Defaults to hostname. */
   partition?: string

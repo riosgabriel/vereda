@@ -1,10 +1,17 @@
 import { ConfigurationError } from "./errors.js"
 import type { ClientConfig, PartitionConfig, RetryConfig, TimeoutConfig } from "./types.js"
 
+/** Realm-safe ReadableStream detection — instanceof fails across realms
+ *  (vm contexts, other copies of node:stream/web). No non-stream BodyInit
+ *  member has getReader, so duck-typing is safe here. */
+export function isReadableStream(body: unknown): body is ReadableStream {
+  return body != null && typeof (body as { getReader?: unknown }).getReader === "function"
+}
+
 /** A raw ReadableStream body cannot be replayed across retries, so it must be
  *  supplied via a factory. Throws ConfigurationError otherwise. */
 export function validateRequestBody(body: BodyInit | (() => BodyInit) | undefined): void {
-  if (body instanceof ReadableStream) {
+  if (isReadableStream(body)) {
     throw new ConfigurationError(
       "body must be supplied as a factory (() => BodyInit) when it is a ReadableStream",
     )
