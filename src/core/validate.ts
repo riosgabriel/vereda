@@ -1,6 +1,16 @@
 import { ConfigurationError } from "./errors.js"
 import type { ClientConfig, PartitionConfig, RetryConfig, TimeoutConfig } from "./types.js"
 
+/** A raw ReadableStream body cannot be replayed across retries, so it must be
+ *  supplied via a factory. Throws ConfigurationError otherwise. */
+export function validateRequestBody(body: BodyInit | (() => BodyInit) | undefined): void {
+  if (body instanceof ReadableStream) {
+    throw new ConfigurationError(
+      "body must be supplied as a factory (() => BodyInit) when it is a ReadableStream",
+    )
+  }
+}
+
 export function validateConfig(config: ClientConfig): void {
   if (config.concurrency !== undefined) {
     if (!Number.isInteger(config.concurrency) || config.concurrency < 1) {

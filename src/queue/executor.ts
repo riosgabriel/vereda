@@ -32,11 +32,17 @@ export async function executeRequest(
     return { kind: "cancelled" }
   }
 
+  // Resolve a replayable body factory fresh for this attempt so every attempt
+  // gets its own materialized body. Do not mutate the caller's options.
+  const resolvedBody =
+    typeof options.body === "function" ? (options.body as () => BodyInit)() : options.body
+  const resolvedOptions = { ...options, body: resolvedBody }
+
   const timeoutMs = timeoutConfig.attemptMs
   const retryOnStatus = retryConfig.retryOnStatus ?? DEFAULT_RETRY_ON_STATUS
 
   // Build the fetch call wrapped in middleware
-  const fetchCall = buildFetchCall(url, options)
+  const fetchCall = buildFetchCall(url, resolvedOptions)
   const composed = composeMiddleware(middleware, fetchCall)
 
   // Race against timeout if configured
@@ -54,7 +60,7 @@ export async function executeRequest(
       )
 
       try {
-        response = await composed({ ...options, signal: mergedSignal })
+        response = await composed({ ...resolvedOptions, signal: mergedSignal })
       } finally {
         clearTimeout(timeoutId)
       }
@@ -64,7 +70,7 @@ export async function executeRequest(
       }
     } else {
       const mergedSignal = options.signal ? mergeSignals(signal, options.signal) : signal
-      response = await composed({ ...options, signal: mergedSignal })
+      response = await composed({ ...resolvedOptions, signal: mergedSignal })
     }
   } catch (err) {
     // Precedence: cancellation wins over timeout. If the ticket or the
@@ -161,12 +167,18 @@ export type MiddlewareFn = (options: RequestOptions<unknown>, next: NextFn) => P
 
 function buildFetchCall(url: string, _baseOptions: RequestOptions<unknown>): NextFn {
   return async (options: RequestOptions<unknown>): Promise<Response> => {
-    return fetch(url, {
+    const body = options.body as BodyInit | undefined
+    const init: RequestInit = {
       method: options.method ?? "GET",
       headers: options.headers,
-      body: options.body,
+      body,
       signal: options.signal,
-    })
+    }
+    if (body instanceof ReadableStream) {
+      // Node's fetch requires duplex: "half" for stream bodies.
+      ;(init as { duplex?: "half" }).duplex = "half"
+    }
+    return fetch(url, init)
   }
 }
 

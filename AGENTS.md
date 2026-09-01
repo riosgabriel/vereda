@@ -42,6 +42,7 @@ Request flow: `client.get()` returns a `Ticket` synchronously → first attempt 
 - `retryWhen` is consulted after **every** failed attempt, including attempt 0.
 - `ValidationError` (failed `parse`) resolves immediately and is never retried.
 - Cancellation wins over timeouts/retries; a cancelled ticket is never retried.
+- Replayable bodies — body may be a factory invoked per attempt; a raw `ReadableStream` is a `ConfigurationError`.
 - `ticket.toPromise()` never rejects — failures are a `Result` union with the closed `RequestError` hierarchy (`src/core/errors.ts`).
 
 → To onboard a contributor using this mental model, see **Onboarding contributors (for LLMs)** below and `ONBOARDING.md`.

@@ -8,14 +8,20 @@ import type {
   TimeoutConfig,
 } from "./types.js"
 import type { AppError } from "./errors.js"
-import { NetworkError, CancelledError, TimeoutError, QueueFullError } from "./errors.js"
+import {
+  NetworkError,
+  CancelledError,
+  TimeoutError,
+  QueueFullError,
+  ConfigurationError,
+} from "./errors.js"
 import { BulkheadRegistry } from "../queue/bulkhead.js"
 import { executeRequest, type MiddlewareFn } from "../queue/executor.js"
 import { shouldRetry, type RetryPolicyContext } from "../queue/policy.js"
 import { runRetryLoop } from "../queue/retry.js"
 import { Ticket, createTicket, type TicketController } from "../ticket/ticket.js"
 import { nanoid } from "./nanoid.js"
-import { validateConfig } from "./validate.js"
+import { validateConfig, validateRequestBody } from "./validate.js"
 
 export class HttpClient {
   private readonly config: ClientConfig
@@ -120,6 +126,17 @@ export class HttpClient {
       const error = new NetworkError(err instanceof Error ? err.message : "Invalid URL", {
         cause: err,
       })
+      this.emit("failure", { ticketId: ticket.id, url, error })
+      controller.markDone({ success: false, error } as never)
+      return
+    }
+
+    // Validate the body early in the async path so an unusable body (a raw
+    // ReadableStream) surfaces as a ticket ConfigurationError, not a throw.
+    try {
+      validateRequestBody(options.body)
+    } catch (err) {
+      const error = err as ConfigurationError
       this.emit("failure", { ticketId: ticket.id, url, error })
       controller.markDone({ success: false, error } as never)
       return
@@ -282,7 +299,7 @@ export class HttpClient {
 
   post<T>(
     url: string,
-    body?: BodyInit,
+    body?: BodyInit | (() => BodyInit),
     options: Omit<RequestOptions<T>, "method" | "body"> = {},
   ): Ticket<T> {
     return this.request<T>(url, { ...options, method: "POST", body })
@@ -290,7 +307,7 @@ export class HttpClient {
 
   put<T>(
     url: string,
-    body?: BodyInit,
+    body?: BodyInit | (() => BodyInit),
     options: Omit<RequestOptions<T>, "method" | "body"> = {},
   ): Ticket<T> {
     return this.request<T>(url, { ...options, method: "PUT", body })
@@ -298,7 +315,7 @@ export class HttpClient {
 
   patch<T>(
     url: string,
-    body?: BodyInit,
+    body?: BodyInit | (() => BodyInit),
     options: Omit<RequestOptions<T>, "method" | "body"> = {},
   ): Ticket<T> {
     return this.request<T>(url, { ...options, method: "PATCH", body })
