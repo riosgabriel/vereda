@@ -8,6 +8,7 @@ import {
   MaxRetriesExceededError,
   NetworkError,
   RetryableStatusError,
+  TimeoutError,
   ValidationError,
 } from "../../src/core/errors.js"
 import { z } from "zod"
@@ -505,4 +506,36 @@ describe("HttpClient integration", () => {
     const listenersAfter = getEventListeners(controller.signal, "abort").length
     expect(listenersAfter).toBe(listenersBefore)
   })
+
+  it("per-attempt timeout covers body read, not just headers (#9)", async () => {
+    // Server sends 200 headers immediately but delays the body by 500ms.
+    // With attemptMs: 100 and a parse fn, the ticket should resolve with
+    // TimeoutError once the body read exceeds the deadline.
+    server.setHandler((_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" })
+      // Delay the body — headers are sent immediately
+      setTimeout(() => {
+        try {
+          res.end(JSON.stringify({ ok: true }))
+          // eslint-disable-next-line no-empty
+        } catch {}
+      }, 500)
+    })
+
+    const start = Date.now()
+    const ticket = client.get(`${server.url}/slow-body`, {
+      timeout: { attemptMs: 100 },
+      retry: { maxRetries: 0 },
+      parse: (data) => data as { ok: boolean },
+    })
+    const result = await ticket.toPromise()
+    const elapsed = Date.now() - start
+
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error).toBeInstanceOf(TimeoutError)
+    }
+    // Should resolve well within 300ms (100ms timeout + tolerance)
+    expect(elapsed).toBeLessThan(300)
+  }, 5_000)
 })

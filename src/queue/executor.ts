@@ -56,7 +56,6 @@ export async function executeRequest(
   const timeoutController = timeoutMs === undefined ? undefined : new AbortController()
   if (timeoutController) sources.push(timeoutController.signal)
   const attemptSignal = AbortSignal.any(sources)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- used in 4.2 to clear timeout after body parsing
   const timeoutId =
     timeoutController && timeoutMs !== undefined
       ? setTimeout(() => timeoutController.abort(), timeoutMs)
@@ -70,6 +69,82 @@ export async function executeRequest(
     // timeout (cancellation is checked first in the catch path below).
     if (timeoutController?.signal.aborted) {
       return { kind: "timeout" }
+    }
+
+    // Check if status code is retryable (was "queued_status", now typed error)
+    if (retryOnStatus.includes(response.status)) {
+      // Cancel the response body since caller won't read it
+      try {
+        await response.body?.cancel()
+      } catch {
+        /* ignore — best effort */
+      }
+      return {
+        kind: "error",
+        error: new RetryableStatusError(
+          `HTTP ${response.status} ${response.statusText}`,
+          response.status,
+          response,
+          parseRetryAfter(response.headers.get("retry-after")),
+        ),
+      }
+    }
+
+    // Non-2xx responses are non-retryable errors
+    if (!response.ok) {
+      return {
+        kind: "error",
+        error: new HttpError(
+          `HTTP ${response.status} ${response.statusText}`,
+          response.status,
+          response,
+        ),
+      }
+    }
+
+    // Parse body — the timeout is still active so a slow body read is
+    // covered by the per-attempt deadline (#9).
+    if (options.parse) {
+      let raw: unknown
+      try {
+        raw = await response.json()
+      } catch (err) {
+        // Check timeout first — if our timer fired during response.json(),
+        // that is the cause regardless of whether the external signal also
+        // aborted (cancellation vs timeout precedence).
+        if (timeoutController?.signal.aborted) {
+          return { kind: "timeout" }
+        }
+        if (signal.aborted || options.signal?.aborted) {
+          return { kind: "cancelled" }
+        }
+        return {
+          kind: "error",
+          error: new NetworkError("Failed to parse response body as JSON", {
+            cause: err,
+          }),
+        }
+      }
+
+      try {
+        const data = options.parse(raw)
+        return {
+          kind: "success",
+          result: { success: true, data, raw: response },
+        }
+      } catch (err) {
+        const issues = extractIssues(err)
+        return {
+          kind: "error",
+          error: new ValidationError("Response validation failed", issues, err),
+        }
+      }
+    }
+
+    // No parse fn — return raw response
+    return {
+      kind: "success",
+      result: { success: true, data: undefined, raw: response },
     }
   } catch (err) {
     // Precedence: cancellation wins over timeout. If the ticket or the
@@ -89,72 +164,10 @@ export async function executeRequest(
       kind: "error",
       error: new NetworkError(err instanceof Error ? err.message : "Network error", { cause: err }),
     }
-  }
-
-  // Check if status code is retryable (was "queued_status", now typed error)
-  if (retryOnStatus.includes(response.status)) {
-    // Cancel the response body since caller won't read it
-    try {
-      await response.body?.cancel()
-    } catch {
-      /* ignore — best effort */
-    }
-    return {
-      kind: "error",
-      error: new RetryableStatusError(
-        `HTTP ${response.status} ${response.statusText}`,
-        response.status,
-        response,
-        parseRetryAfter(response.headers.get("retry-after")),
-      ),
-    }
-  }
-
-  // Non-2xx responses are non-retryable errors
-  if (!response.ok) {
-    return {
-      kind: "error",
-      error: new HttpError(
-        `HTTP ${response.status} ${response.statusText}`,
-        response.status,
-        response,
-      ),
-    }
-  }
-
-  // Parse body
-  if (options.parse) {
-    let raw: unknown
-    try {
-      raw = await response.json()
-    } catch (err) {
-      return {
-        kind: "error",
-        error: new NetworkError("Failed to parse response body as JSON", {
-          cause: err,
-        }),
-      }
-    }
-
-    try {
-      const data = options.parse(raw)
-      return {
-        kind: "success",
-        result: { success: true, data, raw: response },
-      }
-    } catch (err) {
-      const issues = extractIssues(err)
-      return {
-        kind: "error",
-        error: new ValidationError("Response validation failed", issues, err),
-      }
-    }
-  }
-
-  // No parse fn — return raw response
-  return {
-    kind: "success",
-    result: { success: true, data: undefined, raw: response },
+  } finally {
+    // Clear the timeout once the attempt is complete — body has been read
+    // (or the attempt failed), so the abort controller can be released.
+    if (timeoutId !== undefined) clearTimeout(timeoutId)
   }
 }
 
