@@ -4,6 +4,7 @@ import type {
   LifecycleEventMap,
   Logger,
   RequestOptions,
+  Result,
   RetryConfig,
   TimeoutConfig,
 } from "./types.js"
@@ -24,6 +25,15 @@ import { Ticket, createTicket, type TicketController } from "../ticket/ticket.js
 import { nanoid } from "./nanoid.js"
 import { validateConfig, validateRequestBody } from "./validate.js"
 
+/** Minimal shape of Ticket used for in-flight tracking. We only need
+ *  `cancel()` (to abort on shutdown) and `toPromise()` (to await drain).
+ *  This avoids the structural incompatibility between Ticket<T> and
+ *  Ticket<unknown> caused by the contravariant _resolve property. */
+interface InflightTicket {
+  cancel(): void
+  toPromise(): Promise<Result<unknown>>
+}
+
 export class HttpClient {
   private readonly config: ClientConfig
   private readonly emitter = new EventEmitter()
@@ -31,7 +41,7 @@ export class HttpClient {
   private readonly bulkheads: BulkheadRegistry
   private readonly logger: Logger | undefined
   private _closed = false
-  private readonly _inflightTickets = new Set<Ticket<any>>() // eslint-disable-line @typescript-eslint/no-explicit-any
+  private readonly _inflightTickets = new Set<InflightTicket>()
 
   private constructor(config: ClientConfig) {
     this.config = config
