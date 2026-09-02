@@ -29,6 +29,8 @@ export class HttpClient {
   private readonly middlewares: MiddlewareFn[] = []
   private readonly bulkheads: BulkheadRegistry
   private readonly logger: Logger | undefined
+  private _closed = false
+  private readonly _inflightTickets = new Set<Ticket<any>>() // eslint-disable-line @typescript-eslint/no-explicit-any
 
   private constructor(config: ClientConfig) {
     this.config = config
@@ -78,6 +80,10 @@ export class HttpClient {
   // ---------------------------------------------------------------------------
 
   request<T>(url: string, options: RequestOptions<T> = {}): Ticket<T> {
+    if (this._closed) {
+      throw new ConfigurationError("client closed")
+    }
+
     const ticketId = nanoid()
     const { ticket, controller } = createTicket<T>(ticketId)
 
@@ -118,11 +124,15 @@ export class HttpClient {
       deadlineTimer.unref()
     }
 
-    // Combined cleanup: external signal + deadline timer
+    // Combined cleanup: external signal + deadline timer + inflight tracking
     const cleanup = () => {
       cleanupExternalSignal()
       cleanupDeadline()
+      this._inflightTickets.delete(ticket)
     }
+
+    // Track this ticket for graceful shutdown
+    this._inflightTickets.add(ticket as Ticket<unknown>)
 
     // Fire and forget — first attempt runs immediately; queued if slow/failed
     this._fireFirstAttempt(
@@ -380,6 +390,50 @@ export class HttpClient {
 
   delete<T>(url: string, options: Omit<RequestOptions<T>, "method"> = {}): Ticket<T> {
     return this.request<T>(url, { ...options, method: "DELETE" })
+  }
+
+  // ---------------------------------------------------------------------------
+  // Graceful shutdown
+  // ---------------------------------------------------------------------------
+
+  /** Close the client. New requests throw `ConfigurationError("client closed")`.
+   *  When `drain` is true (default), in-flight tickets are awaited up to
+   *  `timeoutMs` (no cap when omitted) before the promise resolves. When
+   *  `drain` is false, all in-flight tickets are cancelled immediately. */
+  async close(opts?: { drain?: boolean; timeoutMs?: number }): Promise<void> {
+    if (this._closed) return // idempotent
+    this._closed = true
+
+    const drain = opts?.drain ?? true
+    const tickets = [...this._inflightTickets]
+
+    if (!drain || tickets.length === 0) {
+      // Cancel all in-flight immediately
+      for (const ticket of tickets) {
+        ticket.cancel()
+      }
+      this._inflightTickets.clear()
+      return
+    }
+
+    // Drain: wait for all to resolve, up to timeoutMs
+    const done = Promise.all(tickets.map((t) => t.toPromise()))
+
+    if (opts?.timeoutMs !== undefined) {
+      const timeout = new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, opts.timeoutMs!)
+        timer.unref()
+      })
+      await Promise.race([done, timeout])
+      // Cancel any remaining in-flight tickets
+      for (const ticket of this._inflightTickets) {
+        ticket.cancel()
+      }
+    } else {
+      await done
+    }
+
+    this._inflightTickets.clear()
   }
 
   // ---------------------------------------------------------------------------

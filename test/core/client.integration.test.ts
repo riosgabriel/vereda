@@ -4,6 +4,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest"
 import { HttpClient } from "../../src/core/client.js"
 import {
   CancelledError,
+  ConfigurationError,
   DeadlineExceededError,
   HttpError,
   MaxRetriesExceededError,
@@ -568,4 +569,131 @@ describe("HttpClient integration", () => {
     expect(elapsed).toBeGreaterThanOrEqual(280)
     expect(elapsed).toBeLessThan(500)
   }, 5_000)
+
+  describe("graceful shutdown (O4)", () => {
+    it("rejects new requests after close({ drain: false })", async () => {
+      const client = HttpClient.create()
+      client.close({ drain: false })
+
+      expect(() => client.get(`${server.url}/test`)).toThrow(ConfigurationError)
+      expect(() => client.get(`${server.url}/test`)).toThrow("client closed")
+    })
+
+    it("close({ drain: false }) cancels in-flight tickets", async () => {
+      let resolveRequest: (() => void) | undefined
+      server.setHandler((_req, res) => {
+        new Promise<void>((r) => {
+          resolveRequest = r
+        }).then(() => {
+          res.writeHead(200, { "Content-Type": "application/json" })
+          res.end(JSON.stringify({ ok: true }))
+        })
+      })
+
+      const client = HttpClient.create()
+      const ticket = client.get(`${server.url}/slow`, {
+        retry: { maxRetries: 0 },
+      })
+
+      // Wait for the request to be in-flight
+      await new Promise((r) => setTimeout(r, 50))
+
+      const closePromise = client.close({ drain: false })
+
+      // Resolve the server handler so it doesn't hang
+      resolveRequest?.()
+
+      await closePromise
+      const result = await ticket.toPromise()
+      expect(result.success).toBe(false)
+      if (!result.success) {
+        expect(result.error).toBeInstanceOf(CancelledError)
+      }
+    })
+
+    it("close({ drain: true }) waits for in-flight requests", async () => {
+      server.setHandler((_req, res) => {
+        res.writeHead(200, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ ok: true }))
+      })
+
+      const client = HttpClient.create()
+      const ticket = client.get(`${server.url}/fast`, {
+        retry: { maxRetries: 0 },
+      })
+
+      // Wait for the request to be in-flight
+      await new Promise((r) => setTimeout(r, 50))
+
+      await client.close({ drain: true })
+      const result = await ticket.toPromise()
+      expect(result.success).toBe(true)
+    })
+
+    it("close({ drain: true, timeoutMs }) cancels after timeout", async () => {
+      let resolveRequest: (() => void) | undefined
+      server.setHandler((_req, res) => {
+        new Promise<void>((r) => {
+          resolveRequest = r
+        }).then(() => {
+          res.writeHead(200, { "Content-Type": "application/json" })
+          res.end(JSON.stringify({ ok: true }))
+        })
+      })
+
+      const client = HttpClient.create()
+      const ticket = client.get(`${server.url}/slow`, {
+        retry: { maxRetries: 0 },
+      })
+
+      // Wait for the request to be in-flight
+      await new Promise((r) => setTimeout(r, 50))
+
+      await client.close({ drain: true, timeoutMs: 100 })
+
+      // Resolve the server handler so it doesn't hang
+      resolveRequest?.()
+
+      const result = await ticket.toPromise()
+      expect(result.success).toBe(false)
+      if (!result.success) {
+        expect(result.error).toBeInstanceOf(CancelledError)
+      }
+    })
+
+    it("close is idempotent", async () => {
+      const client = HttpClient.create()
+      await client.close({ drain: false })
+      await client.close({ drain: false }) // should not throw
+    })
+
+    it("process exits promptly after close({ drain: false }) with sleeping retry", async () => {
+      // Server always fails, triggering retries with backoff
+      server.setHandler((_req, res) => {
+        res.writeHead(503, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ error: "unavailable" }))
+      })
+
+      const client = HttpClient.create()
+      const ticket = client.get(`${server.url}/always-503`, {
+        retry: { maxRetries: 5, backoff: { baseDelayMs: 1000, jitter: false } },
+      })
+
+      // Wait for the first attempt to complete and retry to start sleeping
+      await new Promise((r) => setTimeout(r, 50))
+
+      const start = Date.now()
+      await client.close({ drain: false })
+      const elapsed = Date.now() - start
+
+      // Should exit quickly, not wait for the 1s backoff
+      expect(elapsed).toBeLessThan(200)
+
+      const result = await ticket.toPromise()
+      expect(result.success).toBe(false)
+      if (!result.success) {
+        expect(result.error).toBeInstanceOf(CancelledError)
+      }
+    })
+  })
 })
