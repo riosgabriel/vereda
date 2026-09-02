@@ -83,11 +83,11 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
     try {
       await sleep(delayMs, ticket.signal)
     } catch {
-      // The deadline timer aborts the ticket signal. When sleep rejects,
-      // the ticket is already cancelled — distinguish deadline from
-      // user cancellation by checking whether totalMs was configured.
+      // The deadline timer aborts the ticket signal. Distinguish deadline from
+      // user cancellation: deadline only aborts the signal (abortSignal()),
+      // while user cancellation sets _cancelled = true via cancel().
       onCleanup?.()
-      if (timeoutConfig.totalMs !== undefined) {
+      if (!ticket.isCancelled && timeoutConfig.totalMs !== undefined) {
         controller.markDone({
           success: false,
           error: new DeadlineExceededError(url, timeoutConfig.totalMs),
@@ -123,7 +123,14 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 
       case "cancelled":
         onCleanup?.()
-        controller.markDone({ success: false, error: new CancelledError() } as never)
+        if (!ticket.isCancelled && timeoutConfig.totalMs !== undefined) {
+          controller.markDone({
+            success: false,
+            error: new DeadlineExceededError(url, timeoutConfig.totalMs),
+          } as never)
+        } else {
+          controller.markDone({ success: false, error: new CancelledError() } as never)
+        }
         return
 
       case "timeout":

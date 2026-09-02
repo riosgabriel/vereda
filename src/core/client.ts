@@ -11,6 +11,7 @@ import type { AppError } from "./errors.js"
 import {
   NetworkError,
   CancelledError,
+  DeadlineExceededError,
   TimeoutError,
   QueueFullError,
   ConfigurationError,
@@ -160,7 +161,7 @@ export class HttpClient {
     options: RequestOptions<unknown>,
     ticket: Ticket<unknown>,
     controller: TicketController<unknown>,
-    cleanupExternalSignal: () => void,
+    cleanup: () => void,
   ): Promise<void> {
     // Resolve URL and partition inside the async path so relative URLs
     // without a baseUrl surface as ticket errors instead of throwing.
@@ -175,7 +176,7 @@ export class HttpClient {
       })
       this.emit("failure", { ticketId: ticket.id, url, error })
       controller.markDone({ success: false, error } as never)
-      cleanupExternalSignal()
+      cleanup()
       return
     }
 
@@ -187,7 +188,7 @@ export class HttpClient {
       const error = err as ConfigurationError
       this.emit("failure", { ticketId: ticket.id, url, error })
       controller.markDone({ success: false, error } as never)
-      cleanupExternalSignal()
+      cleanup()
       return
     }
 
@@ -212,19 +213,26 @@ export class HttpClient {
         this.emit("success", { ticketId: ticket.id, url, attempt: 1 })
         this.logger?.info("Request succeeded", { ticketId: ticket.id, url })
         controller.markDone(result.result)
-        cleanupExternalSignal()
+        cleanup()
         return
 
       case "cancelled":
-        controller.markDone({ success: false, error: new CancelledError() } as never)
-        cleanupExternalSignal()
+        if (!ticket.isCancelled && timeoutConfig.totalMs !== undefined) {
+          controller.markDone({
+            success: false,
+            error: new DeadlineExceededError(url, timeoutConfig.totalMs),
+          } as never)
+        } else {
+          controller.markDone({ success: false, error: new CancelledError() } as never)
+        }
+        cleanup()
         return
 
       case "error":
         // Apply the unified retry gate (default policy + retryWhen). Errors
         // that fail it (e.g. ValidationError, HttpError) resolve immediately.
         if (this.vetoed(retryConfig, result.error, 0, options, ticket, controller, url)) {
-          cleanupExternalSignal()
+          cleanup()
           return
         }
         controller.markQueued()
@@ -238,14 +246,14 @@ export class HttpClient {
           partitionName,
           bulkhead,
           result.error,
-          cleanupExternalSignal,
+          cleanup,
         )
         return
 
       case "timeout": {
         const error = new TimeoutError(url, timeoutConfig.attemptMs ?? 0)
         if (this.vetoed(retryConfig, error, 0, options, ticket, controller, url)) {
-          cleanupExternalSignal()
+          cleanup()
           return
         }
         controller.markQueued()
@@ -259,7 +267,7 @@ export class HttpClient {
           partitionName,
           bulkhead,
           error,
-          cleanupExternalSignal,
+          cleanup,
         )
         return
       }
@@ -301,7 +309,7 @@ export class HttpClient {
     partitionName: string,
     bulkhead: ReturnType<BulkheadRegistry["get"]>,
     firstError: AppError,
-    cleanupExternalSignal: () => void,
+    cleanup: () => void,
   ): void {
     this.logger?.info("Request queued for retry", {
       ticketId: ticket.id,
@@ -323,7 +331,7 @@ export class HttpClient {
           onRetry: (attempt, delayMs, error) => {
             this.emit("retry", { ticketId: ticket.id, url, attempt, delayMs, error })
           },
-          onCleanup: cleanupExternalSignal,
+          onCleanup: cleanup,
         })
 
         const status = ticket.status
@@ -344,7 +352,7 @@ export class HttpClient {
         if (err instanceof QueueFullError) {
           this.emit("failure", { ticketId: ticket.id, url, error: err })
           controller.markDone({ success: false, error: err } as never)
-          cleanupExternalSignal()
+          cleanup()
           return
         }
         const error = new NetworkError(err instanceof Error ? err.message : "Queue error", {
@@ -352,7 +360,7 @@ export class HttpClient {
         })
         this.emit("failure", { ticketId: ticket.id, url, error })
         controller.markDone({ success: false, error } as never)
-        cleanupExternalSignal()
+        cleanup()
       })
   }
 
@@ -399,7 +407,11 @@ export class HttpClient {
   /** Close the client. New requests throw `ConfigurationError("client closed")`.
    *  When `drain` is true (default), in-flight tickets are awaited up to
    *  `timeoutMs` (no cap when omitted) before the promise resolves. When
-   *  `drain` is false, all in-flight tickets are cancelled immediately. */
+   *  `drain` is false, all in-flight tickets are cancelled immediately.
+   *
+   *  ⚠️ When `drain` is true and `timeoutMs` is omitted, this method will
+   *  await indefinitely until all in-flight tickets resolve. Pass `timeoutMs`
+   *  to avoid hanging if tickets may never resolve. */
   async close(opts?: { drain?: boolean; timeoutMs?: number }): Promise<void> {
     if (this._closed) return // idempotent
     this._closed = true
@@ -420,14 +432,19 @@ export class HttpClient {
     const done = Promise.all(tickets.map((t) => t.toPromise()))
 
     if (opts?.timeoutMs !== undefined) {
+      let timer: ReturnType<typeof setTimeout> | undefined
       const timeout = new Promise<void>((resolve) => {
-        const timer = setTimeout(resolve, opts.timeoutMs!)
+        timer = setTimeout(resolve, opts.timeoutMs!)
         timer.unref()
       })
       await Promise.race([done, timeout])
       // Cancel any remaining in-flight tickets
       for (const ticket of this._inflightTickets) {
         ticket.cancel()
+      }
+      // Clear the timeout timer if tickets resolved first
+      if (timer !== undefined) {
+        clearTimeout(timer)
       }
     } else {
       await done

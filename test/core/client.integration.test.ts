@@ -541,6 +541,36 @@ describe("HttpClient integration", () => {
     expect(elapsed).toBeLessThan(300)
   }, 5_000)
 
+  it("total deadline during active request resolves with DeadlineExceededError", async () => {
+    // Server delays response body beyond deadline. The deadline should fire
+    // while the request is in-flight and resolve with DeadlineExceededError.
+    server.setHandler((_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" })
+      setTimeout(() => {
+        try {
+          res.end(JSON.stringify({ ok: true }))
+          // eslint-disable-next-line no-empty
+        } catch {}
+      }, 2000)
+    })
+
+    const start = Date.now()
+    const ticket = client.get(`${server.url}/slow-body`, {
+      timeout: { totalMs: 100 },
+      retry: { maxRetries: 0 },
+    })
+    const result = await ticket.toPromise()
+    const elapsed = Date.now() - start
+
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error).toBeInstanceOf(DeadlineExceededError)
+    }
+    // Should resolve near the deadline
+    expect(elapsed).toBeGreaterThanOrEqual(80)
+    expect(elapsed).toBeLessThan(300)
+  }, 5_000)
+
   it("total deadline cancels ticket and resolves with DeadlineExceededError (#R3)", async () => {
     // Server always returns 503. With totalMs: 300 and baseDelayMs: 100,
     // the deadline should fire during a retry backoff (between 2nd and 3rd attempt)
