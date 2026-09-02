@@ -41,6 +41,10 @@ export interface TicketController<T> {
   markQueued(): void
   markRetrying(attempt: number, delayMs: number): void
   markDone(result: Result<T>): void
+  /** @internal — abort the signal without resolving the ticket. Used by the
+   *  deadline timer so the retry loop can resolve with DeadlineExceededError
+   *  instead of CancelledError. */
+  abortSignal(): void
 }
 
 // ---------------------------------------------------------------------------
@@ -215,6 +219,7 @@ export function createTicket<T>(id: string): {
     markQueued: () => ticket["markQueued"](),
     markRetrying: (attempt, delayMs) => ticket["markRetrying"](attempt, delayMs),
     markDone: (result) => ticket["markDone"](result),
+    abortSignal: () => ticket["_abortController"].abort(),
   }
 
   return { ticket, controller }

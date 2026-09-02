@@ -4,6 +4,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest"
 import { HttpClient } from "../../src/core/client.js"
 import {
   CancelledError,
+  DeadlineExceededError,
   HttpError,
   MaxRetriesExceededError,
   NetworkError,
@@ -537,5 +538,34 @@ describe("HttpClient integration", () => {
     }
     // Should resolve well within 300ms (100ms timeout + tolerance)
     expect(elapsed).toBeLessThan(300)
+  }, 5_000)
+
+  it("total deadline cancels ticket and resolves with DeadlineExceededError (#R3)", async () => {
+    // Server always returns 503. With totalMs: 300 and baseDelayMs: 100,
+    // the deadline should fire during a retry backoff (between 2nd and 3rd attempt)
+    // and resolve with DeadlineExceededError between 300–400ms.
+    server.setHandler((_req, res) => {
+      res.writeHead(503, { "Content-Type": "application/json" })
+      res.end(JSON.stringify({ error: "unavailable" }))
+    })
+
+    const start = Date.now()
+    const ticket = client.get(`${server.url}/always-503`, {
+      timeout: { totalMs: 300 },
+      retry: { maxRetries: 10, backoff: { baseDelayMs: 100, jitter: false } },
+    })
+    const result = await ticket.toPromise()
+    const elapsed = Date.now() - start
+
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error).toBeInstanceOf(DeadlineExceededError)
+      if (result.error instanceof DeadlineExceededError) {
+        expect(result.error.totalMs).toBe(300)
+      }
+    }
+    // Should resolve within the deadline window + tolerance
+    expect(elapsed).toBeGreaterThanOrEqual(280)
+    expect(elapsed).toBeLessThan(500)
   }, 5_000)
 })

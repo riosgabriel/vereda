@@ -101,13 +101,36 @@ export class HttpClient {
       }
     }
 
+    // Total deadline: a single unref'd timer that aborts the ticket signal
+    // on expiry, cancelling in-flight attempts and breaking sleep (#R3).
+    const timeoutConfig = this.mergeTimeout(options)
+    let deadlineTimer: ReturnType<typeof setTimeout> | undefined
+    const cleanupDeadline = () => {
+      if (deadlineTimer !== undefined) {
+        clearTimeout(deadlineTimer)
+        deadlineTimer = undefined
+      }
+    }
+    if (timeoutConfig.totalMs !== undefined) {
+      deadlineTimer = setTimeout(() => {
+        controller.abortSignal()
+      }, timeoutConfig.totalMs)
+      deadlineTimer.unref()
+    }
+
+    // Combined cleanup: external signal + deadline timer
+    const cleanup = () => {
+      cleanupExternalSignal()
+      cleanupDeadline()
+    }
+
     // Fire and forget — first attempt runs immediately; queued if slow/failed
     this._fireFirstAttempt(
       url,
       options as RequestOptions<unknown>,
       ticket as Ticket<unknown>,
       controller as TicketController<unknown>,
-      cleanupExternalSignal,
+      cleanup,
     ).catch((err: unknown) => {
       // Catch any unexpected throws and surface them as ticket failures
       const error = new NetworkError(err instanceof Error ? err.message : "Unexpected error", {
@@ -116,7 +139,7 @@ export class HttpClient {
       if (ticket.status.state !== "done" && !ticket.isCancelled) {
         controller.markDone({ success: false, error } as never)
       }
-      cleanupExternalSignal()
+      cleanup()
     })
 
     return ticket

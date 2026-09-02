@@ -3,6 +3,7 @@ export type AppError =
   | HttpError
   | RetryableStatusError
   | TimeoutError
+  | DeadlineExceededError
   | ValidationError
   | CancelledError
   | QueueFullError
@@ -71,6 +72,17 @@ export class TimeoutError extends RequestError {
     super("timeout", message)
     this.timeoutMs = timeoutMs
     this.url = url
+  }
+}
+
+export class DeadlineExceededError extends RequestError {
+  public readonly url: string
+  public readonly totalMs: number
+
+  constructor(url: string, totalMs: number) {
+    super("deadline", `Request to ${url} exceeded total deadline of ${totalMs}ms`)
+    this.url = url
+    this.totalMs = totalMs
   }
 }
 

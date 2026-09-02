@@ -35,6 +35,10 @@ export interface BackoffOptions {
 export interface TimeoutConfig {
   /** Per-attempt timeout in ms. Undefined means no per-attempt timeout. */
   attemptMs?: number
+  /** Whole-ticket deadline in ms. Starts at request(); cancels the ticket
+   *  and resolves with DeadlineExceededError on expiry. Undefined means
+   *  no total deadline. */
+  totalMs?: number
 }
 
 // ---------------------------------------------------------------------------

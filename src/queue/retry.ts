@@ -1,6 +1,7 @@
 import { buildBackoffFn } from "../core/backoff.js"
 import {
   CancelledError,
+  DeadlineExceededError,
   MaxRetriesExceededError,
   RetryableStatusError,
   TimeoutError,
@@ -78,7 +79,24 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
     const delayMs = resolveRetryDelay(lastError, backoffFn, attempt, backoffCap)
     onRetry?.(attempt, delayMs, lastError)
     controller.markRetrying(attempt, delayMs)
-    await sleep(delayMs)
+
+    try {
+      await sleep(delayMs, ticket.signal)
+    } catch {
+      // The deadline timer aborts the ticket signal. When sleep rejects,
+      // the ticket is already cancelled — distinguish deadline from
+      // user cancellation by checking whether totalMs was configured.
+      onCleanup?.()
+      if (timeoutConfig.totalMs !== undefined) {
+        controller.markDone({
+          success: false,
+          error: new DeadlineExceededError(url, timeoutConfig.totalMs),
+        } as never)
+      } else {
+        controller.markDone({ success: false, error: new CancelledError() } as never)
+      }
+      return
+    }
 
     if (ticket.isCancelled) {
       onCleanup?.()
@@ -135,8 +153,22 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
   } as never)
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason ?? new DOMException("The operation was aborted", "AbortError"))
+      return
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort)
+      resolve()
+    }, ms)
+    const onAbort = () => {
+      clearTimeout(timer)
+      reject(signal!.reason ?? new DOMException("The operation was aborted", "AbortError"))
+    }
+    signal?.addEventListener("abort", onAbort, { once: true })
+  })
 }
 
 /** Resolve the delay before a retry (decision D3): a Retry-After-derived
