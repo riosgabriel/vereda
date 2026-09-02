@@ -23,6 +23,8 @@ export interface RetryJobOptions {
   /** The error from the first attempt (fired client-side before queuing). */
   firstError: AppError
   onRetry?: (attempt: number, delayMs: number, error: AppError) => void
+  /** Called before markDone to clean up external resources (e.g. signal listeners). */
+  onCleanup?: () => void
 }
 
 export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
@@ -36,6 +38,7 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
     middleware,
     firstError,
     onRetry,
+    onCleanup,
   } = job
 
   const maxRetries = retryConfig.maxRetries ?? 3
@@ -49,6 +52,7 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     if (ticket.isCancelled) {
+      onCleanup?.()
       controller.markDone({ success: false, error: new CancelledError() } as never)
       return
     }
@@ -63,6 +67,7 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
         idempotent: retryConfig.idempotent,
       }
       if (!shouldRetry(lastError, attempt, ctx, retryConfig.retryWhen)) {
+        onCleanup?.()
         controller.markDone({ success: false, error: lastError } as never)
         return
       }
@@ -76,6 +81,7 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
     await sleep(delayMs)
 
     if (ticket.isCancelled) {
+      onCleanup?.()
       controller.markDone({ success: false, error: new CancelledError() } as never)
       return
     }
@@ -93,10 +99,12 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 
     switch (result.kind) {
       case "success":
+        onCleanup?.()
         controller.markDone(result.result)
         return
 
       case "cancelled":
+        onCleanup?.()
         controller.markDone({ success: false, error: new CancelledError() } as never)
         return
 
@@ -113,12 +121,14 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
   if (maxRetries === 0) {
     // Zero retries configured/executed — surface the underlying error raw,
     // never wrapped in MaxRetriesExceededError.
+    onCleanup?.()
     controller.markDone({ success: false, error: lastError } as never)
     return
   }
 
   // All retries exhausted — total attempts = 1 (first) + maxRetries (loop)
   const totalAttempts = maxRetries + 1
+  onCleanup?.()
   controller.markDone({
     success: false,
     error: new MaxRetriesExceededError(totalAttempts, lastError),

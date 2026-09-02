@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
+import { getEventListeners } from "node:events"
 import { describe, it, expect, beforeAll, afterAll } from "vitest"
 import { HttpClient } from "../../src/core/client.js"
 import {
@@ -431,4 +432,77 @@ describe("HttpClient integration", () => {
     // Ticket updates: queued, retrying, done
     expect(updateTypes).toEqual(["queued", "retrying", "done"])
   }, 10_000)
+
+  it("removes external-signal abort listener after ticket resolves (#7)", async () => {
+    server.setHandler((_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" })
+      res.end("{}")
+    })
+
+    const controller = new AbortController()
+    const listenersBefore = getEventListeners(controller.signal, "abort").length
+
+    const ticket = client.get(`${server.url}/signal-cleanup`, { signal: controller.signal })
+    const result = await ticket.toPromise()
+
+    expect(result.success).toBe(true)
+
+    // The external signal's abort listener count should return to its
+    // pre-request value after the ticket resolves.
+    const listenersAfter = getEventListeners(controller.signal, "abort").length
+    expect(listenersAfter).toBe(listenersBefore)
+  })
+
+  it("removes external-signal listener after ticket with retries resolves (#7)", async () => {
+    let attempts = 0
+    server.setHandler((_req, res) => {
+      attempts++
+      if (attempts < 3) {
+        res.writeHead(503)
+        res.end("unavailable")
+      } else {
+        res.writeHead(200, { "Content-Type": "application/json" })
+        res.end("{}")
+      }
+    })
+
+    const controller = new AbortController()
+    const listenersBefore = getEventListeners(controller.signal, "abort").length
+
+    const retryClient = HttpClient.create({
+      retry: { maxRetries: 3, backoff: { baseDelayMs: 10, jitter: false } },
+    })
+
+    const ticket = retryClient.get(`${server.url}/signal-cleanup-retry`, {
+      signal: controller.signal,
+      retry: { retryOnStatus: [503] },
+    })
+    const result = await ticket.toPromise()
+
+    expect(result.success).toBe(true)
+
+    const listenersAfter = getEventListeners(controller.signal, "abort").length
+    expect(listenersAfter).toBe(listenersBefore)
+  })
+
+  it("removes external-signal listener after cancellation (#7)", async () => {
+    server.setHandler((_req, res) => {
+      setTimeout(() => {
+        try {
+          res.writeHead(200)
+          res.end("{}")
+          // eslint-disable-next-line no-empty
+        } catch {}
+      }, 5000)
+    })
+    const controller = new AbortController()
+    const listenersBefore = getEventListeners(controller.signal, "abort").length
+
+    const ticket = client.get(`${server.url}/signal-cleanup-cancel`, { signal: controller.signal })
+    setTimeout(() => controller.abort(), 20)
+    await ticket.toPromise()
+
+    const listenersAfter = getEventListeners(controller.signal, "abort").length
+    expect(listenersAfter).toBe(listenersBefore)
+  })
 })

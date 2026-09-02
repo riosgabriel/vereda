@@ -46,32 +46,30 @@ export async function executeRequest(
   const fetchCall = buildFetchCall(url, resolvedOptions)
   const composed = composeMiddleware(middleware, fetchCall)
 
-  // Race against timeout if configured
+  // Merge the per-attempt signals with AbortSignal.any. It wires its sources
+  // internally (no "abort" listeners attached to them), so neither the ticket
+  // signal nor the caller's signal accumulates one listener per attempt (#7).
+  // Wrapping even a lone ticket signal shields it from fetch's own abort
+  // listener, which undici only removes asynchronously after completion.
+  const sources: AbortSignal[] = [signal]
+  if (options.signal) sources.push(options.signal)
+  const timeoutController = timeoutMs === undefined ? undefined : new AbortController()
+  if (timeoutController) sources.push(timeoutController.signal)
+  const attemptSignal = AbortSignal.any(sources)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- used in 4.2 to clear timeout after body parsing
+  const timeoutId =
+    timeoutController && timeoutMs !== undefined
+      ? setTimeout(() => timeoutController.abort(), timeoutMs)
+      : undefined
+
   let response: Response
   try {
-    if (timeoutMs !== undefined) {
-      const timeoutController = new AbortController()
-      const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs)
-
-      // Merge signals: external cancel + timeout
-      const mergedSignal = mergeSignals(
-        signal,
-        timeoutController.signal,
-        ...(options.signal ? [options.signal] : []),
-      )
-
-      try {
-        response = await composed({ ...resolvedOptions, signal: mergedSignal })
-      } finally {
-        clearTimeout(timeoutId)
-      }
-
-      if (timeoutController.signal.aborted) {
-        return { kind: "timeout" }
-      }
-    } else {
-      const mergedSignal = options.signal ? mergeSignals(signal, options.signal) : signal
-      response = await composed({ ...resolvedOptions, signal: mergedSignal })
+    response = await composed({ ...resolvedOptions, signal: attemptSignal })
+    // The timeout may fire after fetch resolves but before this check runs;
+    // the timed-out attempt is not trustworthy, so it still surfaces as a
+    // timeout (cancellation is checked first in the catch path below).
+    if (timeoutController?.signal.aborted) {
+      return { kind: "timeout" }
     }
   } catch (err) {
     // Precedence: cancellation wins over timeout. If the ticket or the
@@ -211,18 +209,6 @@ export function parseRetryAfter(header: string | null): number | undefined {
 
 function isAbortError(err: unknown): boolean {
   return err instanceof Error && err.name === "AbortError"
-}
-
-function mergeSignals(...signals: AbortSignal[]): AbortSignal {
-  const controller = new AbortController()
-  for (const signal of signals) {
-    if (signal.aborted) {
-      controller.abort()
-      break
-    }
-    signal.addEventListener("abort", () => controller.abort(), { once: true })
-  }
-  return controller.signal
 }
 
 function extractIssues(err: unknown): unknown[] {
