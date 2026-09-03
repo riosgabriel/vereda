@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: antongulin/robin@main
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          llm_api_key: ${{ secrets.LLM_API_KEY }}
-          llm_base_url: https://openrouter.ai/api/v1
-          llm_model: openrouter/free
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          llm-api-key: ${{ secrets.LLM_API_KEY }}
+          llm-base-url: https://openrouter.ai/api/v1
+          model: openrouter/free
