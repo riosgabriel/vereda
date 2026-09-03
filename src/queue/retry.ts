@@ -12,6 +12,7 @@ import type { BackoffOptions, RequestOptions, RetryConfig, TimeoutConfig } from 
 import type { Ticket } from "../ticket/ticket.js"
 import type { TicketController } from "../ticket/ticket.js"
 import type { Bulkhead } from "./bulkhead.js"
+import type { Semaphore } from "./semaphore.js"
 import { executeRequest, type MiddlewareFn } from "./executor.js"
 import { shouldRetry, type RetryPolicyContext } from "./policy.js"
 
@@ -25,6 +26,8 @@ export interface RetryJobOptions {
   middleware: MiddlewareFn[]
   /** Per-attempt bulkhead for retry scheduling. */
   bulkhead: Bulkhead
+  /** Global concurrency semaphore acquired after the partition slot (D4). */
+  semaphore?: Semaphore
   /** The error from the first attempt (fired client-side before queuing). */
   firstError: AppError
   onRetry?: (attempt: number, delayMs: number, error: AppError) => void
@@ -42,6 +45,7 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
     controller,
     middleware,
     bulkhead,
+    semaphore,
     firstError,
     onRetry,
     onCleanup,
@@ -109,19 +113,22 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 
     // Per-attempt bulkhead scheduling: each retry acquires its own slot,
     // releases it after execution, so other tickets aren't blocked (#5, D4).
+    // The global semaphore is acquired after the partition slot (D4).
     let result: Awaited<ReturnType<typeof executeRequest>>
     try {
-      result = await bulkhead.run(() =>
-        executeRequest(
-          {
-            url,
-            options: requestOptions,
-            timeoutConfig,
-            retryConfig,
-            signal: ticket.signal,
-          },
-          middleware,
-        ),
+      result = await bulkhead.run(
+        () =>
+          executeRequest(
+            {
+              url,
+              options: requestOptions,
+              timeoutConfig,
+              retryConfig,
+              signal: ticket.signal,
+            },
+            middleware,
+          ),
+        semaphore,
       )
     } catch (err) {
       if (err instanceof QueueFullError) {

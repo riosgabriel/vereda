@@ -1,5 +1,6 @@
 import { QueueFullError } from "../core/errors.js"
 import type { PartitionConfig } from "../core/types.js"
+import type { Semaphore } from "./semaphore.js"
 
 type Task = () => Promise<void>
 
@@ -41,23 +42,34 @@ export class Bulkhead {
    *  Rejects with `QueueFullError` when the queue is at capacity.
    *  Unlike `schedule()`, `run()` manages its own slot lifecycle so that
    *  `this.running` is decremented *before* the returned Promise resolves,
-   *  giving consumers an accurate count immediately after `await`. */
-  run<T>(task: () => Promise<T>): Promise<T> {
+   *  giving consumers an accurate count immediately after `await`.
+   *  When a global `semaphore` is provided, a permit is acquired after the
+   *  partition slot and released before it (D4). */
+  run<T>(task: () => Promise<T>, semaphore?: Semaphore): Promise<T> {
     return new Promise<T>((resolve, reject) => {
       const execute = () => {
         this.running++
-        task().then(
-          (result) => {
-            this.running--
-            this._drainWaitQueue()
-            resolve(result)
-          },
-          (err) => {
-            this.running--
-            this._drainWaitQueue()
-            reject(err)
-          },
-        )
+        const runTask = () =>
+          task().then(
+            (result) => {
+              this.running--
+              this._drainWaitQueue()
+              resolve(result)
+            },
+            (err) => {
+              this.running--
+              this._drainWaitQueue()
+              reject(err)
+            },
+          )
+
+        if (semaphore) {
+          semaphore.acquire().then((release) => {
+            runTask().finally(release)
+          }, reject)
+        } else {
+          runTask()
+        }
       }
 
       if (this.running < this.concurrency) {
@@ -130,17 +142,20 @@ export class BulkheadRegistry {
   private readonly globalConfig: PartitionConfig
   private readonly partitionConfigs: Record<string, PartitionConfig>
   private readonly sweepInterval: number
+  private readonly semaphore?: Semaphore
   private callCounter = 0
 
   constructor(
     globalConfig: PartitionConfig = {},
     partitionConfigs: Record<string, PartitionConfig> = {},
     ttlMs: number = 60_000,
+    semaphore?: Semaphore,
   ) {
     this.ttlMs = ttlMs
     this.globalConfig = globalConfig
     this.partitionConfigs = partitionConfigs
     this.sweepInterval = 10
+    this.semaphore = semaphore
   }
 
   get(partitionName: string): Bulkhead {
@@ -191,5 +206,9 @@ export class BulkheadRegistry {
       })
     }
     return result
+  }
+
+  getSemaphore(): Semaphore | undefined {
+    return this.semaphore
   }
 }

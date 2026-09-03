@@ -17,6 +17,7 @@ import {
   ConfigurationError,
 } from "./errors.js"
 import { BulkheadRegistry } from "../queue/bulkhead.js"
+import { Semaphore } from "../queue/semaphore.js"
 import { executeRequest, type MiddlewareFn } from "../queue/executor.js"
 import { shouldRetry, type RetryPolicyContext } from "../queue/policy.js"
 import { runRetryLoop } from "../queue/retry.js"
@@ -44,10 +45,8 @@ export class HttpClient {
   private constructor(config: ClientConfig) {
     this.config = config
     this.logger = config.logger
-    this.bulkheads = new BulkheadRegistry(
-      { concurrency: config.concurrency ?? 10 },
-      config.partitions ?? {},
-    )
+    const semaphore = new Semaphore(config.concurrency ?? 50)
+    this.bulkheads = new BulkheadRegistry({}, config.partitions ?? {}, 60_000, semaphore)
   }
 
   static create(config: ClientConfig = {}): HttpClient {
@@ -214,10 +213,20 @@ export class HttpClient {
       method: options.method ?? "GET",
       partition: partitionName,
     })
-    const result = await executeRequest(
-      { url: fullUrl, options, timeoutConfig, retryConfig, signal: ticket.signal },
-      this.middlewares,
-    )
+
+    // The global semaphore limits total concurrent executions across all
+    // partitions. It is acquired for every attempt (including the first),
+    // while the per-partition bulkhead slot only applies to retries (D4).
+    const semaphore = this.bulkheads.getSemaphore()
+    const execute = () =>
+      executeRequest(
+        { url: fullUrl, options, timeoutConfig, retryConfig, signal: ticket.signal },
+        this.middlewares,
+      )
+
+    const result = semaphore
+      ? await semaphore.acquire().then((release) => execute().finally(release))
+      : await execute()
 
     switch (result.kind) {
       case "success":
@@ -362,6 +371,7 @@ export class HttpClient {
       controller,
       middleware: this.middlewares,
       bulkhead,
+      semaphore: this.bulkheads.getSemaphore(),
       firstError,
       onRetry: (attempt, delayMs, error) => {
         this.emit("retry", { ticketId: ticket.id, url, attempt, delayMs, error })
