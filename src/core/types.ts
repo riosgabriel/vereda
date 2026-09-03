@@ -56,6 +56,8 @@ export interface PartitionConfig {
   concurrency?: number
   /** Max number of pending items in the queue before rejecting new ones */
   maxQueueSize?: number
+  /** When true, the first attempt also goes through the bulkhead (R6). */
+  limitFirstAttempts?: boolean
   retry?: RetryConfig
   timeout?: TimeoutConfig
 }

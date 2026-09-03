@@ -224,9 +224,19 @@ export class HttpClient {
         this.middlewares,
       )
 
-    const result = semaphore
-      ? await semaphore.acquire().then((release) => execute().finally(release))
-      : await execute()
+    // When partition.limitFirstAttempts is enabled (R6), the first attempt
+    // also goes through the per-partition bulkhead. Otherwise it bypasses
+    // the partition slot entirely (D4). The global semaphore is always
+    // acquired for every attempt.
+    const usePartitionBulkhead = bulkhead.limitFirstAttempts
+    const result = usePartitionBulkhead
+      ? await bulkhead.run(
+          () => (semaphore ? semaphore.acquire().then((r) => execute().finally(r)) : execute()),
+          semaphore,
+        )
+      : semaphore
+        ? await semaphore.acquire().then((release) => execute().finally(release))
+        : await execute()
 
     switch (result.kind) {
       case "success":

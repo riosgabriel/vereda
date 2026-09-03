@@ -8,6 +8,7 @@ export class Bulkhead {
   public readonly name: string
   private readonly concurrency: number
   private readonly maxQueueSize: number
+  private readonly _limitFirstAttempts: boolean
   private running = 0
   private queue: Task[] = []
   private readonly _waitQueue: Array<() => void> = []
@@ -16,6 +17,7 @@ export class Bulkhead {
     this.name = name
     this.concurrency = config.concurrency ?? 5
     this.maxQueueSize = config.maxQueueSize ?? 100
+    this._limitFirstAttempts = config.limitFirstAttempts ?? false
   }
 
   get queueSize(): number {
@@ -32,6 +34,10 @@ export class Bulkhead {
 
   get maxQueueSizeLimit(): number {
     return this.maxQueueSize
+  }
+
+  get limitFirstAttempts(): boolean {
+    return this._limitFirstAttempts
   }
 
   canAccept(): boolean {
