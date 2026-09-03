@@ -6,12 +6,15 @@ Vereda: resilient HTTP client for Node.js (queuing, retries, bulkhead isolation)
 
 ```bash
 npm test                                        # vitest run (all tests)
+npm run test:watch                              # vitest watch mode
 npx vitest run test/queue/bulkhead.test.ts      # single test file
 npx vitest run -t "name fragment"               # single test by name
 npm run typecheck                               # tsc --noEmit
 npm run build                                   # tsc -> dist/
 npm run format                                  # format all files with Prettier
+npm run format:check                            # check formatting without writing
 npm run lint                                    # run ESLint
+npm run lint:fix                                # run ESLint with auto-fix
 ```
 
 Prettier and ESLint are configured. Run `npm run format` and `npm run lint:fix` before committing.
@@ -45,6 +48,9 @@ Request flow: `client.get()` returns a `Ticket` synchronously → first attempt 
 - Replayable bodies — body may be a factory invoked per attempt; a raw `ReadableStream` is a `ConfigurationError`.
 - Retries honor `Retry-After` (seconds or HTTP-date) capped at `maxDelayMs`; backoff otherwise.
 - `ticket.toPromise()` never rejects — failures are a `Result` union with the closed `RequestError` hierarchy (`src/core/errors.ts`).
+- Graceful shutdown: `client.close({ drain: true, timeoutMs })` waits for in-flight tickets up to `timeoutMs`, then cancels remaining; `client.close()` without drain cancels immediately. New requests throw `ConfigurationError("client closed")`.
+- Lifecycle events: `client.on(event, listener)` for `request`, `retry`, `success`, `failure`. The `retry` event fires with zero-based retry index (0 = first retry after initial attempt).
+- `ticket.subscribe()` is an async generator yielding `TicketUpdate` events (`queued`, `retrying`, `done`, `cancelled`).
 
 → To onboard a contributor using this mental model, see **Onboarding contributors (for LLMs)** below and `ONBOARDING.md`.
 
@@ -74,7 +80,10 @@ An LLM can stand in for a library's docs website: interactively walk a new contr
 - Ticket state machine: `src/ticket/ticket.ts`
 - Single attempt + middleware composition: `src/queue/executor.ts`
 - Retry loop: `src/queue/retry.ts`
+- Retry policy + `shouldRetry`: `src/queue/policy.ts`
 - Bulkhead + per-host queue: `src/queue/bulkhead.ts`
 - Backoff: `src/core/backoff.ts`
+- Config validation: `src/core/validate.ts`
+- Ticket ID generation: `src/core/nanoid.ts`
 - Middleware helpers: `src/middleware/index.ts`
 - Zod adapter (only zod import site): `src/adapters/zod.ts`
