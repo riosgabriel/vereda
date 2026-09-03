@@ -1,4 +1,4 @@
-import { HttpError, NetworkError, RetryableStatusError, ValidationError } from "../core/errors.js"
+import { ConfigurationError, HttpError, NetworkError, RetryableStatusError, ValidationError } from "../core/errors.js"
 import type { AppError } from "../core/errors.js"
 import type { RequestOptions, Result, RetryConfig, TimeoutConfig } from "../core/types.js"
 import { DEFAULT_RETRY_ON_STATUS } from "../core/types.js"
@@ -35,8 +35,21 @@ export async function executeRequest(
 
   // Resolve a replayable body factory fresh for this attempt so every attempt
   // gets its own materialized body. Do not mutate the caller's options.
-  const resolvedBody =
-    typeof options.body === "function" ? (options.body as () => BodyInit)() : options.body
+  let resolvedBody: BodyInit | undefined
+  if (typeof options.body === "function") {
+    try {
+      resolvedBody = (options.body as () => BodyInit)()
+    } catch (err) {
+      return {
+        kind: "error",
+        error: new ConfigurationError(
+          `body factory threw: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      }
+    }
+  } else {
+    resolvedBody = options.body
+  }
   const resolvedOptions = { ...options, body: resolvedBody }
 
   const timeoutMs = timeoutConfig.attemptMs

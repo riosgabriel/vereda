@@ -245,6 +245,17 @@ export class HttpClient {
           cleanup()
           return
         }
+        // maxRetries=0: no retries configured, surface the raw error immediately
+        // without entering the bulkhead (which would waste a slot for no work).
+        {
+          const effectiveMaxRetries = retryConfig.maxRetries ?? 3
+          if (effectiveMaxRetries === 0) {
+            this.emit("failure", { ticketId: ticket.id, url, error: result.error })
+            controller.markDone({ success: false, error: result.error } as never)
+            cleanup()
+            return
+          }
+        }
         controller.markQueued()
         this._scheduleInBulkhead(
           ticket,
@@ -265,6 +276,16 @@ export class HttpClient {
         if (this.vetoed(retryConfig, error, 0, options, ticket, controller, url)) {
           cleanup()
           return
+        }
+        // maxRetries=0: surface timeout immediately without entering the bulkhead
+        {
+          const effectiveMaxRetries = retryConfig.maxRetries ?? 3
+          if (effectiveMaxRetries === 0) {
+            this.emit("failure", { ticketId: ticket.id, url, error })
+            controller.markDone({ success: false, error } as never)
+            cleanup()
+            return
+          }
         }
         controller.markQueued()
         this._scheduleInBulkhead(

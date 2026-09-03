@@ -10,6 +10,7 @@ import {
   RetryableStatusError,
   QueueFullError,
   ConfigurationError,
+  DeadlineExceededError,
   type AppError,
 } from "../../src/core/errors.js"
 
@@ -80,8 +81,9 @@ describe("Error classes", () => {
       "queue_full",
       "configuration",
       "max_retries",
+      "deadline",
     ] as const
-    expect(expectedKinds).toHaveLength(9)
+    expect(expectedKinds).toHaveLength(10)
     // Every member of AppError["kind"] must be in expectedKinds
     const kind: AppError["kind"] = "network"
     expect(expectedKinds).toContain(kind)

@@ -113,6 +113,34 @@ describe("replayable bodies", () => {
     }
   })
 
+  it("surfaces a throwing body factory as ConfigurationError (no retry)", async () => {
+    let hits = 0
+    server.setHandler(async (req, res) => {
+      hits++
+      res.writeHead(200, { "Content-Type": "application/json" })
+      res.end(JSON.stringify({ ok: true }))
+    })
+
+    const client = HttpClient.create()
+    const result = await client
+      .post(
+        `${server.url}/throw`,
+        () => {
+          throw new Error("factory broken")
+        },
+        { retry: { ...fastRetry, idempotent: true } },
+      )
+      .toPromise()
+
+    expect(hits).toBe(0) // request never reached the server
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error).toBeInstanceOf(ConfigurationError)
+      expect(result.error.kind).toBe("configuration")
+      expect(result.error.message).toContain("factory broken")
+    }
+  })
+
   it("replays a factory string body on retry", async () => {
     const captured: string[] = []
     let hits = 0
