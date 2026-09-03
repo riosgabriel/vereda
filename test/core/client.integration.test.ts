@@ -655,7 +655,7 @@ describe("HttpClient integration", () => {
       // Wait for the request to be in-flight
       await new Promise((r) => setTimeout(r, 50))
 
-      await client.close({ drain: true })
+      await client.close({ drain: true, timeoutMs: 5_000 })
       const result = await ticket.toPromise()
       expect(result.success).toBe(true)
     })

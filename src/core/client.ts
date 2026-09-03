@@ -436,18 +436,18 @@ export class HttpClient {
   // ---------------------------------------------------------------------------
 
   /** Close the client. New requests throw `ConfigurationError("client closed")`.
-   *  When `drain` is true (default), in-flight tickets are awaited up to
-   *  `timeoutMs` (no cap when omitted) before the promise resolves. When
-   *  `drain` is false, all in-flight tickets are cancelled immediately.
+   *  When `drain` is true, in-flight tickets are awaited up to `timeoutMs`
+   *  before the promise resolves, then remaining tickets are cancelled.
+   *  When `drain` is false (default), all in-flight tickets are cancelled
+   *  immediately.
    *
-   *  ⚠️ When `drain` is true and `timeoutMs` is omitted, this method will
-   *  await indefinitely until all in-flight tickets resolve. Pass `timeoutMs`
-   *  to avoid hanging if tickets may never resolve. */
-  async close(opts?: { drain?: boolean; timeoutMs?: number }): Promise<void> {
+   *  `timeoutMs` is required when `drain` is true to prevent indefinite
+   *  hangs — use a value that fits your shutdown budget. */
+  async close(opts?: { drain?: boolean; timeoutMs: number }): Promise<void> {
     if (this._closed) return // idempotent
     this._closed = true
 
-    const drain = opts?.drain ?? true
+    const { drain = false, timeoutMs = 0 } = opts ?? {}
     const tickets = [...this._inflightTickets]
 
     if (!drain || tickets.length === 0) {
@@ -461,24 +461,19 @@ export class HttpClient {
 
     // Drain: wait for all to resolve, up to timeoutMs
     const done = Promise.all(tickets.map((t) => t.toPromise()))
-
-    if (opts?.timeoutMs !== undefined) {
-      let timer: ReturnType<typeof setTimeout> | undefined
-      const timeout = new Promise<void>((resolve) => {
-        timer = setTimeout(resolve, opts.timeoutMs!)
-        timer.unref()
-      })
-      await Promise.race([done, timeout])
-      // Cancel any remaining in-flight tickets
-      for (const ticket of this._inflightTickets) {
-        ticket.cancel()
-      }
-      // Clear the timeout timer if tickets resolved first
-      if (timer !== undefined) {
-        clearTimeout(timer)
-      }
-    } else {
-      await done
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const timeout = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, timeoutMs)
+      timer.unref()
+    })
+    await Promise.race([done, timeout])
+    // Cancel any remaining in-flight tickets
+    for (const ticket of this._inflightTickets) {
+      ticket.cancel()
+    }
+    // Clear the timeout timer if tickets resolved first
+    if (timer !== undefined) {
+      clearTimeout(timer)
     }
 
     this._inflightTickets.clear()
