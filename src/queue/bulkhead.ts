@@ -9,6 +9,7 @@ export class Bulkhead {
   private readonly maxQueueSize: number
   private running = 0
   private queue: Task[] = []
+  private readonly _waitQueue: Array<() => void> = []
 
   constructor(name: string, config: PartitionConfig = {}) {
     this.name = name
@@ -34,6 +35,39 @@ export class Bulkhead {
 
   canAccept(): boolean {
     return this.queue.length < this.maxQueueSize
+  }
+
+  /** Acquire a concurrency slot, execute `task`, release the slot.
+   *  Rejects with `QueueFullError` when the queue is at capacity.
+   *  Unlike `schedule()`, `run()` manages its own slot lifecycle so that
+   *  `this.running` is decremented *before* the returned Promise resolves,
+   *  giving consumers an accurate count immediately after `await`. */
+  run<T>(task: () => Promise<T>): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const execute = () => {
+        this.running++
+        task().then(
+          (result) => {
+            this.running--
+            this._drainWaitQueue()
+            resolve(result)
+          },
+          (err) => {
+            this.running--
+            this._drainWaitQueue()
+            reject(err)
+          },
+        )
+      }
+
+      if (this.running < this.concurrency) {
+        execute()
+      } else if (this._waitQueue.length < this.maxQueueSize) {
+        this._waitQueue.push(execute)
+      } else {
+        reject(new QueueFullError(this.name, this._waitQueue.length, this.maxQueueSize))
+      }
+    })
   }
 
   schedule(task: Task): Promise<void> {
@@ -65,6 +99,13 @@ export class Bulkhead {
         this.running--
         this._drain()
       })
+    }
+  }
+
+  private _drainWaitQueue(): void {
+    while (this.running < this.concurrency && this._waitQueue.length > 0) {
+      const next = this._waitQueue.shift()!
+      next()
     }
   }
 }

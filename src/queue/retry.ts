@@ -3,6 +3,7 @@ import {
   CancelledError,
   DeadlineExceededError,
   MaxRetriesExceededError,
+  QueueFullError,
   RetryableStatusError,
   TimeoutError,
 } from "../core/errors.js"
@@ -10,6 +11,7 @@ import type { AppError } from "../core/errors.js"
 import type { BackoffOptions, RequestOptions, RetryConfig, TimeoutConfig } from "../core/types.js"
 import type { Ticket } from "../ticket/ticket.js"
 import type { TicketController } from "../ticket/ticket.js"
+import type { Bulkhead } from "./bulkhead.js"
 import { executeRequest, type MiddlewareFn } from "./executor.js"
 import { shouldRetry, type RetryPolicyContext } from "./policy.js"
 
@@ -21,6 +23,8 @@ export interface RetryJobOptions {
   ticket: Ticket<unknown>
   controller: TicketController<unknown>
   middleware: MiddlewareFn[]
+  /** Per-attempt bulkhead for retry scheduling. */
+  bulkhead: Bulkhead
   /** The error from the first attempt (fired client-side before queuing). */
   firstError: AppError
   onRetry?: (attempt: number, delayMs: number, error: AppError) => void
@@ -37,6 +41,7 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
     ticket,
     controller,
     middleware,
+    bulkhead,
     firstError,
     onRetry,
     onCleanup,
@@ -102,16 +107,32 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
       return
     }
 
-    const result = await executeRequest(
-      {
-        url,
-        options: requestOptions,
-        timeoutConfig,
-        retryConfig,
-        signal: ticket.signal,
-      },
-      middleware,
-    )
+    // Per-attempt bulkhead scheduling: each retry acquires its own slot,
+    // releases it after execution, so other tickets aren't blocked (#5, D4).
+    let result: Awaited<ReturnType<typeof executeRequest>>
+    try {
+      result = await bulkhead.run(() =>
+        executeRequest(
+          {
+            url,
+            options: requestOptions,
+            timeoutConfig,
+            retryConfig,
+            signal: ticket.signal,
+          },
+          middleware,
+        ),
+      )
+    } catch (err) {
+      if (err instanceof QueueFullError) {
+        // Queue is at capacity — mark done and let the error propagate to the
+        // client which handles QueueFullError emission and cleanup.
+        onCleanup?.()
+        controller.markDone({ success: false, error: err } as never)
+        throw err
+      }
+      throw err
+    }
 
     switch (result.kind) {
       case "success":

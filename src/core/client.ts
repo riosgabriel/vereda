@@ -349,23 +349,26 @@ export class HttpClient {
       partition: partitionName,
     })
 
-    bulkhead
-      .schedule(async () => {
-        await runRetryLoop({
-          url,
-          requestOptions: options,
-          timeoutConfig,
-          retryConfig,
-          ticket,
-          controller,
-          middleware: this.middlewares,
-          firstError,
-          onRetry: (attempt, delayMs, error) => {
-            this.emit("retry", { ticketId: ticket.id, url, attempt, delayMs, error })
-          },
-          onCleanup: cleanup,
-        })
-
+    // Run the retry loop directly — each attempt inside the loop acquires its
+    // own bulkhead slot via bulkhead.run() so other tickets are not blocked
+    // for the entire retry lifetime (#5, D4). QueueFullError from the loop
+    // is caught here and surfaced as a terminal ticket failure.
+    runRetryLoop({
+      url,
+      requestOptions: options,
+      timeoutConfig,
+      retryConfig,
+      ticket,
+      controller,
+      middleware: this.middlewares,
+      bulkhead,
+      firstError,
+      onRetry: (attempt, delayMs, error) => {
+        this.emit("retry", { ticketId: ticket.id, url, attempt, delayMs, error })
+      },
+      onCleanup: cleanup,
+    })
+      .then(() => {
         const status = ticket.status
         if (status.state === "done") {
           if (status.result.success) {
@@ -381,9 +384,11 @@ export class HttpClient {
         }
       })
       .catch((err: unknown) => {
+        // QueueFullError is already handled inside runRetryLoop (marks done +
+        // re-throws). The client catches it here for emission and cleanup.
         if (err instanceof QueueFullError) {
           this.emit("failure", { ticketId: ticket.id, url, error: err })
-          controller.markDone({ success: false, error: err } as never)
+          // Ticket already marked done inside the loop — skip markDone.
           cleanup()
           return
         }
@@ -391,7 +396,9 @@ export class HttpClient {
           cause: err,
         })
         this.emit("failure", { ticketId: ticket.id, url, error })
-        controller.markDone({ success: false, error } as never)
+        if (ticket.status.state !== "done" && !ticket.isCancelled) {
+          controller.markDone({ success: false, error } as never)
+        }
         cleanup()
       })
   }
