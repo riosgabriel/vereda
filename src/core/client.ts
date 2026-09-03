@@ -16,7 +16,7 @@ import {
   QueueFullError,
   ConfigurationError,
 } from "./errors.js"
-import { BulkheadRegistry } from "../queue/bulkhead.js"
+import { BulkheadRegistry, type BulkheadSnapshot } from "../queue/bulkhead.js"
 import { Semaphore } from "../queue/semaphore.js"
 import { executeRequest, type MiddlewareFn } from "../queue/executor.js"
 import { shouldRetry, type RetryPolicyContext } from "../queue/policy.js"
@@ -447,6 +447,17 @@ export class HttpClient {
 
   delete<T>(url: string, options: Omit<RequestOptions<T>, "method"> = {}): Ticket<T> {
     return this.request<T>(url, { ...options, method: "DELETE" })
+  }
+
+  // ---------------------------------------------------------------------------
+  // Partition snapshots
+  // ---------------------------------------------------------------------------
+
+  /** Return a snapshot of all active bulkhead partitions.
+   *  Each entry includes the partition name, running/queued counts,
+   *  and configured concurrency/maxQueueSize limits. */
+  partitions(): BulkheadSnapshot[] {
+    return this.bulkheads.getAll()
   }
 
   // ---------------------------------------------------------------------------
