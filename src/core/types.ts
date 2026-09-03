@@ -118,7 +118,7 @@ export interface RequestOptions<T = unknown> {
    *  factory must return a fresh body each invocation — reusing the same
    *  ReadableStream replays an already-consumed (empty) stream. */
   body?: BodyInit | (() => BodyInit)
-  /** Named bulkhead partition. Defaults to hostname. */
+  /** Named bulkhead partition. Defaults to `host` (hostname + port when non-default). */
   partition?: string
   /** Schema parse function. Use withZod() or custom. */
   parse?: ParseFn<T>

@@ -179,7 +179,7 @@ export class HttpClient {
     let partitionName: string
     try {
       fullUrl = this.resolveUrl(url)
-      partitionName = options.partition ?? new URL(fullUrl).hostname
+      partitionName = options.partition ?? new URL(fullUrl).host
     } catch (err) {
       const error = new NetworkError(err instanceof Error ? err.message : "Invalid URL", {
         cause: err,
