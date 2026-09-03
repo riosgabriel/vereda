@@ -3,6 +3,7 @@ import type {
   ClientConfig,
   LifecycleEventMap,
   Logger,
+  PartitionConfig,
   RequestOptions,
   RetryConfig,
   TimeoutConfig,
@@ -38,6 +39,7 @@ export class HttpClient {
   private readonly emitter = new EventEmitter()
   private readonly middlewares: MiddlewareFn[] = []
   private readonly bulkheads: BulkheadRegistry
+  private readonly partitionConfigs: Record<string, PartitionConfig>
   private readonly logger: Logger | undefined
   private _closed = false
   private readonly _inflightTickets = new Set<InflightTicket>()
@@ -45,8 +47,9 @@ export class HttpClient {
   private constructor(config: ClientConfig) {
     this.config = config
     this.logger = config.logger
+    this.partitionConfigs = config.partitions ?? {}
     const semaphore = new Semaphore(config.concurrency ?? 50)
-    this.bulkheads = new BulkheadRegistry({}, config.partitions ?? {}, 60_000, semaphore)
+    this.bulkheads = new BulkheadRegistry({}, this.partitionConfigs, 60_000, semaphore)
   }
 
   static create(config: ClientConfig = {}): HttpClient {
@@ -117,7 +120,9 @@ export class HttpClient {
 
     // Total deadline: a single unref'd timer that aborts the ticket signal
     // on expiry, cancelling in-flight attempts and breaking sleep (#R3).
-    const timeoutConfig = this.mergeTimeout(options)
+    // Use the explicit partition if available for the merge; the resolved
+    // partition (hostname) will be used for retries in _fireFirstAttempt.
+    const timeoutConfig = this.mergeTimeout(options, options.partition)
     let deadlineTimer: ReturnType<typeof setTimeout> | undefined
     const cleanupDeadline = () => {
       if (deadlineTimer !== undefined) {
@@ -202,8 +207,8 @@ export class HttpClient {
       return
     }
 
-    const timeoutConfig = this.mergeTimeout(options)
-    const retryConfig = this.mergeRetry(options)
+    const timeoutConfig = this.mergeTimeout(options, partitionName)
+    const retryConfig = this.mergeRetry(options, partitionName)
     const bulkhead = this.bulkheads.get(partitionName)
 
     this.emit("request", { ticketId: ticket.id, url: fullUrl, method: options.method ?? "GET" })
@@ -534,12 +539,14 @@ export class HttpClient {
     return url
   }
 
-  private mergeTimeout(options: RequestOptions<unknown>): TimeoutConfig {
-    return { ...this.config.timeout, ...options.timeout }
+  private mergeTimeout(options: RequestOptions<unknown>, partitionName?: string): TimeoutConfig {
+    const partitionConfig = partitionName ? this.partitionConfigs[partitionName] : undefined
+    return { ...this.config.timeout, ...partitionConfig?.timeout, ...options.timeout }
   }
 
-  private mergeRetry(options: RequestOptions<unknown>): RetryConfig {
-    return { ...this.config.retry, ...options.retry }
+  private mergeRetry(options: RequestOptions<unknown>, partitionName?: string): RetryConfig {
+    const partitionConfig = partitionName ? this.partitionConfigs[partitionName] : undefined
+    return { ...this.config.retry, ...partitionConfig?.retry, ...options.retry }
   }
 
   private emit<K extends keyof LifecycleEventMap>(event: K, data: LifecycleEventMap[K]): void {
