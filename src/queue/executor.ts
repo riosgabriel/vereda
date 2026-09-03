@@ -1,4 +1,10 @@
-import { HttpError, NetworkError, RetryableStatusError, ValidationError } from "../core/errors.js"
+import {
+  ConfigurationError,
+  HttpError,
+  NetworkError,
+  RetryableStatusError,
+  ValidationError,
+} from "../core/errors.js"
 import type { AppError } from "../core/errors.js"
 import type { RequestOptions, Result, RetryConfig, TimeoutConfig } from "../core/types.js"
 import { DEFAULT_RETRY_ON_STATUS } from "../core/types.js"
@@ -35,8 +41,21 @@ export async function executeRequest(
 
   // Resolve a replayable body factory fresh for this attempt so every attempt
   // gets its own materialized body. Do not mutate the caller's options.
-  const resolvedBody =
-    typeof options.body === "function" ? (options.body as () => BodyInit)() : options.body
+  let resolvedBody: BodyInit | undefined
+  if (typeof options.body === "function") {
+    try {
+      resolvedBody = (options.body as () => BodyInit)()
+    } catch (err) {
+      return {
+        kind: "error",
+        error: new ConfigurationError(
+          `body factory threw: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      }
+    }
+  } else {
+    resolvedBody = options.body
+  }
   const resolvedOptions = { ...options, body: resolvedBody }
 
   const timeoutMs = timeoutConfig.attemptMs
@@ -46,32 +65,103 @@ export async function executeRequest(
   const fetchCall = buildFetchCall(url, resolvedOptions)
   const composed = composeMiddleware(middleware, fetchCall)
 
-  // Race against timeout if configured
+  // Merge the per-attempt signals with AbortSignal.any. It wires its sources
+  // internally (no "abort" listeners attached to them), so neither the ticket
+  // signal nor the caller's signal accumulates one listener per attempt (#7).
+  // Wrapping even a lone ticket signal shields it from fetch's own abort
+  // listener, which undici only removes asynchronously after completion.
+  const sources: AbortSignal[] = [signal]
+  if (options.signal) sources.push(options.signal)
+  const timeoutController = timeoutMs === undefined ? undefined : new AbortController()
+  if (timeoutController) sources.push(timeoutController.signal)
+  const attemptSignal = AbortSignal.any(sources)
+  const timeoutId =
+    timeoutController && timeoutMs !== undefined
+      ? setTimeout(() => timeoutController.abort(), timeoutMs)
+      : undefined
+
   let response: Response
   try {
-    if (timeoutMs !== undefined) {
-      const timeoutController = new AbortController()
-      const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs)
+    response = await composed({ ...resolvedOptions, signal: attemptSignal })
+    // The timeout may fire after fetch resolves but before this check runs;
+    // the timed-out attempt is not trustworthy, so it still surfaces as a
+    // timeout (cancellation is checked first in the catch path below).
+    if (timeoutController?.signal.aborted) {
+      return { kind: "timeout" }
+    }
 
-      // Merge signals: external cancel + timeout
-      const mergedSignal = mergeSignals(
-        signal,
-        timeoutController.signal,
-        ...(options.signal ? [options.signal] : []),
-      )
+    // Check if status code is retryable (was "queued_status", now typed error)
+    if (retryOnStatus.includes(response.status)) {
+      // Cancel the response body since caller won't read it.
+      // Fire-and-forget: cancel() may hang on stuck connections.
+      // The body will be GC'd when the response is collected.
+      response.body?.cancel().catch(() => {})
+      return {
+        kind: "error",
+        error: new RetryableStatusError(
+          `HTTP ${response.status} ${response.statusText}`,
+          response.status,
+          response,
+          parseRetryAfter(response.headers.get("retry-after")),
+        ),
+      }
+    }
+
+    // Non-2xx responses are non-retryable errors
+    if (!response.ok) {
+      return {
+        kind: "error",
+        error: new HttpError(
+          `HTTP ${response.status} ${response.statusText}`,
+          response.status,
+          response,
+        ),
+      }
+    }
+
+    // Parse body — the timeout is still active so a slow body read is
+    // covered by the per-attempt deadline (#9).
+    if (options.parse) {
+      let raw: unknown
+      try {
+        raw = await response.json()
+      } catch (err) {
+        // Check timeout first — if our timer fired during response.json(),
+        // that is the cause regardless of whether the external signal also
+        // aborted (cancellation vs timeout precedence).
+        if (timeoutController?.signal.aborted) {
+          return { kind: "timeout" }
+        }
+        if (signal.aborted || options.signal?.aborted) {
+          return { kind: "cancelled" }
+        }
+        return {
+          kind: "error",
+          error: new NetworkError("Failed to parse response body as JSON", {
+            cause: err,
+          }),
+        }
+      }
 
       try {
-        response = await composed({ ...resolvedOptions, signal: mergedSignal })
-      } finally {
-        clearTimeout(timeoutId)
+        const data = options.parse(raw)
+        return {
+          kind: "success",
+          result: { success: true, data, raw: response },
+        }
+      } catch (err) {
+        const issues = extractIssues(err)
+        return {
+          kind: "error",
+          error: new ValidationError("Response validation failed", issues, err),
+        }
       }
+    }
 
-      if (timeoutController.signal.aborted) {
-        return { kind: "timeout" }
-      }
-    } else {
-      const mergedSignal = options.signal ? mergeSignals(signal, options.signal) : signal
-      response = await composed({ ...resolvedOptions, signal: mergedSignal })
+    // No parse fn — return raw response
+    return {
+      kind: "success",
+      result: { success: true, data: undefined, raw: response },
     }
   } catch (err) {
     // Precedence: cancellation wins over timeout. If the ticket or the
@@ -91,72 +181,10 @@ export async function executeRequest(
       kind: "error",
       error: new NetworkError(err instanceof Error ? err.message : "Network error", { cause: err }),
     }
-  }
-
-  // Check if status code is retryable (was "queued_status", now typed error)
-  if (retryOnStatus.includes(response.status)) {
-    // Cancel the response body since caller won't read it
-    try {
-      await response.body?.cancel()
-    } catch {
-      /* ignore — best effort */
-    }
-    return {
-      kind: "error",
-      error: new RetryableStatusError(
-        `HTTP ${response.status} ${response.statusText}`,
-        response.status,
-        response,
-        parseRetryAfter(response.headers.get("retry-after")),
-      ),
-    }
-  }
-
-  // Non-2xx responses are non-retryable errors
-  if (!response.ok) {
-    return {
-      kind: "error",
-      error: new HttpError(
-        `HTTP ${response.status} ${response.statusText}`,
-        response.status,
-        response,
-      ),
-    }
-  }
-
-  // Parse body
-  if (options.parse) {
-    let raw: unknown
-    try {
-      raw = await response.json()
-    } catch (err) {
-      return {
-        kind: "error",
-        error: new NetworkError("Failed to parse response body as JSON", {
-          cause: err,
-        }),
-      }
-    }
-
-    try {
-      const data = options.parse(raw)
-      return {
-        kind: "success",
-        result: { success: true, data, raw: response },
-      }
-    } catch (err) {
-      const issues = extractIssues(err)
-      return {
-        kind: "error",
-        error: new ValidationError("Response validation failed", issues, err),
-      }
-    }
-  }
-
-  // No parse fn — return raw response
-  return {
-    kind: "success",
-    result: { success: true, data: undefined, raw: response },
+  } finally {
+    // Clear the timeout once the attempt is complete — body has been read
+    // (or the attempt failed), so the abort controller can be released.
+    if (timeoutId !== undefined) clearTimeout(timeoutId)
   }
 }
 
@@ -211,18 +239,6 @@ export function parseRetryAfter(header: string | null): number | undefined {
 
 function isAbortError(err: unknown): boolean {
   return err instanceof Error && err.name === "AbortError"
-}
-
-function mergeSignals(...signals: AbortSignal[]): AbortSignal {
-  const controller = new AbortController()
-  for (const signal of signals) {
-    if (signal.aborted) {
-      controller.abort()
-      break
-    }
-    signal.addEventListener("abort", () => controller.abort(), { once: true })
-  }
-  return controller.signal
 }
 
 function extractIssues(err: unknown): unknown[] {

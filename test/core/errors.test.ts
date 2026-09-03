@@ -10,6 +10,7 @@ import {
   RetryableStatusError,
   QueueFullError,
   ConfigurationError,
+  DeadlineExceededError,
   type AppError,
 } from "../../src/core/errors.js"
 
@@ -80,8 +81,9 @@ describe("Error classes", () => {
       "queue_full",
       "configuration",
       "max_retries",
+      "deadline",
     ] as const
-    expect(expectedKinds).toHaveLength(9)
+    expect(expectedKinds).toHaveLength(10)
     // Every member of AppError["kind"] must be in expectedKinds
     const kind: AppError["kind"] = "network"
     expect(expectedKinds).toContain(kind)
@@ -105,5 +107,13 @@ describe("Error classes", () => {
     expect(err.partition).toBe("api")
     expect(err.queueSize).toBe(10)
     expect(err.maxQueueSize).toBe(5)
+  })
+
+  it("DeadlineExceededError has kind 'deadline' with url and totalMs", () => {
+    const err = new DeadlineExceededError("https://example.com", 5000)
+    expect(err.kind).toBe("deadline")
+    expect(err.url).toBe("https://example.com")
+    expect(err.totalMs).toBe(5000)
+    expect(err.message).toContain("exceeded total deadline of 5000ms")
   })
 })

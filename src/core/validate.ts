@@ -36,6 +36,10 @@ function validateTimeoutConfig(timeout: TimeoutConfig | undefined, prefix: strin
   if (timeout.attemptMs !== undefined && timeout.attemptMs <= 0) {
     throw new ConfigurationError(`${prefix}.attemptMs must be positive`)
   }
+
+  if (timeout.totalMs !== undefined && timeout.totalMs <= 0) {
+    throw new ConfigurationError(`${prefix}.totalMs must be positive`)
+  }
 }
 
 function validateRetryConfig(retry: RetryConfig | undefined, prefix: string): void {

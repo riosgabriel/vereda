@@ -81,34 +81,66 @@ export interface BulkheadSnapshot {
   maxQueueSize: number
 }
 
+type BulkheadEntry = [Bulkhead, number]
+
 export class BulkheadRegistry {
-  private readonly bulkheads = new Map<string, Bulkhead>()
+  private readonly bulkheads = new Map<string, BulkheadEntry>()
+  private readonly ttlMs: number
   private readonly globalConfig: PartitionConfig
   private readonly partitionConfigs: Record<string, PartitionConfig>
+  private readonly sweepInterval: number
+  private callCounter = 0
 
   constructor(
     globalConfig: PartitionConfig = {},
     partitionConfigs: Record<string, PartitionConfig> = {},
+    ttlMs: number = 60_000,
   ) {
+    this.ttlMs = ttlMs
     this.globalConfig = globalConfig
     this.partitionConfigs = partitionConfigs
+    this.sweepInterval = 10
   }
 
   get(partitionName: string): Bulkhead {
+    this.callCounter++
+
     if (!this.bulkheads.has(partitionName)) {
       const partitionConfig = this.partitionConfigs[partitionName] ?? {}
       const merged: PartitionConfig = {
         ...this.globalConfig,
         ...partitionConfig,
       }
-      this.bulkheads.set(partitionName, new Bulkhead(partitionName, merged))
+      this.bulkheads.set(partitionName, [new Bulkhead(partitionName, merged), Date.now()])
     }
-    return this.bulkheads.get(partitionName)!
+    const [bh] = this.bulkheads.get(partitionName)!
+    // Update last accessed time
+    this.bulkheads.set(partitionName, [bh, Date.now()])
+
+    // Sweep stale entries periodically
+    if (this.callCounter % this.sweepInterval === 0 || this.bulkheads.size > 100) {
+      this.prune()
+    }
+
+    return bh
+  }
+
+  prune(): void {
+    const now = Date.now()
+    for (const [key, [, lastAccessed]] of this.bulkheads) {
+      if (now - lastAccessed > this.ttlMs) {
+        this.bulkheads.delete(key)
+      }
+    }
+  }
+
+  delete(partitionName: string): void {
+    this.bulkheads.delete(partitionName)
   }
 
   getAll(): BulkheadSnapshot[] {
     const result: BulkheadSnapshot[] = []
-    for (const [, bh] of this.bulkheads) {
+    for (const [, [bh]] of this.bulkheads) {
       result.push({
         name: bh.name,
         running: bh.runningCount,

@@ -1,12 +1,16 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
+import { getEventListeners } from "node:events"
 import { describe, it, expect, beforeAll, afterAll } from "vitest"
 import { HttpClient } from "../../src/core/client.js"
 import {
   CancelledError,
+  ConfigurationError,
+  DeadlineExceededError,
   HttpError,
   MaxRetriesExceededError,
   NetworkError,
   RetryableStatusError,
+  TimeoutError,
   ValidationError,
 } from "../../src/core/errors.js"
 import { z } from "zod"
@@ -212,8 +216,8 @@ describe("HttpClient integration", () => {
         })
         .toPromise()
 
-      // retryVetoed passes 0, loop retries pass 1 then 2 (rejected)
-      expect(attemptsSeen).toEqual([0, 1, 2])
+      // vetoed passes 0, then the loop also checks every retry: 0, 1, 2 (rejected)
+      expect(attemptsSeen).toEqual([0, 0, 1, 2])
       expect(requestCount).toBe(3)
       expect(result.success).toBe(false)
       if (!result.success) {
@@ -431,4 +435,295 @@ describe("HttpClient integration", () => {
     // Ticket updates: queued, retrying, done
     expect(updateTypes).toEqual(["queued", "retrying", "done"])
   }, 10_000)
+
+  it("removes external-signal abort listener after ticket resolves (#7)", async () => {
+    server.setHandler((_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" })
+      res.end("{}")
+    })
+
+    const controller = new AbortController()
+    const listenersBefore = getEventListeners(controller.signal, "abort").length
+
+    const ticket = client.get(`${server.url}/signal-cleanup`, { signal: controller.signal })
+    const result = await ticket.toPromise()
+
+    expect(result.success).toBe(true)
+
+    // The external signal's abort listener count should return to its
+    // pre-request value after the ticket resolves.
+    const listenersAfter = getEventListeners(controller.signal, "abort").length
+    expect(listenersAfter).toBe(listenersBefore)
+  })
+
+  it("removes external-signal listener after ticket with retries resolves (#7)", async () => {
+    let attempts = 0
+    server.setHandler((_req, res) => {
+      attempts++
+      if (attempts < 3) {
+        res.writeHead(503)
+        res.end("unavailable")
+      } else {
+        res.writeHead(200, { "Content-Type": "application/json" })
+        res.end("{}")
+      }
+    })
+
+    const controller = new AbortController()
+    const listenersBefore = getEventListeners(controller.signal, "abort").length
+
+    const retryClient = HttpClient.create({
+      retry: { maxRetries: 3, backoff: { baseDelayMs: 10, jitter: false } },
+    })
+
+    const ticket = retryClient.get(`${server.url}/signal-cleanup-retry`, {
+      signal: controller.signal,
+      retry: { retryOnStatus: [503] },
+    })
+    const result = await ticket.toPromise()
+
+    expect(result.success).toBe(true)
+
+    const listenersAfter = getEventListeners(controller.signal, "abort").length
+    expect(listenersAfter).toBe(listenersBefore)
+  })
+
+  it("removes external-signal listener after cancellation (#7)", async () => {
+    server.setHandler((_req, res) => {
+      setTimeout(() => {
+        try {
+          res.writeHead(200)
+          res.end("{}")
+          // eslint-disable-next-line no-empty
+        } catch {}
+      }, 5000)
+    })
+    const controller = new AbortController()
+    const listenersBefore = getEventListeners(controller.signal, "abort").length
+
+    const ticket = client.get(`${server.url}/signal-cleanup-cancel`, { signal: controller.signal })
+    setTimeout(() => controller.abort(), 20)
+    await ticket.toPromise()
+
+    const listenersAfter = getEventListeners(controller.signal, "abort").length
+    expect(listenersAfter).toBe(listenersBefore)
+  })
+
+  it("per-attempt timeout covers body read, not just headers (#9)", async () => {
+    // Server sends 200 headers immediately but delays the body by 500ms.
+    // With attemptMs: 100 and a parse fn, the ticket should resolve with
+    // TimeoutError once the body read exceeds the deadline.
+    server.setHandler((_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" })
+      // Delay the body — headers are sent immediately
+      setTimeout(() => {
+        try {
+          res.end(JSON.stringify({ ok: true }))
+          // eslint-disable-next-line no-empty
+        } catch {}
+      }, 500)
+    })
+
+    const start = Date.now()
+    const ticket = client.get(`${server.url}/slow-body`, {
+      timeout: { attemptMs: 100 },
+      retry: { maxRetries: 0 },
+      parse: (data) => data as { ok: boolean },
+    })
+    const result = await ticket.toPromise()
+    const elapsed = Date.now() - start
+
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error).toBeInstanceOf(TimeoutError)
+    }
+    // Should resolve well within 300ms (100ms timeout + tolerance)
+    expect(elapsed).toBeLessThan(300)
+  }, 5_000)
+
+  it("total deadline during active request resolves with DeadlineExceededError", async () => {
+    // Server delays response body beyond deadline. The deadline should fire
+    // while the request is in-flight and resolve with DeadlineExceededError.
+    server.setHandler((_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" })
+      setTimeout(() => {
+        try {
+          res.end(JSON.stringify({ ok: true }))
+          // eslint-disable-next-line no-empty
+        } catch {}
+      }, 2000)
+    })
+
+    const start = Date.now()
+    const ticket = client.get(`${server.url}/slow-body`, {
+      timeout: { totalMs: 100 },
+      retry: { maxRetries: 0 },
+    })
+    const result = await ticket.toPromise()
+    const elapsed = Date.now() - start
+
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error).toBeInstanceOf(DeadlineExceededError)
+    }
+    // Should resolve near the deadline
+    expect(elapsed).toBeGreaterThanOrEqual(80)
+    expect(elapsed).toBeLessThan(300)
+  }, 5_000)
+
+  it("total deadline cancels ticket and resolves with DeadlineExceededError (#R3)", async () => {
+    // Server always returns 503. With totalMs: 300 and baseDelayMs: 100,
+    // the deadline should fire during a retry backoff (between 2nd and 3rd attempt)
+    // and resolve with DeadlineExceededError between 300–400ms.
+    server.setHandler((_req, res) => {
+      res.writeHead(503, { "Content-Type": "application/json" })
+      res.end(JSON.stringify({ error: "unavailable" }))
+    })
+
+    const start = Date.now()
+    const ticket = client.get(`${server.url}/always-503`, {
+      timeout: { totalMs: 300 },
+      retry: { maxRetries: 10, backoff: { baseDelayMs: 100, jitter: false } },
+    })
+    const result = await ticket.toPromise()
+    const elapsed = Date.now() - start
+
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error).toBeInstanceOf(DeadlineExceededError)
+      if (result.error instanceof DeadlineExceededError) {
+        expect(result.error.totalMs).toBe(300)
+      }
+    }
+    // Should resolve within the deadline window + tolerance
+    expect(elapsed).toBeGreaterThanOrEqual(280)
+    expect(elapsed).toBeLessThan(500)
+  }, 5_000)
+
+  describe("graceful shutdown (O4)", () => {
+    it("rejects new requests after close({ drain: false })", async () => {
+      const client = HttpClient.create()
+      client.close({ drain: false })
+
+      expect(() => client.get(`${server.url}/test`)).toThrow(ConfigurationError)
+      expect(() => client.get(`${server.url}/test`)).toThrow("client closed")
+    })
+
+    it("close({ drain: false }) cancels in-flight tickets", async () => {
+      let resolveRequest: (() => void) | undefined
+      server.setHandler((_req, res) => {
+        new Promise<void>((r) => {
+          resolveRequest = r
+        }).then(() => {
+          res.writeHead(200, { "Content-Type": "application/json" })
+          res.end(JSON.stringify({ ok: true }))
+        })
+      })
+
+      const client = HttpClient.create()
+      const ticket = client.get(`${server.url}/slow`, {
+        retry: { maxRetries: 0 },
+      })
+
+      // Wait for the request to be in-flight
+      await new Promise((r) => setTimeout(r, 50))
+
+      const closePromise = client.close({ drain: false })
+
+      // Resolve the server handler so it doesn't hang
+      resolveRequest?.()
+
+      await closePromise
+      const result = await ticket.toPromise()
+      expect(result.success).toBe(false)
+      if (!result.success) {
+        expect(result.error).toBeInstanceOf(CancelledError)
+      }
+    })
+
+    it("close({ drain: true }) waits for in-flight requests", async () => {
+      server.setHandler((_req, res) => {
+        res.writeHead(200, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ ok: true }))
+      })
+
+      const client = HttpClient.create()
+      const ticket = client.get(`${server.url}/fast`, {
+        retry: { maxRetries: 0 },
+      })
+
+      // Wait for the request to be in-flight
+      await new Promise((r) => setTimeout(r, 50))
+
+      await client.close({ drain: true, timeoutMs: 5_000 })
+      const result = await ticket.toPromise()
+      expect(result.success).toBe(true)
+    })
+
+    it("close({ drain: true, timeoutMs }) cancels after timeout", async () => {
+      let resolveRequest: (() => void) | undefined
+      server.setHandler((_req, res) => {
+        new Promise<void>((r) => {
+          resolveRequest = r
+        }).then(() => {
+          res.writeHead(200, { "Content-Type": "application/json" })
+          res.end(JSON.stringify({ ok: true }))
+        })
+      })
+
+      const client = HttpClient.create()
+      const ticket = client.get(`${server.url}/slow`, {
+        retry: { maxRetries: 0 },
+      })
+
+      // Wait for the request to be in-flight
+      await new Promise((r) => setTimeout(r, 50))
+
+      await client.close({ drain: true, timeoutMs: 100 })
+
+      // Resolve the server handler so it doesn't hang
+      resolveRequest?.()
+
+      const result = await ticket.toPromise()
+      expect(result.success).toBe(false)
+      if (!result.success) {
+        expect(result.error).toBeInstanceOf(CancelledError)
+      }
+    })
+
+    it("close is idempotent", async () => {
+      const client = HttpClient.create()
+      await client.close({ drain: false })
+      await client.close({ drain: false }) // should not throw
+    })
+
+    it("process exits promptly after close({ drain: false }) with sleeping retry", async () => {
+      // Server always fails, triggering retries with backoff
+      server.setHandler((_req, res) => {
+        res.writeHead(503, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ error: "unavailable" }))
+      })
+
+      const client = HttpClient.create()
+      const ticket = client.get(`${server.url}/always-503`, {
+        retry: { maxRetries: 5, backoff: { baseDelayMs: 1000, jitter: false } },
+      })
+
+      // Wait for the first attempt to complete and retry to start sleeping
+      await new Promise((r) => setTimeout(r, 50))
+
+      const start = Date.now()
+      await client.close({ drain: false })
+      const elapsed = Date.now() - start
+
+      // Should exit quickly, not wait for the 1s backoff
+      expect(elapsed).toBeLessThan(200)
+
+      const result = await ticket.toPromise()
+      expect(result.success).toBe(false)
+      if (!result.success) {
+        expect(result.error).toBeInstanceOf(CancelledError)
+      }
+    })
+  })
 })

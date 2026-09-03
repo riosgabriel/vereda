@@ -21,6 +21,7 @@ export {
   HttpError,
   RetryableStatusError,
   TimeoutError,
+  DeadlineExceededError,
   ValidationError,
   CancelledError,
   QueueFullError,
