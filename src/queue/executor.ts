@@ -92,12 +92,10 @@ export async function executeRequest(
 
     // Check if status code is retryable (was "queued_status", now typed error)
     if (retryOnStatus.includes(response.status)) {
-      // Cancel the response body since caller won't read it
-      try {
-        await response.body?.cancel()
-      } catch {
-        /* ignore — best effort */
-      }
+      // Cancel the response body since caller won't read it.
+      // Fire-and-forget: cancel() may hang on stuck connections.
+      // The body will be GC'd when the response is collected.
+      response.body?.cancel().catch(() => {})
       return {
         kind: "error",
         error: new RetryableStatusError(

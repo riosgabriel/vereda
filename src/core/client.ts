@@ -4,7 +4,6 @@ import type {
   LifecycleEventMap,
   Logger,
   RequestOptions,
-  Result,
   RetryConfig,
   TimeoutConfig,
 } from "./types.js"
@@ -25,13 +24,12 @@ import { Ticket, createTicket, type TicketController } from "../ticket/ticket.js
 import { nanoid } from "./nanoid.js"
 import { validateConfig, validateRequestBody } from "./validate.js"
 
-/** Minimal shape of Ticket used for in-flight tracking. We only need
- *  `cancel()` (to abort on shutdown) and `toPromise()` (to await drain).
- *  This avoids the structural incompatibility between Ticket<T> and
- *  Ticket<unknown> caused by the contravariant _resolve property. */
+/** Pairs an in-flight ticket with its cleanup function so that
+ *  resources (signal listeners, deadline timers) are released synchronously
+ *  during shutdown instead of being left to fire-and-forget handlers. */
 interface InflightTicket {
-  cancel(): void
-  toPromise(): Promise<Result<unknown>>
+  ticket: Ticket<unknown>
+  cleanup: () => void
 }
 
 export class HttpClient {
@@ -135,15 +133,18 @@ export class HttpClient {
       deadlineTimer.unref()
     }
 
+    // Track this ticket for graceful shutdown. Store the entry so cleanup
+    // can remove the same reference (Set.delete uses reference equality).
+    const entry: InflightTicket = { ticket: ticket as Ticket<unknown>, cleanup: () => {} }
+
     // Combined cleanup: external signal + deadline timer + inflight tracking
-    const cleanup = () => {
+    entry.cleanup = () => {
       cleanupExternalSignal()
       cleanupDeadline()
-      this._inflightTickets.delete(ticket)
+      this._inflightTickets.delete(entry)
     }
 
-    // Track this ticket for graceful shutdown
-    this._inflightTickets.add(ticket as Ticket<unknown>)
+    this._inflightTickets.add(entry)
 
     // Fire and forget — first attempt runs immediately; queued if slow/failed
     this._fireFirstAttempt(
@@ -151,7 +152,7 @@ export class HttpClient {
       options as RequestOptions<unknown>,
       ticket as Ticket<unknown>,
       controller as TicketController<unknown>,
-      cleanup,
+      entry.cleanup,
     ).catch((err: unknown) => {
       // Catch any unexpected throws and surface them as ticket failures
       const error = new NetworkError(err instanceof Error ? err.message : "Unexpected error", {
@@ -160,7 +161,7 @@ export class HttpClient {
       if (ticket.status.state !== "done" && !ticket.isCancelled) {
         controller.markDone({ success: false, error } as never)
       }
-      cleanup()
+      entry.cleanup()
     })
 
     return ticket
@@ -447,29 +448,34 @@ export class HttpClient {
     if (this._closed) return // idempotent
     this._closed = true
 
+    if (opts?.drain && (!opts.timeoutMs || opts.timeoutMs <= 0)) {
+      throw new ConfigurationError("close({ drain: true }) requires a positive timeoutMs")
+    }
     const { drain = false, timeoutMs = 0 } = opts ?? {}
-    const tickets = [...this._inflightTickets]
+    const entries = [...this._inflightTickets]
 
-    if (!drain || tickets.length === 0) {
+    if (!drain || entries.length === 0) {
       // Cancel all in-flight immediately
-      for (const ticket of tickets) {
-        ticket.cancel()
+      for (const entry of entries) {
+        entry.cleanup()
+        entry.ticket.cancel()
       }
       this._inflightTickets.clear()
       return
     }
 
     // Drain: wait for all to resolve, up to timeoutMs
-    const done = Promise.all(tickets.map((t) => t.toPromise()))
+    const done = Promise.all(entries.map((e) => e.ticket.toPromise()))
     let timer: ReturnType<typeof setTimeout> | undefined
     const timeout = new Promise<void>((resolve) => {
       timer = setTimeout(resolve, timeoutMs)
       timer.unref()
     })
     await Promise.race([done, timeout])
-    // Cancel any remaining in-flight tickets
-    for (const ticket of this._inflightTickets) {
-      ticket.cancel()
+    // Cancel any remaining in-flight tickets and cleanup
+    for (const entry of this._inflightTickets) {
+      entry.cleanup()
+      entry.ticket.cancel()
     }
     // Clear the timeout timer if tickets resolved first
     if (timer !== undefined) {

@@ -58,24 +58,22 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
       return
     }
 
-    if (attempt > 0) {
-      // Consult the default policy + retryWhen before paying for backoff.
-      // The first retry skips this check — the client already vetted the
-      // error via the same gate before queuing.
-      const ctx: RetryPolicyContext = {
-        method: requestOptions.method ?? "GET",
-        headers: requestOptions.headers,
-        idempotent: retryConfig.idempotent,
-      }
-      if (!shouldRetry(lastError, attempt, ctx, retryConfig.retryWhen)) {
-        onCleanup?.()
-        controller.markDone({ success: false, error: lastError } as never)
-        return
-      }
+    // Consult the default policy + retryWhen for every retry iteration.
+    // The first attempt was already vetted at queue time (before the bulkhead),
+    // but each retry within the bulkhead must pass the same gate so that
+    // a user-provided retryWhen correctly limits retries to N+1 attempts total.
+    const ctx: RetryPolicyContext = {
+      method: requestOptions.method ?? "GET",
+      headers: requestOptions.headers,
+      idempotent: retryConfig.idempotent,
+    }
+    if (!shouldRetry(lastError, attempt, ctx, retryConfig.retryWhen)) {
+      onCleanup?.()
+      controller.markDone({ success: false, error: lastError } as never)
+      return
     }
 
-    // All retries (including the first) get backoff. The first retry
-    // skips the gate above — the client already vetted before queuing.
+    // All retries get backoff. Every retry is gated by the policy check above.
     const delayMs = resolveRetryDelay(lastError, backoffFn, attempt, backoffCap)
     onRetry?.(attempt, delayMs, lastError)
     controller.markRetrying(attempt, delayMs)

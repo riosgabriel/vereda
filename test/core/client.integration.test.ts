@@ -216,8 +216,8 @@ describe("HttpClient integration", () => {
         })
         .toPromise()
 
-      // retryVetoed passes 0, loop retries pass 1 then 2 (rejected)
-      expect(attemptsSeen).toEqual([0, 1, 2])
+      // vetoed passes 0, then the loop also checks every retry: 0, 1, 2 (rejected)
+      expect(attemptsSeen).toEqual([0, 0, 1, 2])
       expect(requestCount).toBe(3)
       expect(result.success).toBe(false)
       if (!result.success) {
