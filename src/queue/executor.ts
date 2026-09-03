@@ -1,4 +1,10 @@
-import { ConfigurationError, HttpError, NetworkError, RetryableStatusError, ValidationError } from "../core/errors.js"
+import {
+  ConfigurationError,
+  HttpError,
+  NetworkError,
+  RetryableStatusError,
+  ValidationError,
+} from "../core/errors.js"
 import type { AppError } from "../core/errors.js"
 import type { RequestOptions, Result, RetryConfig, TimeoutConfig } from "../core/types.js"
 import { DEFAULT_RETRY_ON_STATUS } from "../core/types.js"
