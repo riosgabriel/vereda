@@ -113,7 +113,7 @@ export class BulkheadRegistry {
       }
       this.bulkheads.set(partitionName, [new Bulkhead(partitionName, merged), Date.now()])
     }
-    const [bh, _] = this.bulkheads.get(partitionName)!
+    const [bh] = this.bulkheads.get(partitionName)!
     // Update last accessed time
     this.bulkheads.set(partitionName, [bh, Date.now()])
 
