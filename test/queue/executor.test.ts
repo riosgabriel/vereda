@@ -37,7 +37,6 @@ describe("executeRequest timeout/abort precedence", () => {
 				try {
 					res.writeHead(200);
 					res.end("{}");
-					// eslint-disable-next-line no-empty
 				} catch {}
 			}, 500);
 		};
@@ -68,7 +67,6 @@ describe("executeRequest timeout/abort precedence", () => {
 				try {
 					res.writeHead(200);
 					res.end("{}");
-					// eslint-disable-next-line no-empty
 				} catch {}
 			}, 500);
 		};

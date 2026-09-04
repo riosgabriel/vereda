@@ -8,8 +8,15 @@ charset = utf-8
 trim_trailing_whitespace = true
 insert_final_newline = true
 
+# Files Biome formats. Kept in sync with biome.json (indentStyle: tab,
+# lineWidth: 120) so editors and the formatter don't fight over every save.
+[*.{js,mjs,cjs,jsx,ts,mts,cts,tsx,json,jsonc,css,graphql}]
+indent_style = tab
+max_line_length = 120
+
 [*.md]
 trim_trailing_whitespace = false
 
-[*.{json,yml,yaml}]
+[*.{yml,yaml}]
+indent_style = space
 indent_size = 2

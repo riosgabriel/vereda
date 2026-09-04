@@ -95,9 +95,9 @@ export class Ticket<T> {
 	on(event: "done", listener: (result: Result<T>) => void): this;
 	on(event: "error", listener: (error: AppError) => void): this;
 	on(event: "update", listener: (update: TicketUpdate) => void): this;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	// biome-ignore lint/suspicious/noExplicitAny: overload implementation signature must accept every declared overload; callers only see the typed overloads.
 	on(event: string, listener: (...args: any[]) => void): this {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		// biome-ignore lint/suspicious/noExplicitAny: EventEmitter's own listener signature.
 		this.emitter.on(event, listener as (...args: any[]) => void);
 		return this;
 	}
@@ -105,9 +105,9 @@ export class Ticket<T> {
 	off(event: "done", listener: (result: Result<T>) => void): this;
 	off(event: "error", listener: (error: AppError) => void): this;
 	off(event: "update", listener: (update: TicketUpdate) => void): this;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	// biome-ignore lint/suspicious/noExplicitAny: overload implementation signature must accept every declared overload; callers only see the typed overloads.
 	off(event: string, listener: (...args: any[]) => void): this {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		// biome-ignore lint/suspicious/noExplicitAny: EventEmitter's own listener signature.
 		this.emitter.off(event, listener as (...args: any[]) => void);
 		return this;
 	}
@@ -179,11 +179,13 @@ export class Ticket<T> {
 
 	// -- Internal mutators (private, accessed via TicketController) ------------
 
+	// biome-ignore lint/correctness/noUnusedPrivateClassMembers: reached via bracket notation from createTicket(); Biome cannot see that access.
 	private markQueued(): void {
 		if (!this.applyTransition({ state: "queued" })) return;
 		this.emitter.emit("update", { type: "queued" } as TicketUpdate);
 	}
 
+	// biome-ignore lint/correctness/noUnusedPrivateClassMembers: reached via bracket notation from createTicket(); Biome cannot see that access.
 	private markRetrying(attempt: number, delayMs: number): void {
 		if (!this.applyTransition({ state: "retrying", attempt })) return;
 		this.emitter.emit("update", {
@@ -193,6 +195,7 @@ export class Ticket<T> {
 		} as TicketUpdate);
 	}
 
+	// biome-ignore lint/correctness/noUnusedPrivateClassMembers: reached via bracket notation from createTicket(); Biome cannot see that access.
 	private markDone(result: Result<T>): void {
 		if (!this.applyTransition({ state: "done", result })) return;
 		this.emitter.emit("update", { type: "done", result } as TicketUpdate);
@@ -220,10 +223,13 @@ export function createTicket<T>(id: string): {
 		// Bracket notation accesses private methods — the type boundary prevents
 		// external callers from reaching these, while the controller provides
 		// a clean compile-time API for internal use.
+		// biome-ignore-start lint/complexity/useLiteralKeys: these members are private; dot
+		// access is a compile error, bracket notation is the deliberate escape hatch.
 		markQueued: () => ticket["markQueued"](),
 		markRetrying: (attempt, delayMs) => ticket["markRetrying"](attempt, delayMs),
 		markDone: (result) => ticket["markDone"](result),
 		abortSignal: () => ticket["_abortController"].abort(),
+		// biome-ignore-end lint/complexity/useLiteralKeys: restore the rule.
 	};
 
 	return { ticket, controller };

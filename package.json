@@ -25,9 +25,13 @@
 		"test": "bunx vitest run",
 		"test:watch": "bun vitest",
 		"typecheck": "bunx tsc --noEmit",
-		"biome": "biome",
-		"biome:check": "biome check",
-		"biome:format": "biome format --write"
+		"lint": "biome lint",
+		"lint:fix": "biome lint --write",
+		"format": "biome format --write",
+		"format:check": "biome format",
+		"check": "biome check --error-on-warnings",
+		"check:fix": "biome check --write",
+		"ci": "biome ci --error-on-warnings"
 	},
 	"keywords": [
 		"http",
@@ -49,7 +53,6 @@
 			"optional": true
 		}
 	},
-
 	"devDependencies": {
 		"@biomejs/biome": "^2.5.12",
 		"@types/node": "^26.3.0",

@@ -135,7 +135,6 @@ describe("HttpClient integration", () => {
 		hangingRequests.forEach((res) => {
 			try {
 				res.destroy();
-				// eslint-disable-next-line no-empty
 			} catch {}
 		});
 
@@ -274,7 +273,6 @@ describe("HttpClient integration", () => {
 				try {
 					res.writeHead(200);
 					res.end("{}");
-					// eslint-disable-next-line no-empty
 				} catch {}
 			}, 5000);
 		});
@@ -331,7 +329,6 @@ describe("HttpClient integration", () => {
 				try {
 					res.writeHead(200);
 					res.end("{}");
-					// eslint-disable-next-line no-empty
 				} catch {}
 			}, 500);
 		});
@@ -515,7 +512,6 @@ describe("HttpClient integration", () => {
 				try {
 					res.writeHead(200);
 					res.end("{}");
-					// eslint-disable-next-line no-empty
 				} catch {}
 			}, 5000);
 		});
@@ -542,7 +538,6 @@ describe("HttpClient integration", () => {
 			setTimeout(() => {
 				try {
 					res.end(JSON.stringify({ ok: true }));
-					// eslint-disable-next-line no-empty
 				} catch {}
 			}, 500);
 		});
@@ -572,7 +567,6 @@ describe("HttpClient integration", () => {
 			setTimeout(() => {
 				try {
 					res.end(JSON.stringify({ ok: true }));
-					// eslint-disable-next-line no-empty
 				} catch {}
 			}, 2000);
 		});

@@ -157,11 +157,8 @@ describe("Ticket", () => {
 		// At runtime, accessing a private TS field via bracket notation still
 		// works, but the method no longer exists on the public interface.
 		const { ticket } = createTicket("t1");
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		expect((ticket as any)._markDone).toBeUndefined();
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		expect((ticket as any)._markQueued).toBeUndefined();
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		expect((ticket as any)._markRetrying).toBeUndefined();
 	});
 });

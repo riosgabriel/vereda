@@ -7,6 +7,27 @@ on:
     branches: [main]
 
 jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      # Full-tree check, not `--changed`: the repo checks in ~60ms, and
+      # `--changed` both skips files on push-to-main and fails opaquely when
+      # the base ref is missing from a shallow checkout.
+      - name: Biome
+        run: bun run ci
+
   test:
     name: test
     runs-on: ubuntu-latest
@@ -53,14 +74,6 @@ jobs:
             npm run typecheck
           fi
 
-      - name: Biome ci
-        run: |
-          if [ "${{ matrix.runtime }}" = "bun" ]; then
-            biome ci --changed
-          else
-            npm run biome:check
-          fi
-
       - name: Test
         run: |
           if [ "${{ matrix.runtime }}" = "bun" ]; then
@@ -79,9 +92,9 @@ jobs:
 
   ci:
     if: always()
-    needs: [test]
+    needs: [lint, test]
     runs-on: ubuntu-latest
     steps:
       - name: Check matrix results
-        if: needs.test.result != 'success'
+        if: needs.lint.result != 'success' || needs.test.result != 'success'
         run: exit 1

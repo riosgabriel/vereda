@@ -24,6 +24,7 @@ export function defaultHeaders(headers: Record<string, string>): import("../queu
 export function requestLogger(options?: {
 	log?: (msg: string, meta: Record<string, unknown>) => void;
 }): import("../queue/executor.js").MiddlewareFn {
+	// biome-ignore lint/suspicious/noConsole: console is the intended default sink for this opt-in logger middleware; callers override it via options.log.
 	const log = options?.log ?? ((msg, meta) => console.log(msg, meta));
 
 	return async (reqOptions, next) => {
