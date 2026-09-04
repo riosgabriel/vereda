@@ -1,5 +1,8 @@
-node_modules/
 dist/
+node_modules/
+*.js
+*.cjs
+*.mjs
 package-lock.json
 pnpm-lock.yaml
 *.md

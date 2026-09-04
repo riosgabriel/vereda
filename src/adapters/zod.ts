@@ -1,5 +1,5 @@
-import type { ZodType } from "zod"
-import type { ParseFn } from "../core/types.js"
+import type { ZodType } from "zod";
+import type { ParseFn } from "../core/types.js";
 
 /**
  * Wraps a Zod schema into a ParseFn for use with vereda's `parse` option.
@@ -12,5 +12,5 @@ import type { ParseFn } from "../core/types.js"
  * });
  */
 export function withZod<T>(schema: ZodType<T>): ParseFn<T> {
-  return (data: unknown): T => schema.parse(data)
+  return (data: unknown): T => schema.parse(data);
 }
