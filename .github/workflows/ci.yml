@@ -53,20 +53,20 @@ jobs:
             npm run typecheck
           fi
 
-      - name: Lint
+      - name: Biome check
         run: |
           if [ "${{ matrix.runtime }}" = "bun" ]; then
-            bunx eslint .
+            bunx biome check
           else
-            npm run lint
+            npm run biome:check
           fi
 
-      - name: Format check
+      - name: Biome format check
         run: |
           if [ "${{ matrix.runtime }}" = "bun" ]; then
-            bunx prettier --check .
+            bunx biome format --check
           else
-            npm run format:check
+            npm run biome:format
           fi
 
       - name: Test
