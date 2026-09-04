@@ -1,4 +1,5 @@
 import type { AppError } from "./errors.js"
+import type { MetricsSink } from "./metrics.js"
 
 // ---------------------------------------------------------------------------
 // Result type
@@ -162,4 +163,6 @@ export interface ClientConfig {
   partitions?: Record<string, PartitionConfig>
   /** Optional structured logger */
   logger?: Logger
+  /** Optional metrics sink for counters, histograms, and gauges. */
+  metrics?: MetricsSink
 }

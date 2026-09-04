@@ -24,6 +24,7 @@ import { shouldRetry, type RetryPolicyContext } from "../queue/policy.js"
 import { runRetryLoop } from "../queue/retry.js"
 import { Ticket, createTicket, type TicketController } from "../ticket/ticket.js"
 import { nanoid } from "./nanoid.js"
+import { METRICS, type MetricsSink } from "./metrics.js"
 import { validateConfig, validateRequestBody } from "./validate.js"
 
 /** Pairs an in-flight ticket with its cleanup function so that
@@ -41,12 +42,14 @@ export class HttpClient {
   private readonly bulkheads: BulkheadRegistry
   private readonly partitionConfigs: Record<string, PartitionConfig>
   private readonly logger: Logger | undefined
+  private readonly metrics: MetricsSink | undefined
   private _closed = false
   private readonly _inflightTickets = new Set<InflightTicket>()
 
   private constructor(config: ClientConfig) {
     this.config = config
     this.logger = config.logger
+    this.metrics = config.metrics
     this.partitionConfigs = config.partitions ?? {}
     const semaphore = new Semaphore(config.concurrency ?? 50)
     this.bulkheads = new BulkheadRegistry({}, this.partitionConfigs, 60_000, semaphore)
@@ -649,5 +652,31 @@ export class HttpClient {
 
   private emit<K extends keyof LifecycleEventMap>(event: K, data: LifecycleEventMap[K]): void {
     this.emitter.emit(event, data)
+
+    // Emit metrics if a sink is configured
+    if (this.metrics) {
+      const e = event as string
+      if (e === "request") {
+        const d = data as LifecycleEventMap["request"]
+        this.metrics.counter(METRICS.REQUESTS, 1, { partition: d.partition, method: d.method })
+        this.metrics.gauge(METRICS.IN_FLIGHT, this._inflightTickets.size)
+      } else if (e === "retry") {
+        const d = data as LifecycleEventMap["retry"]
+        this.metrics.counter(METRICS.RETRIES, 1, { kind: d.error.kind })
+      } else if (e === "success" || e === "failure" || e === "cancelled") {
+        const d = data as
+          | LifecycleEventMap["success"]
+          | LifecycleEventMap["failure"]
+          | LifecycleEventMap["cancelled"]
+        const kind =
+          e === "success"
+            ? "success"
+            : e === "failure"
+              ? (d as LifecycleEventMap["failure"]).error.kind
+              : "cancelled"
+        this.metrics.histogram(METRICS.DURATION, d.durationMs, { kind })
+        this.metrics.gauge(METRICS.IN_FLIGHT, this._inflightTickets.size)
+      }
+    }
   }
 }
