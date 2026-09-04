@@ -95,6 +95,7 @@ export class HttpClient {
       throw new ConfigurationError("client closed")
     }
 
+    const startTime = Date.now()
     const ticketId = nanoid()
     const { ticket, controller } = createTicket<T>(ticketId)
 
@@ -157,6 +158,7 @@ export class HttpClient {
       ticket as Ticket<unknown>,
       controller as TicketController<unknown>,
       entry.cleanup,
+      startTime,
     ).catch((err: unknown) => {
       // Catch any unexpected throws and surface them as ticket failures
       const error = new NetworkError(err instanceof Error ? err.message : "Unexpected error", {
@@ -177,6 +179,7 @@ export class HttpClient {
     ticket: Ticket<unknown>,
     controller: TicketController<unknown>,
     cleanup: () => void,
+    startTime: number,
   ): Promise<void> {
     // Resolve URL and partition inside the async path so relative URLs
     // without a baseUrl surface as ticket errors instead of throwing.
@@ -189,7 +192,15 @@ export class HttpClient {
       const error = new NetworkError(err instanceof Error ? err.message : "Invalid URL", {
         cause: err,
       })
-      this.emit("failure", { ticketId: ticket.id, url, error })
+      const durationMs = Date.now() - startTime
+      this.emit("failure", {
+        ticketId: ticket.id,
+        url,
+        attempts: 1,
+        durationMs,
+        queuedMs: 0,
+        error,
+      })
       controller.markDone({ success: false, error } as never)
       cleanup()
       return
@@ -201,7 +212,15 @@ export class HttpClient {
       validateRequestBody(options.body)
     } catch (err) {
       const error = err as ConfigurationError
-      this.emit("failure", { ticketId: ticket.id, url, error })
+      const durationMs = Date.now() - startTime
+      this.emit("failure", {
+        ticketId: ticket.id,
+        url,
+        attempts: 1,
+        durationMs,
+        queuedMs: 0,
+        error,
+      })
       controller.markDone({ success: false, error } as never)
       cleanup()
       return
@@ -211,7 +230,12 @@ export class HttpClient {
     const retryConfig = this.mergeRetry(options, partitionName)
     const bulkhead = this.bulkheads.get(partitionName)
 
-    this.emit("request", { ticketId: ticket.id, url: fullUrl, method: options.method ?? "GET" })
+    this.emit("request", {
+      ticketId: ticket.id,
+      url: fullUrl,
+      method: options.method ?? "GET",
+      partition: partitionName,
+    })
     this.logger?.info("Request initiated", {
       ticketId: ticket.id,
       url: fullUrl,
@@ -244,14 +268,26 @@ export class HttpClient {
         : await execute()
 
     switch (result.kind) {
-      case "success":
-        this.emit("success", { ticketId: ticket.id, url, attempt: 1 })
+      case "success": {
+        const durationMs = Date.now() - startTime
+        const statusCode = result.result.success ? result.result.raw.status : 0
+        this.emit("success", {
+          ticketId: ticket.id,
+          url,
+          attempts: 1,
+          durationMs,
+          queuedMs: 0,
+          statusCode,
+        })
         this.logger?.info("Request succeeded", { ticketId: ticket.id, url })
         controller.markDone(result.result)
         cleanup()
         return
+      }
 
-      case "cancelled":
+      case "cancelled": {
+        const durationMs = Date.now() - startTime
+        this.emit("cancelled", { ticketId: ticket.id, url, attempts: 1, durationMs })
         if (!ticket.isCancelled && timeoutConfig.totalMs !== undefined) {
           controller.markDone({
             success: false,
@@ -262,11 +298,14 @@ export class HttpClient {
         }
         cleanup()
         return
+      }
 
       case "error":
         // Apply the unified retry gate (default policy + retryWhen). Errors
         // that fail it (e.g. ValidationError, HttpError) resolve immediately.
-        if (this.vetoed(retryConfig, result.error, 0, options, ticket, controller, url)) {
+        if (
+          this.vetoed(retryConfig, result.error, 0, options, ticket, controller, url, startTime)
+        ) {
           cleanup()
           return
         }
@@ -275,7 +314,15 @@ export class HttpClient {
         {
           const effectiveMaxRetries = retryConfig.maxRetries ?? 3
           if (effectiveMaxRetries === 0) {
-            this.emit("failure", { ticketId: ticket.id, url, error: result.error })
+            const durationMs = Date.now() - startTime
+            this.emit("failure", {
+              ticketId: ticket.id,
+              url,
+              attempts: 1,
+              durationMs,
+              queuedMs: 0,
+              error: result.error,
+            })
             controller.markDone({ success: false, error: result.error } as never)
             cleanup()
             return
@@ -293,12 +340,13 @@ export class HttpClient {
           bulkhead,
           result.error,
           cleanup,
+          startTime,
         )
         return
 
       case "timeout": {
         const error = new TimeoutError(url, timeoutConfig.attemptMs ?? 0)
-        if (this.vetoed(retryConfig, error, 0, options, ticket, controller, url)) {
+        if (this.vetoed(retryConfig, error, 0, options, ticket, controller, url, startTime)) {
           cleanup()
           return
         }
@@ -306,7 +354,15 @@ export class HttpClient {
         {
           const effectiveMaxRetries = retryConfig.maxRetries ?? 3
           if (effectiveMaxRetries === 0) {
-            this.emit("failure", { ticketId: ticket.id, url, error })
+            const durationMs = Date.now() - startTime
+            this.emit("failure", {
+              ticketId: ticket.id,
+              url,
+              attempts: 1,
+              durationMs,
+              queuedMs: 0,
+              error,
+            })
             controller.markDone({ success: false, error } as never)
             cleanup()
             return
@@ -324,6 +380,7 @@ export class HttpClient {
           bulkhead,
           error,
           cleanup,
+          startTime,
         )
         return
       }
@@ -341,6 +398,7 @@ export class HttpClient {
     ticket: Ticket<unknown>,
     controller: TicketController<unknown>,
     url: string,
+    startTime: number,
   ): boolean {
     const ctx: RetryPolicyContext = {
       method: options.method ?? "GET",
@@ -348,7 +406,15 @@ export class HttpClient {
       idempotent: retryConfig.idempotent,
     }
     if (!shouldRetry(error, attempt, ctx, retryConfig.retryWhen)) {
-      this.emit("failure", { ticketId: ticket.id, url, error })
+      const durationMs = Date.now() - startTime
+      this.emit("failure", {
+        ticketId: ticket.id,
+        url,
+        attempts: 1,
+        durationMs,
+        queuedMs: 0,
+        error,
+      })
       controller.markDone({ success: false, error } as never)
       return true
     }
@@ -366,6 +432,7 @@ export class HttpClient {
     bulkhead: ReturnType<BulkheadRegistry["get"]>,
     firstError: AppError,
     cleanup: () => void,
+    startTime: number,
   ): void {
     this.logger?.info("Request queued for retry", {
       ticketId: ticket.id,
@@ -391,28 +458,52 @@ export class HttpClient {
       onRetry: (attempt, delayMs, error) => {
         this.emit("retry", { ticketId: ticket.id, url, attempt, delayMs, error })
       },
+      onSuccess: (statusCode, attempts) => {
+        const durationMs = Date.now() - startTime
+        this.emit("success", {
+          ticketId: ticket.id,
+          url,
+          attempts,
+          durationMs,
+          queuedMs: 0,
+          statusCode,
+        })
+      },
+      onFailure: (error, attempts) => {
+        const durationMs = Date.now() - startTime
+        this.emit("failure", {
+          ticketId: ticket.id,
+          url,
+          attempts,
+          durationMs,
+          queuedMs: 0,
+          error,
+        })
+        this.logger?.warn("Request failed after retries", {
+          ticketId: ticket.id,
+          url,
+          error: error.message,
+        })
+      },
+      onCancelled: (attempts) => {
+        const durationMs = Date.now() - startTime
+        this.emit("cancelled", { ticketId: ticket.id, url, attempts, durationMs })
+      },
       onCleanup: cleanup,
     })
-      .then(() => {
-        const status = ticket.status
-        if (status.state === "done") {
-          if (status.result.success) {
-            this.emit("success", { ticketId: ticket.id, url, attempt: -1 })
-          } else {
-            this.emit("failure", { ticketId: ticket.id, url, error: status.result.error })
-            this.logger?.warn("Request failed after retries", {
-              ticketId: ticket.id,
-              url,
-              error: status.result.error.message,
-            })
-          }
-        }
-      })
       .catch((err: unknown) => {
         // QueueFullError is already handled inside runRetryLoop (marks done +
         // re-throws). The client catches it here for emission and cleanup.
         if (err instanceof QueueFullError) {
-          this.emit("failure", { ticketId: ticket.id, url, error: err })
+          const durationMs = Date.now() - startTime
+          this.emit("failure", {
+            ticketId: ticket.id,
+            url,
+            attempts: 1,
+            durationMs,
+            queuedMs: 0,
+            error: err,
+          })
           // Ticket already marked done inside the loop — skip markDone.
           cleanup()
           return
@@ -420,7 +511,14 @@ export class HttpClient {
         const error = new NetworkError(err instanceof Error ? err.message : "Queue error", {
           cause: err,
         })
-        this.emit("failure", { ticketId: ticket.id, url, error })
+        this.emit("failure", {
+          ticketId: ticket.id,
+          url,
+          attempts: 1,
+          durationMs: Date.now() - startTime,
+          queuedMs: 0,
+          error,
+        })
         if (ticket.status.state !== "done" && !ticket.isCancelled) {
           controller.markDone({ success: false, error } as never)
         }

@@ -99,13 +99,28 @@ export interface Logger {
 // ---------------------------------------------------------------------------
 
 export type LifecycleEventMap = {
-  request: { ticketId: string; url: string; method: string }
+  request: { ticketId: string; url: string; method: string; partition: string }
   /** Zero-based retry index (0 = first retry after the initial attempt).
    *  Note: retryWhen's attempt parameter uses a different numbering —
    *  0 = first attempt, 1 = first retry, etc. */
   retry: { ticketId: string; url: string; attempt: number; delayMs: number; error: AppError }
-  success: { ticketId: string; url: string; attempt: number }
-  failure: { ticketId: string; url: string; error: AppError }
+  success: {
+    ticketId: string
+    url: string
+    attempts: number
+    durationMs: number
+    queuedMs: number
+    statusCode: number
+  }
+  failure: {
+    ticketId: string
+    url: string
+    attempts: number
+    durationMs: number
+    queuedMs: number
+    error: AppError
+  }
+  cancelled: { ticketId: string; url: string; attempts: number; durationMs: number }
 }
 
 // ---------------------------------------------------------------------------
