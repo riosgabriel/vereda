@@ -20,7 +20,7 @@ jobs:
           bun-version: latest
 
       - name: Install dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
       # Full-tree check, not `--changed`: the repo checks in ~60ms, and
       # `--changed` both skips files on push-to-main and fails opaquely when
@@ -29,25 +29,21 @@ jobs:
         run: bun run ci
 
   test:
-    name: test
+    name: test (node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         node-version: [20, 22, 24]
-        include:
-          - node-version: 20
-            runtime: bun
-          - node-version: 22
-            runtime: bun
-          - node-version: 24
-            runtime: bun
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
+      # Bun installs from bun.lock; Node is what actually runs the suite.
+      # The package.json scripts are runtime-agnostic (`vitest run`, not
+      # `bunx vitest run`), so the caller decides the runtime — `npm run`
+      # here resolves node_modules/.bin and executes under the matrix Node.
       - name: Set up Bun
-        if: matrix.runtime == 'bun'
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -56,45 +52,55 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node-version }}
-          cache: "npm"
 
       - name: Install dependencies
-        if: matrix.runtime == 'bun'
-        run: bun install
+        run: bun install --frozen-lockfile
 
-      - name: Install dependencies
-        if: matrix.runtime != 'bun'
-        run: npm ci
+      - name: Verify runtime is Node ${{ matrix.node-version }}
+        run: node --version
 
       - name: Typecheck
-        run: |
-          if [ "${{ matrix.runtime }}" = "bun" ]; then
-            bunx tsc --noEmit
-          else
-            npm run typecheck
-          fi
+        run: npm run typecheck
 
       - name: Test
-        run: |
-          if [ "${{ matrix.runtime }}" = "bun" ]; then
-            bunx vitest run
-          else
-            npm test
-          fi
+        run: npm test
 
       - name: Build
-        run: |
-          if [ "${{ matrix.runtime }}" = "bun" ]; then
-            bunx tsc
-          else
-            npm run build
-          fi
+        run: npm run build
+
+  test-bun:
+    name: test (bun runtime)
+    runs-on: ubuntu-latest
+    # Non-blocking: the suite has 3 known failures under the Bun runtime
+    # (zod resolving to undefined in test/core/client.integration.test.ts, and a
+    # retry-count divergence in test/core/retry-matrix.test.ts). They are
+    # pre-existing and unrelated to this workflow. Flip this to blocking once
+    # they're fixed — until then this leg reports Bun compatibility without
+    # gating merges.
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # `--bun` forces the Bun runtime. Without it, bun respects the vitest
+      # shebang and silently runs the suite under Node — which is why the old
+      # `bunx vitest run` matrix never actually exercised Bun.
+      - name: Test
+        run: bun run --bun test
 
   ci:
     if: always()
-    needs: [lint, test]
+    needs: [lint, test, test-bun]
     runs-on: ubuntu-latest
     steps:
-      - name: Check matrix results
+      - name: Check job results
         if: needs.lint.result != 'success' || needs.test.result != 'success'
         run: exit 1
