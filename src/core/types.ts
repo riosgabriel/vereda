@@ -1,4 +1,4 @@
-import type { AppError } from "./errors.js";
+import type { AppError } from "./errors.js"
 
 // ---------------------------------------------------------------------------
 // Result type
@@ -6,27 +6,27 @@ import type { AppError } from "./errors.js";
 
 export type Result<T> =
   | { success: true; data: T; raw: Response }
-  | { success: false; error: AppError };
+  | { success: false; error: AppError }
 
 // ---------------------------------------------------------------------------
 // Parse function — schema-agnostic
 // ---------------------------------------------------------------------------
 
-export type ParseFn<T> = (data: unknown) => T;
+export type ParseFn<T> = (data: unknown) => T
 
 // ---------------------------------------------------------------------------
 // Backoff
 // ---------------------------------------------------------------------------
 
-export type BackoffFn = (attempt: number) => number;
+export type BackoffFn = (attempt: number) => number
 
 export interface BackoffOptions {
   /** Base delay in ms. Default: 200 */
-  baseDelayMs?: number;
+  baseDelayMs?: number
   /** Maximum delay cap in ms. Default: 30_000 */
-  maxDelayMs?: number;
+  maxDelayMs?: number
   /** Whether to add jitter. Default: true */
-  jitter?: boolean;
+  jitter?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -35,18 +35,18 @@ export interface BackoffOptions {
 
 export interface TimeoutConfig {
   /** Per-attempt timeout in ms. Undefined means no per-attempt timeout. */
-  attemptMs?: number;
+  attemptMs?: number
   /** Whole-ticket deadline in ms. Starts at request(); cancels the ticket
    *  and resolves with DeadlineExceededError on expiry. Undefined means
    *  no total deadline. */
-  totalMs?: number;
+  totalMs?: number
 }
 
 // ---------------------------------------------------------------------------
 // Default retry-on-status codes (D1)
 // ---------------------------------------------------------------------------
 
-export const DEFAULT_RETRY_ON_STATUS: number[] = [408, 425, 429, 500, 502, 503, 504];
+export const DEFAULT_RETRY_ON_STATUS: number[] = [408, 425, 429, 500, 502, 503, 504]
 
 // ---------------------------------------------------------------------------
 // Partition / bulkhead config
@@ -54,11 +54,11 @@ export const DEFAULT_RETRY_ON_STATUS: number[] = [408, 425, 429, 500, 502, 503, 
 
 export interface PartitionConfig {
   /** Max concurrent in-flight retries for this partition */
-  concurrency?: number;
+  concurrency?: number
   /** Max number of pending items in the queue before rejecting new ones */
-  maxQueueSize?: number;
-  retry?: RetryConfig;
-  timeout?: TimeoutConfig;
+  maxQueueSize?: number
+  retry?: RetryConfig
+  timeout?: TimeoutConfig
 }
 
 // ---------------------------------------------------------------------------
@@ -66,20 +66,20 @@ export interface PartitionConfig {
 // ---------------------------------------------------------------------------
 
 export interface RetryConfig {
-  maxRetries?: number;
-  backoff?: BackoffFn | BackoffOptions;
+  maxRetries?: number
+  backoff?: BackoffFn | BackoffOptions
   /** HTTP status codes that trigger retry (e.g. 408, 429, 500, 502, 503, 504).
    *  Default: [408, 425, 429, 500, 502, 503, 504] */
-  retryOnStatus?: number[];
+  retryOnStatus?: number[]
   /** Allows retrying non-idempotent methods (POST/PATCH/CONNECT). An
    *  `Idempotency-Key` header also enables retries. Default: false. */
-  idempotent?: boolean;
+  idempotent?: boolean
   /** Optional predicate to decide whether a failed attempt should be retried.
    *  Called with the error and the zero-based attempt number:
    *  - 0 = the first attempt (called client-side before the retry loop)
    *  - 1, 2, … = retries (called inside the loop, after attempt 0)
    *  Returning `false` surfaces the error immediately without retrying. */
-  retryWhen?: (error: AppError, attempt: number) => boolean;
+  retryWhen?: (error: AppError, attempt: number) => boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -87,10 +87,10 @@ export interface RetryConfig {
 // ---------------------------------------------------------------------------
 
 export interface Logger {
-  debug(msg: string, meta?: Record<string, unknown>): void;
-  info(msg: string, meta?: Record<string, unknown>): void;
-  warn(msg: string, meta?: Record<string, unknown>): void;
-  error(msg: string, meta?: Record<string, unknown>): void;
+  debug(msg: string, meta?: Record<string, unknown>): void
+  info(msg: string, meta?: Record<string, unknown>): void
+  warn(msg: string, meta?: Record<string, unknown>): void
+  error(msg: string, meta?: Record<string, unknown>): void
 }
 
 // ---------------------------------------------------------------------------
@@ -98,35 +98,35 @@ export interface Logger {
 // ---------------------------------------------------------------------------
 
 export type LifecycleEventMap = {
-  request: { ticketId: string; url: string; method: string };
+  request: { ticketId: string; url: string; method: string }
   /** Zero-based retry index (0 = first retry after the initial attempt).
    *  Note: retryWhen's attempt parameter uses a different numbering —
    *  0 = first attempt, 1 = first retry, etc. */
-  retry: { ticketId: string; url: string; attempt: number; delayMs: number; error: AppError };
-  success: { ticketId: string; url: string; attempt: number };
-  failure: { ticketId: string; url: string; error: AppError };
-};
+  retry: { ticketId: string; url: string; attempt: number; delayMs: number; error: AppError }
+  success: { ticketId: string; url: string; attempt: number }
+  failure: { ticketId: string; url: string; error: AppError }
+}
 
 // ---------------------------------------------------------------------------
 // Request options
 // ---------------------------------------------------------------------------
 
 export interface RequestOptions<T = unknown> {
-  method?: string;
-  headers?: Record<string, string>;
+  method?: string
+  headers?: Record<string, string>
   /** Request body, or a factory that returns a fresh body on every attempt
    *  (replayable body). A ReadableStream must be supplied via a factory. The
    *  factory must return a fresh body each invocation — reusing the same
    *  ReadableStream replays an already-consumed (empty) stream. */
-  body?: BodyInit | (() => BodyInit);
+  body?: BodyInit | (() => BodyInit)
   /** Named bulkhead partition. Defaults to hostname. */
-  partition?: string;
+  partition?: string
   /** Schema parse function. Use withZod() or custom. */
-  parse?: ParseFn<T>;
-  retry?: RetryConfig;
-  timeout?: TimeoutConfig;
+  parse?: ParseFn<T>
+  retry?: RetryConfig
+  timeout?: TimeoutConfig
   /** Signal to cancel the request externally */
-  signal?: AbortSignal;
+  signal?: AbortSignal
 }
 
 // ---------------------------------------------------------------------------
@@ -135,15 +135,15 @@ export interface RequestOptions<T = unknown> {
 
 export interface ClientConfig {
   /** Base URL prepended to all requests */
-  baseUrl?: string;
+  baseUrl?: string
   /** Default retry config */
-  retry?: RetryConfig;
+  retry?: RetryConfig
   /** Default timeout config */
-  timeout?: TimeoutConfig;
+  timeout?: TimeoutConfig
   /** Global concurrency across all partitions */
-  concurrency?: number;
+  concurrency?: number
   /** Per-partition overrides */
-  partitions?: Record<string, PartitionConfig>;
+  partitions?: Record<string, PartitionConfig>
   /** Optional structured logger */
-  logger?: Logger;
+  logger?: Logger
 }

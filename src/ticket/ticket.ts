@@ -1,20 +1,20 @@
-import { EventEmitter } from "node:events";
-import type { AppError } from "../core/errors.js";
-import { CancelledError } from "../core/errors.js";
-import type { Result } from "../core/types.js";
+import { EventEmitter } from "node:events"
+import type { AppError } from "../core/errors.js"
+import { CancelledError } from "../core/errors.js"
+import type { Result } from "../core/types.js"
 
 export type TicketStatus =
   | { state: "pending" }
   | { state: "queued" }
   | { state: "retrying"; attempt: number }
   | { state: "done"; result: Result<unknown> }
-  | { state: "cancelled" };
+  | { state: "cancelled" }
 
 export type TicketUpdate =
   | { type: "queued" }
   | { type: "retrying"; attempt: number; delayMs: number }
   | { type: "done"; result: Result<unknown> }
-  | { type: "cancelled" };
+  | { type: "cancelled" }
 
 // Allowed transitions between ticket states. `done` and `cancelled` are both
 // terminal: `cancel()` resolves the ticket directly with a CancelledError
@@ -31,20 +31,20 @@ const ALLOWED_TRANSITIONS: Record<TicketStatus["state"], TicketStatus["state"][]
   retrying: ["retrying", "done", "cancelled"],
   cancelled: [],
   done: [],
-};
+}
 
 // ---------------------------------------------------------------------------
 // TicketController — the only way to mutate a ticket's lifecycle
 // ---------------------------------------------------------------------------
 
 export interface TicketController<T> {
-  markQueued(): void;
-  markRetrying(attempt: number, delayMs: number): void;
-  markDone(result: Result<T>): void;
+  markQueued(): void
+  markRetrying(attempt: number, delayMs: number): void
+  markDone(result: Result<T>): void
   /** @internal — abort the signal without resolving the ticket. Used by the
    *  deadline timer so the retry loop can resolve with DeadlineExceededError
    *  instead of CancelledError. */
-  abortSignal(): void;
+  abortSignal(): void
 }
 
 // ---------------------------------------------------------------------------
@@ -52,27 +52,27 @@ export interface TicketController<T> {
 // ---------------------------------------------------------------------------
 
 export class Ticket<T> {
-  public readonly id: string;
+  public readonly id: string
 
-  private readonly emitter = new EventEmitter();
-  private _status: TicketStatus = { state: "pending" };
-  private _cancelled = false;
-  private _abortController = new AbortController();
-  private _resolve!: (result: Result<T>) => void;
-  private _promise: Promise<Result<T>>;
+  private readonly emitter = new EventEmitter()
+  private _status: TicketStatus = { state: "pending" }
+  private _cancelled = false
+  private _abortController = new AbortController()
+  private _resolve!: (result: Result<T>) => void
+  private _promise: Promise<Result<T>>
 
   /** @internal — use `createTicket()` to obtain a ticket and its controller. */
   constructor(id: string) {
-    this.id = id;
+    this.id = id
     this._promise = new Promise<Result<T>>((resolve) => {
-      this._resolve = resolve;
-    });
+      this._resolve = resolve
+    })
     // Prevent Node from throwing on unhandled "error" events
-    this.emitter.on("error", () => {});
+    this.emitter.on("error", () => {})
   }
 
   get status(): TicketStatus {
-    return this._status;
+    return this._status
   }
 
   /** Validate and apply a state transition. Returns false (and leaves the
@@ -80,119 +80,119 @@ export class Ticket<T> {
    *  state, so illegal transitions are ignored rather than corrupting state. */
   private applyTransition(next: TicketStatus): boolean {
     if (!ALLOWED_TRANSITIONS[this._status.state].includes(next.state)) {
-      return false;
+      return false
     }
-    this._status = next;
-    return true;
+    this._status = next
+    return true
   }
 
   get signal(): AbortSignal {
-    return this._abortController.signal;
+    return this._abortController.signal
   }
 
   // -- Event subscriptions --------------------------------------------------
 
-  on(event: "done", listener: (result: Result<T>) => void): this;
-  on(event: "error", listener: (error: AppError) => void): this;
-  on(event: "update", listener: (update: TicketUpdate) => void): this;
+  on(event: "done", listener: (result: Result<T>) => void): this
+  on(event: "error", listener: (error: AppError) => void): this
+  on(event: "update", listener: (update: TicketUpdate) => void): this
   on(event: string, listener: (...args: any[]) => void): this {
-    this.emitter.on(event, listener as (...args: any[]) => void);
-    return this;
+    this.emitter.on(event, listener as (...args: any[]) => void)
+    return this
   }
 
-  off(event: "done", listener: (result: Result<T>) => void): this;
-  off(event: "error", listener: (error: AppError) => void): this;
-  off(event: "update", listener: (update: TicketUpdate) => void): this;
+  off(event: "done", listener: (result: Result<T>) => void): this
+  off(event: "error", listener: (error: AppError) => void): this
+  off(event: "update", listener: (update: TicketUpdate) => void): this
   off(event: string, listener: (...args: any[]) => void): this {
-    this.emitter.off(event, listener as (...args: any[]) => void);
-    return this;
+    this.emitter.off(event, listener as (...args: any[]) => void)
+    return this
   }
 
   // -- Public API ------------------------------------------------------------
 
   cancel(): void {
-    if (this._cancelled) return;
+    if (this._cancelled) return
     // `cancelled` is terminal — if the ticket already resolved, this is a no-op.
-    if (!this.applyTransition({ state: "cancelled" })) return;
-    this._cancelled = true;
-    this._abortController.abort();
-    const result: Result<T> = { success: false, error: new CancelledError() };
-    this.emitter.emit("update", { type: "cancelled" } as TicketUpdate);
-    this.emitter.emit("done", result);
-    this.emitter.emit("error", result.error);
-    this._resolve(result);
+    if (!this.applyTransition({ state: "cancelled" })) return
+    this._cancelled = true
+    this._abortController.abort()
+    const result: Result<T> = { success: false, error: new CancelledError() }
+    this.emitter.emit("update", { type: "cancelled" } as TicketUpdate)
+    this.emitter.emit("done", result)
+    this.emitter.emit("error", result.error)
+    this._resolve(result)
   }
 
   toPromise(): Promise<Result<T>> {
-    return this._promise;
+    return this._promise
   }
 
   async *subscribe(): AsyncGenerator<TicketUpdate> {
     // Already terminal — yield synthetic update and return
-    const current = this._status;
+    const current = this._status
     if (current.state === "done") {
-      yield { type: "done", result: current.result };
-      return;
+      yield { type: "done", result: current.result }
+      return
     }
     if (current.state === "cancelled") {
-      yield { type: "cancelled" };
-      return;
+      yield { type: "cancelled" }
+      return
     }
 
-    const updates: TicketUpdate[] = [];
-    let notify: (() => void) | null = null;
-    let isDone = false;
+    const updates: TicketUpdate[] = []
+    let notify: (() => void) | null = null
+    let isDone = false
 
     const onUpdate = (update: TicketUpdate) => {
-      updates.push(update);
-      notify?.();
-      notify = null;
+      updates.push(update)
+      notify?.()
+      notify = null
       if (update.type === "done" || update.type === "cancelled") {
-        isDone = true;
+        isDone = true
       }
-    };
+    }
 
-    this.emitter.on("update", onUpdate);
+    this.emitter.on("update", onUpdate)
 
     try {
       while (!isDone || updates.length > 0) {
         if (updates.length > 0) {
-          yield updates.shift()!;
+          yield updates.shift()!
         } else {
           await new Promise<void>((r) => {
-            notify = r;
-          });
+            notify = r
+          })
         }
       }
     } finally {
-      this.emitter.off("update", onUpdate);
+      this.emitter.off("update", onUpdate)
     }
   }
 
   get isCancelled(): boolean {
-    return this._cancelled;
+    return this._cancelled
   }
 
   // -- Internal mutators (private, accessed via TicketController) ------------
 
   private markQueued(): void {
-    if (!this.applyTransition({ state: "queued" })) return;
-    this.emitter.emit("update", { type: "queued" } as TicketUpdate);
+    if (!this.applyTransition({ state: "queued" })) return
+    this.emitter.emit("update", { type: "queued" } as TicketUpdate)
   }
 
   private markRetrying(attempt: number, delayMs: number): void {
-    if (!this.applyTransition({ state: "retrying", attempt })) return;
-    this.emitter.emit("update", { type: "retrying", attempt, delayMs } as TicketUpdate);
+    if (!this.applyTransition({ state: "retrying", attempt })) return
+    this.emitter.emit("update", { type: "retrying", attempt, delayMs } as TicketUpdate)
   }
 
   private markDone(result: Result<T>): void {
-    if (!this.applyTransition({ state: "done", result })) return;
-    this.emitter.emit("update", { type: "done", result } as TicketUpdate);
-    this.emitter.emit("done", result);
+    if (!this.applyTransition({ state: "done", result })) return
+    this.emitter.emit("update", { type: "done", result } as TicketUpdate)
+    this.emitter.emit("done", result)
     if (result.success === false) {
-      this.emitter.emit("error", result.error);
+      this.emitter.emit("error", result.error)
     }
-    this._resolve(result);
+    this._resolve(result)
   }
 }
 
@@ -201,10 +201,10 @@ export class Ticket<T> {
 // ---------------------------------------------------------------------------
 
 export function createTicket<T>(id: string): {
-  ticket: Ticket<T>;
-  controller: TicketController<T>;
+  ticket: Ticket<T>
+  controller: TicketController<T>
 } {
-  const ticket = new Ticket<T>(id);
+  const ticket = new Ticket<T>(id)
 
   // Bind the private methods to the ticket instance and expose them
   // through the controller interface.
@@ -216,7 +216,7 @@ export function createTicket<T>(id: string): {
     markRetrying: (attempt, delayMs) => ticket["markRetrying"](attempt, delayMs),
     markDone: (result) => ticket["markDone"](result),
     abortSignal: () => ticket["_abortController"].abort(),
-  };
+  }
 
-  return { ticket, controller };
+  return { ticket, controller }
 }

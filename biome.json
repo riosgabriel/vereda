@@ -20,7 +20,8 @@
       "quoteStyle": "double",
       "trailingCommas": "all",
       "arrowParentheses": "always",
-      "lineEnding": "lf"
+      "lineEnding": "lf",
+      "semicolons": "asNeeded"
     }
   },
   "linter": {
