@@ -4,9 +4,7 @@ import type { AppError } from "./errors.js"
 // Result type
 // ---------------------------------------------------------------------------
 
-export type Result<T> =
-  | { success: true; data: T; raw: Response }
-  | { success: false; error: AppError }
+export type Result<T> = { success: true; data: T; raw: Response } | { success: false; error: AppError }
 
 // ---------------------------------------------------------------------------
 // Parse function — schema-agnostic

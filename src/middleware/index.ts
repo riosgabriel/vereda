@@ -6,9 +6,7 @@ export type { MiddlewareFn, NextFn } from "../queue/executor.js"
  * @example
  * client.use(defaultHeaders({ 'X-Api-Key': 'secret' }));
  */
-export function defaultHeaders(
-  headers: Record<string, string>,
-): import("../queue/executor.js").MiddlewareFn {
+export function defaultHeaders(headers: Record<string, string>): import("../queue/executor.js").MiddlewareFn {
   return async (options, next) => {
     return next({
       ...options,

@@ -14,14 +14,7 @@ import {
   TimeoutError,
 } from "./errors.js"
 import { nanoid } from "./nanoid.js"
-import type {
-  ClientConfig,
-  LifecycleEventMap,
-  Logger,
-  RequestOptions,
-  RetryConfig,
-  TimeoutConfig,
-} from "./types.js"
+import type { ClientConfig, LifecycleEventMap, Logger, RequestOptions, RetryConfig, TimeoutConfig } from "./types.js"
 import { validateConfig, validateRequestBody } from "./validate.js"
 
 /** Pairs an in-flight ticket with its cleanup function so that
@@ -44,10 +37,7 @@ export class HttpClient {
   private constructor(config: ClientConfig) {
     this.config = config
     this.logger = config.logger
-    this.bulkheads = new BulkheadRegistry(
-      { concurrency: config.concurrency ?? 10 },
-      config.partitions ?? {},
-    )
+    this.bulkheads = new BulkheadRegistry({ concurrency: config.concurrency ?? 10 }, config.partitions ?? {})
   }
 
   static create(config: ClientConfig = {}): HttpClient {
@@ -68,18 +58,12 @@ export class HttpClient {
   // Lifecycle events
   // ---------------------------------------------------------------------------
 
-  on<K extends keyof LifecycleEventMap>(
-    event: K,
-    listener: (data: LifecycleEventMap[K]) => void,
-  ): this {
+  on<K extends keyof LifecycleEventMap>(event: K, listener: (data: LifecycleEventMap[K]) => void): this {
     this.emitter.on(event, listener)
     return this
   }
 
-  off<K extends keyof LifecycleEventMap>(
-    event: K,
-    listener: (data: LifecycleEventMap[K]) => void,
-  ): this {
+  off<K extends keyof LifecycleEventMap>(event: K, listener: (data: LifecycleEventMap[K]) => void): this {
     this.emitter.off(event, listener)
     return this
   }

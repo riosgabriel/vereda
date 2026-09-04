@@ -77,9 +77,7 @@ describe("HttpClient integration", () => {
       res.writeHead(200, { "Content-Type": "application/json" })
       res.end(JSON.stringify({ id: 1, name: "Alice" }))
     })
-    const result = await client
-      .get(`${server.url}/user`, { parse: withZod(UserSchema) })
-      .toPromise()
+    const result = await client.get(`${server.url}/user`, { parse: withZod(UserSchema) }).toPromise()
     expect(result.success).toBe(true)
     if (result.success) expect(result.data).toEqual({ id: 1, name: "Alice" })
   })
@@ -90,9 +88,7 @@ describe("HttpClient integration", () => {
       res.writeHead(200, { "Content-Type": "application/json" })
       res.end(JSON.stringify({ id: "not-a-number", name: "Alice" }))
     })
-    const result = await client
-      .get(`${server.url}/user`, { parse: withZod(UserSchema) })
-      .toPromise()
+    const result = await client.get(`${server.url}/user`, { parse: withZod(UserSchema) }).toPromise()
     expect(result.success).toBe(false)
     if (!result.success) expect(result.error).toBeInstanceOf(ValidationError)
   })

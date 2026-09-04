@@ -9,11 +9,7 @@ export interface RetryPolicyContext {
 
 export type RetryPolicy = (error: AppError, attempt: number, ctx: RetryPolicyContext) => boolean
 
-const RETRIABLE_KINDS: ReadonlySet<AppError["kind"]> = new Set([
-  "network",
-  "timeout",
-  "retryable_status",
-])
+const RETRIABLE_KINDS: ReadonlySet<AppError["kind"]> = new Set(["network", "timeout", "retryable_status"])
 
 const IDEMPOTENT_METHODS = new Set(["GET", "HEAD", "OPTIONS", "PUT", "DELETE", "TRACE"])
 
@@ -26,11 +22,7 @@ const IDEMPOTENT_METHODS = new Set(["GET", "HEAD", "OPTIONS", "PUT", "DELETE", "
  * 4. user `retryWhen` (consulted separately via `shouldRetry`) returns true
  * 5. the request is not cancelled / past its deadline (handled elsewhere)
  */
-export function defaultRetryPolicy(
-  error: AppError,
-  _attempt: number,
-  ctx: RetryPolicyContext,
-): boolean {
+export function defaultRetryPolicy(error: AppError, _attempt: number, ctx: RetryPolicyContext): boolean {
   // Rule 2 — the error kind must be transient.
   if (!RETRIABLE_KINDS.has(error.kind)) return false
   // Rule 3 — the request must be safe to repeat (idempotent by method or opt-in).

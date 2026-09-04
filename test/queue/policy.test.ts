@@ -83,12 +83,8 @@ describe("defaultRetryPolicy", () => {
 
   it("honors an Idempotency-Key header case-insensitively", () => {
     const err = new RetryableStatusError("busy", 500, new Response())
-    expect(
-      defaultRetryPolicy(err, 0, { method: "POST", headers: { "idempotency-key": "abc" } }),
-    ).toBe(true)
-    expect(
-      defaultRetryPolicy(err, 0, { method: "POST", headers: { "Idempotency-Key": "abc" } }),
-    ).toBe(true)
+    expect(defaultRetryPolicy(err, 0, { method: "POST", headers: { "idempotency-key": "abc" } })).toBe(true)
+    expect(defaultRetryPolicy(err, 0, { method: "POST", headers: { "Idempotency-Key": "abc" } })).toBe(true)
   })
 
   it("normalizes the method to uppercase", () => {

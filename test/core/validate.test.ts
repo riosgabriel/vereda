@@ -37,9 +37,7 @@ describe("validateConfig", () => {
   })
 
   it("rejects maxQueueSize < 1", () => {
-    expect(() => validateConfig({ partitions: { x: { maxQueueSize: 0 } } })).toThrow(
-      ConfigurationError,
-    )
+    expect(() => validateConfig({ partitions: { x: { maxQueueSize: 0 } } })).toThrow(ConfigurationError)
   })
 
   it("rejects negative maxRetries", () => {
@@ -55,33 +53,25 @@ describe("validateConfig", () => {
   })
 
   it("rejects baseDelayMs > maxDelayMs", () => {
-    expect(() =>
-      validateConfig({ retry: { backoff: { baseDelayMs: 1000, maxDelayMs: 100 } } }),
-    ).toThrow(ConfigurationError)
+    expect(() => validateConfig({ retry: { backoff: { baseDelayMs: 1000, maxDelayMs: 100 } } })).toThrow(
+      ConfigurationError,
+    )
   })
 
   it("rejects negative baseDelayMs", () => {
-    expect(() => validateConfig({ retry: { backoff: { baseDelayMs: -1 } } })).toThrow(
-      ConfigurationError,
-    )
+    expect(() => validateConfig({ retry: { backoff: { baseDelayMs: -1 } } })).toThrow(ConfigurationError)
   })
 
   it("rejects negative maxDelayMs", () => {
-    expect(() => validateConfig({ retry: { backoff: { maxDelayMs: -1 } } })).toThrow(
-      ConfigurationError,
-    )
+    expect(() => validateConfig({ retry: { backoff: { maxDelayMs: -1 } } })).toThrow(ConfigurationError)
   })
 
   it("rejects partition concurrency < 1", () => {
-    expect(() => validateConfig({ partitions: { api: { concurrency: 0 } } })).toThrow(
-      ConfigurationError,
-    )
+    expect(() => validateConfig({ partitions: { api: { concurrency: 0 } } })).toThrow(ConfigurationError)
   })
 
   it("rejects partition maxRetries < 0", () => {
-    expect(() => validateConfig({ partitions: { api: { retry: { maxRetries: -1 } } } })).toThrow(
-      ConfigurationError,
-    )
+    expect(() => validateConfig({ partitions: { api: { retry: { maxRetries: -1 } } } })).toThrow(ConfigurationError)
   })
 
   it("accepts empty retryOnStatus", () => {
@@ -97,9 +87,7 @@ describe("validateConfig", () => {
   })
 
   it("rejects status above 599 in retryOnStatus", () => {
-    expect(() => validateConfig({ retry: { retryOnStatus: [503, 600] } })).toThrow(
-      ConfigurationError,
-    )
+    expect(() => validateConfig({ retry: { retryOnStatus: [503, 600] } })).toThrow(ConfigurationError)
   })
 
   it("rejects non-integer status in retryOnStatus", () => {
@@ -107,8 +95,6 @@ describe("validateConfig", () => {
   })
 
   it("rejects a stream-like body via duck-typing", () => {
-    expect(() => validateRequestBody({ getReader: () => ({}) } as unknown as BodyInit)).toThrow(
-      ConfigurationError,
-    )
+    expect(() => validateRequestBody({ getReader: () => ({}) } as unknown as BodyInit)).toThrow(ConfigurationError)
   })
 })

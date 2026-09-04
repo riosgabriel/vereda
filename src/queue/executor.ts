@@ -1,11 +1,5 @@
 import type { AppError } from "../core/errors.js"
-import {
-  ConfigurationError,
-  HttpError,
-  NetworkError,
-  RetryableStatusError,
-  ValidationError,
-} from "../core/errors.js"
+import { ConfigurationError, HttpError, NetworkError, RetryableStatusError, ValidationError } from "../core/errors.js"
 import type { RequestOptions, Result, RetryConfig, TimeoutConfig } from "../core/types.js"
 import { DEFAULT_RETRY_ON_STATUS } from "../core/types.js"
 import { isReadableStream } from "../core/validate.js"
@@ -29,10 +23,7 @@ export type ExecuteResult =
  * Returns a discriminated union describing what happened,
  * so the caller (retry loop) can decide whether to retry or resolve.
  */
-export async function executeRequest(
-  req: ExecuteRequest,
-  middleware: MiddlewareFn[],
-): Promise<ExecuteResult> {
+export async function executeRequest(req: ExecuteRequest, middleware: MiddlewareFn[]): Promise<ExecuteResult> {
   const { url, options, timeoutConfig, retryConfig, signal } = req
 
   if (signal.aborted || options.signal?.aborted) {
@@ -48,9 +39,7 @@ export async function executeRequest(
     } catch (err) {
       return {
         kind: "error",
-        error: new ConfigurationError(
-          `body factory threw: ${err instanceof Error ? err.message : String(err)}`,
-        ),
+        error: new ConfigurationError(`body factory threw: ${err instanceof Error ? err.message : String(err)}`),
       }
     }
   } else {
@@ -76,9 +65,7 @@ export async function executeRequest(
   if (timeoutController) sources.push(timeoutController.signal)
   const attemptSignal = AbortSignal.any(sources)
   const timeoutId =
-    timeoutController && timeoutMs !== undefined
-      ? setTimeout(() => timeoutController.abort(), timeoutMs)
-      : undefined
+    timeoutController && timeoutMs !== undefined ? setTimeout(() => timeoutController.abort(), timeoutMs) : undefined
 
   let response: Response
   try {
@@ -111,11 +98,7 @@ export async function executeRequest(
     if (!response.ok) {
       return {
         kind: "error",
-        error: new HttpError(
-          `HTTP ${response.status} ${response.statusText}`,
-          response.status,
-          response,
-        ),
+        error: new HttpError(`HTTP ${response.status} ${response.statusText}`, response.status, response),
       }
     }
 
@@ -213,10 +196,7 @@ function buildFetchCall(url: string, _baseOptions: RequestOptions<unknown>): Nex
 }
 
 export function composeMiddleware(middlewares: MiddlewareFn[], core: NextFn): NextFn {
-  return middlewares.reduceRight<NextFn>(
-    (next, middleware) => (options) => middleware(options, next),
-    core,
-  )
+  return middlewares.reduceRight<NextFn>((next, middleware) => (options) => middleware(options, next), core)
 }
 
 // ---------------------------------------------------------------------------

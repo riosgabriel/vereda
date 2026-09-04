@@ -12,9 +12,7 @@ export function isReadableStream(body: unknown): body is ReadableStream {
  *  supplied via a factory. Throws ConfigurationError otherwise. */
 export function validateRequestBody(body: BodyInit | (() => BodyInit) | undefined): void {
   if (isReadableStream(body)) {
-    throw new ConfigurationError(
-      "body must be supplied as a factory (() => BodyInit) when it is a ReadableStream",
-    )
+    throw new ConfigurationError("body must be supplied as a factory (() => BodyInit) when it is a ReadableStream")
   }
 }
 

@@ -14,11 +14,7 @@ describe("Bulkhead", () => {
       running.splice(running.indexOf(id), 1)
     }
 
-    await Promise.all([
-      bh.schedule(makeTask(1, 30)),
-      bh.schedule(makeTask(2, 30)),
-      bh.schedule(makeTask(3, 10)),
-    ])
+    await Promise.all([bh.schedule(makeTask(1, 30)), bh.schedule(makeTask(2, 30)), bh.schedule(makeTask(3, 10))])
 
     expect(maxConcurrent).toBeLessThanOrEqual(2)
   })

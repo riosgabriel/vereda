@@ -114,8 +114,7 @@ for (const idempotent of [false, true]) {
       mode,
       idempotent,
       expectedRequests: mode === 404 || !idempotent ? 1 : 3,
-      expectedKind:
-        mode === 404 ? "http" : idempotent ? "max_retries_exceeded" : "retryable_status",
+      expectedKind: mode === 404 ? "http" : idempotent ? "max_retries_exceeded" : "retryable_status",
     })
   }
   postRows.push({
@@ -151,13 +150,7 @@ const maxRetriesZeroRows: Row[] = [
   { method: "GET", mode: 404, maxRetries: 0, expectedRequests: 1, expectedKind: "http" },
 ]
 
-const rows: Row[] = [
-  ...networkRows,
-  ...getRows,
-  ...postRows,
-  ...idempotencyKeyRows,
-  ...maxRetriesZeroRows,
-]
+const rows: Row[] = [...networkRows, ...getRows, ...postRows, ...idempotencyKeyRows, ...maxRetriesZeroRows]
 
 describe("retry behavior matrix", () => {
   let server: TestServer
@@ -172,68 +165,63 @@ describe("retry behavior matrix", () => {
     await server.close()
   })
 
-  it.each(rows)(
-    "$method $mode idempotent=$idempotent → $expectedRequests requests, $expectedKind",
-    async (row) => {
-      let hits = 0
-      server.setHandler((req, res) => {
-        hits++
-        if (row.mode === "destroy") {
-          req.socket.destroy()
-          return
-        }
-        if (row.mode === "validation") {
-          res.writeHead(200, { "Content-Type": "application/json" })
-          res.end("{}")
-          return
-        }
-        res.writeHead(row.mode)
-        res.end("error")
+  it.each(rows)("$method $mode idempotent=$idempotent → $expectedRequests requests, $expectedKind", async (row) => {
+    let hits = 0
+    server.setHandler((req, res) => {
+      hits++
+      if (row.mode === "destroy") {
+        req.socket.destroy()
+        return
+      }
+      if (row.mode === "validation") {
+        res.writeHead(200, { "Content-Type": "application/json" })
+        res.end("{}")
+        return
+      }
+      res.writeHead(row.mode)
+      res.end("error")
+    })
+
+    const retry = {
+      backoff: { baseDelayMs: 10, jitter: false },
+      idempotent: row.idempotent ?? false,
+      maxRetries: row.maxRetries ?? 2,
+    }
+    const result = await client
+      .request(`${server.url}/matrix`, {
+        method: row.method,
+        retry,
+        headers: row.headers,
+        parse: row.parse,
       })
+      .toPromise()
 
-      const retry = {
-        backoff: { baseDelayMs: 10, jitter: false },
-        idempotent: row.idempotent ?? false,
-        maxRetries: row.maxRetries ?? 2,
+    expect(hits).toBe(row.expectedRequests)
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error.kind).toBe(TERMINAL_KIND[row.expectedKind])
+      // Cross-check the kind maps to the expected class.
+      switch (row.expectedKind) {
+        case "max_retries_exceeded":
+          expect(result.error).toBeInstanceOf(MaxRetriesExceededError)
+          // 1 first attempt + maxRetries retries (3 for maxRetries: 2).
+          expect((result.error as MaxRetriesExceededError).attempts).toBe((row.maxRetries ?? 2) + 1)
+          break
+        case "retryable_status":
+          expect(result.error).toBeInstanceOf(RetryableStatusError)
+          break
+        case "http":
+          expect(result.error).toBeInstanceOf(HttpError)
+          break
+        case "validation":
+          expect(result.error).toBeInstanceOf(ValidationError)
+          break
+        case "network":
+          expect(result.error).toBeInstanceOf(NetworkError)
+          break
       }
-      const result = await client
-        .request(`${server.url}/matrix`, {
-          method: row.method,
-          retry,
-          headers: row.headers,
-          parse: row.parse,
-        })
-        .toPromise()
-
-      expect(hits).toBe(row.expectedRequests)
-      expect(result.success).toBe(false)
-      if (!result.success) {
-        expect(result.error.kind).toBe(TERMINAL_KIND[row.expectedKind])
-        // Cross-check the kind maps to the expected class.
-        switch (row.expectedKind) {
-          case "max_retries_exceeded":
-            expect(result.error).toBeInstanceOf(MaxRetriesExceededError)
-            // 1 first attempt + maxRetries retries (3 for maxRetries: 2).
-            expect((result.error as MaxRetriesExceededError).attempts).toBe(
-              (row.maxRetries ?? 2) + 1,
-            )
-            break
-          case "retryable_status":
-            expect(result.error).toBeInstanceOf(RetryableStatusError)
-            break
-          case "http":
-            expect(result.error).toBeInstanceOf(HttpError)
-            break
-          case "validation":
-            expect(result.error).toBeInstanceOf(ValidationError)
-            break
-          case "network":
-            expect(result.error).toBeInstanceOf(NetworkError)
-            break
-        }
-      }
-    },
-  )
+    }
+  })
 
   it("maxRetries: 0 resolves the raw RetryableStatusError, unwrapped", async () => {
     let hits = 0
