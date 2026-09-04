@@ -157,14 +157,14 @@ With zero configuration:
 
 | Setting | Default |
 | --- | --- |
-| Global concurrency | 10 in-flight retries across all partitions |
-| Per-partition concurrency | 10 |
+| Global concurrency | 50 in-flight executions across all partitions |
+| Per-partition concurrency | 5 |
 | Per-partition queue size | 100 waiting retries |
 | Retries | 3 retries after the first attempt (4 total executions) |
 | Backoff | Exponential: 200ms base, 30s cap, full jitter |
 | Timeout | None |
 | Retry-on status codes | `[408, 425, 429, 500, 502, 503, 504]` |
-| First-attempt concurrency | Unbounded — the initial attempt bypasses the bulkhead |
+| First-attempt concurrency | Unbounded — the initial attempt bypasses the bulkhead unless `partition.limitFirstAttempts` is set |
 
 ## Quick start
 

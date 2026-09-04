@@ -3,6 +3,7 @@ import type {
   ClientConfig,
   LifecycleEventMap,
   Logger,
+  PartitionConfig,
   RequestOptions,
   RetryConfig,
   TimeoutConfig,
@@ -16,7 +17,8 @@ import {
   QueueFullError,
   ConfigurationError,
 } from "./errors.js"
-import { BulkheadRegistry } from "../queue/bulkhead.js"
+import { BulkheadRegistry, type BulkheadSnapshot } from "../queue/bulkhead.js"
+import { Semaphore } from "../queue/semaphore.js"
 import { executeRequest, type MiddlewareFn } from "../queue/executor.js"
 import { shouldRetry, type RetryPolicyContext } from "../queue/policy.js"
 import { runRetryLoop } from "../queue/retry.js"
@@ -37,6 +39,7 @@ export class HttpClient {
   private readonly emitter = new EventEmitter()
   private readonly middlewares: MiddlewareFn[] = []
   private readonly bulkheads: BulkheadRegistry
+  private readonly partitionConfigs: Record<string, PartitionConfig>
   private readonly logger: Logger | undefined
   private _closed = false
   private readonly _inflightTickets = new Set<InflightTicket>()
@@ -44,10 +47,9 @@ export class HttpClient {
   private constructor(config: ClientConfig) {
     this.config = config
     this.logger = config.logger
-    this.bulkheads = new BulkheadRegistry(
-      { concurrency: config.concurrency ?? 10 },
-      config.partitions ?? {},
-    )
+    this.partitionConfigs = config.partitions ?? {}
+    const semaphore = new Semaphore(config.concurrency ?? 50)
+    this.bulkheads = new BulkheadRegistry({}, this.partitionConfigs, 60_000, semaphore)
   }
 
   static create(config: ClientConfig = {}): HttpClient {
@@ -118,7 +120,9 @@ export class HttpClient {
 
     // Total deadline: a single unref'd timer that aborts the ticket signal
     // on expiry, cancelling in-flight attempts and breaking sleep (#R3).
-    const timeoutConfig = this.mergeTimeout(options)
+    // Use the explicit partition if available for the merge; the resolved
+    // partition (hostname) will be used for retries in _fireFirstAttempt.
+    const timeoutConfig = this.mergeTimeout(options, options.partition)
     let deadlineTimer: ReturnType<typeof setTimeout> | undefined
     const cleanupDeadline = () => {
       if (deadlineTimer !== undefined) {
@@ -180,7 +184,7 @@ export class HttpClient {
     let partitionName: string
     try {
       fullUrl = this.resolveUrl(url)
-      partitionName = options.partition ?? new URL(fullUrl).hostname
+      partitionName = options.partition ?? new URL(fullUrl).host
     } catch (err) {
       const error = new NetworkError(err instanceof Error ? err.message : "Invalid URL", {
         cause: err,
@@ -203,8 +207,8 @@ export class HttpClient {
       return
     }
 
-    const timeoutConfig = this.mergeTimeout(options)
-    const retryConfig = this.mergeRetry(options)
+    const timeoutConfig = this.mergeTimeout(options, partitionName)
+    const retryConfig = this.mergeRetry(options, partitionName)
     const bulkhead = this.bulkheads.get(partitionName)
 
     this.emit("request", { ticketId: ticket.id, url: fullUrl, method: options.method ?? "GET" })
@@ -214,10 +218,30 @@ export class HttpClient {
       method: options.method ?? "GET",
       partition: partitionName,
     })
-    const result = await executeRequest(
-      { url: fullUrl, options, timeoutConfig, retryConfig, signal: ticket.signal },
-      this.middlewares,
-    )
+
+    // The global semaphore limits total concurrent executions across all
+    // partitions. It is acquired for every attempt (including the first),
+    // while the per-partition bulkhead slot only applies to retries (D4).
+    const semaphore = this.bulkheads.getSemaphore()
+    const execute = () =>
+      executeRequest(
+        { url: fullUrl, options, timeoutConfig, retryConfig, signal: ticket.signal },
+        this.middlewares,
+      )
+
+    // When partition.limitFirstAttempts is enabled (R6), the first attempt
+    // also goes through the per-partition bulkhead. Otherwise it bypasses
+    // the partition slot entirely (D4). The global semaphore is always
+    // acquired for every attempt.
+    const usePartitionBulkhead = bulkhead.limitFirstAttempts
+    const result = usePartitionBulkhead
+      ? await bulkhead.run(
+          () => (semaphore ? semaphore.acquire().then((r) => execute().finally(r)) : execute()),
+          semaphore,
+        )
+      : semaphore
+        ? await semaphore.acquire().then((release) => execute().finally(release))
+        : await execute()
 
     switch (result.kind) {
       case "success":
@@ -349,23 +373,27 @@ export class HttpClient {
       partition: partitionName,
     })
 
-    bulkhead
-      .schedule(async () => {
-        await runRetryLoop({
-          url,
-          requestOptions: options,
-          timeoutConfig,
-          retryConfig,
-          ticket,
-          controller,
-          middleware: this.middlewares,
-          firstError,
-          onRetry: (attempt, delayMs, error) => {
-            this.emit("retry", { ticketId: ticket.id, url, attempt, delayMs, error })
-          },
-          onCleanup: cleanup,
-        })
-
+    // Run the retry loop directly — each attempt inside the loop acquires its
+    // own bulkhead slot via bulkhead.run() so other tickets are not blocked
+    // for the entire retry lifetime (#5, D4). QueueFullError from the loop
+    // is caught here and surfaced as a terminal ticket failure.
+    runRetryLoop({
+      url,
+      requestOptions: options,
+      timeoutConfig,
+      retryConfig,
+      ticket,
+      controller,
+      middleware: this.middlewares,
+      bulkhead,
+      semaphore: this.bulkheads.getSemaphore(),
+      firstError,
+      onRetry: (attempt, delayMs, error) => {
+        this.emit("retry", { ticketId: ticket.id, url, attempt, delayMs, error })
+      },
+      onCleanup: cleanup,
+    })
+      .then(() => {
         const status = ticket.status
         if (status.state === "done") {
           if (status.result.success) {
@@ -381,9 +409,11 @@ export class HttpClient {
         }
       })
       .catch((err: unknown) => {
+        // QueueFullError is already handled inside runRetryLoop (marks done +
+        // re-throws). The client catches it here for emission and cleanup.
         if (err instanceof QueueFullError) {
           this.emit("failure", { ticketId: ticket.id, url, error: err })
-          controller.markDone({ success: false, error: err } as never)
+          // Ticket already marked done inside the loop — skip markDone.
           cleanup()
           return
         }
@@ -391,7 +421,9 @@ export class HttpClient {
           cause: err,
         })
         this.emit("failure", { ticketId: ticket.id, url, error })
-        controller.markDone({ success: false, error } as never)
+        if (ticket.status.state !== "done" && !ticket.isCancelled) {
+          controller.markDone({ success: false, error } as never)
+        }
         cleanup()
       })
   }
@@ -430,6 +462,17 @@ export class HttpClient {
 
   delete<T>(url: string, options: Omit<RequestOptions<T>, "method"> = {}): Ticket<T> {
     return this.request<T>(url, { ...options, method: "DELETE" })
+  }
+
+  // ---------------------------------------------------------------------------
+  // Partition snapshots
+  // ---------------------------------------------------------------------------
+
+  /** Return a snapshot of all active bulkhead partitions.
+   *  Each entry includes the partition name, running/queued counts,
+   *  and configured concurrency/maxQueueSize limits. */
+  partitions(): BulkheadSnapshot[] {
+    return this.bulkheads.getAll()
   }
 
   // ---------------------------------------------------------------------------
@@ -496,12 +539,14 @@ export class HttpClient {
     return url
   }
 
-  private mergeTimeout(options: RequestOptions<unknown>): TimeoutConfig {
-    return { ...this.config.timeout, ...options.timeout }
+  private mergeTimeout(options: RequestOptions<unknown>, partitionName?: string): TimeoutConfig {
+    const partitionConfig = partitionName ? this.partitionConfigs[partitionName] : undefined
+    return { ...this.config.timeout, ...partitionConfig?.timeout, ...options.timeout }
   }
 
-  private mergeRetry(options: RequestOptions<unknown>): RetryConfig {
-    return { ...this.config.retry, ...options.retry }
+  private mergeRetry(options: RequestOptions<unknown>, partitionName?: string): RetryConfig {
+    const partitionConfig = partitionName ? this.partitionConfigs[partitionName] : undefined
+    return { ...this.config.retry, ...partitionConfig?.retry, ...options.retry }
   }
 
   private emit<K extends keyof LifecycleEventMap>(event: K, data: LifecycleEventMap[K]): void {
