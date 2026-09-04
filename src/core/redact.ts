@@ -12,25 +12,25 @@
  * URLs without query strings are returned unchanged.
  */
 export function redactUrl(url: string): string {
-  const qIdx = url.indexOf("?")
-  if (qIdx === -1) return url
+	const qIdx = url.indexOf("?");
+	if (qIdx === -1) return url;
 
-  const base = url.slice(0, qIdx)
-  const rest = url.slice(qIdx + 1)
+	const base = url.slice(0, qIdx);
+	const rest = url.slice(qIdx + 1);
 
-  // Separate fragment from query string (# is the fragment delimiter)
-  const fIdx = rest.indexOf("#")
-  const query = fIdx === -1 ? rest : rest.slice(0, fIdx)
-  const fragment = fIdx === -1 ? "" : rest.slice(fIdx)
+	// Separate fragment from query string (# is the fragment delimiter)
+	const fIdx = rest.indexOf("#");
+	const query = fIdx === -1 ? rest : rest.slice(0, fIdx);
+	const fragment = fIdx === -1 ? "" : rest.slice(fIdx);
 
-  const redacted = query
-    .split("&")
-    .map((pair) => {
-      const eqIdx = pair.indexOf("=")
-      if (eqIdx === -1) return pair // bare key, no value
-      return pair.slice(0, eqIdx + 1) + "[redacted]"
-    })
-    .join("&")
+	const redacted = query
+		.split("&")
+		.map((pair) => {
+			const eqIdx = pair.indexOf("=");
+			if (eqIdx === -1) return pair; // bare key, no value
+			return `${pair.slice(0, eqIdx + 1)}[redacted]`;
+		})
+		.join("&");
 
-  return base + "?" + redacted + fragment
+	return `${base}?${redacted}${fragment}`;
 }
