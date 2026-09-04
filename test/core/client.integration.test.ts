@@ -620,7 +620,7 @@ describe("HttpClient integration", () => {
 	describe("graceful shutdown (O4)", () => {
 		it("rejects new requests after close({ drain: false })", async () => {
 			const client = HttpClient.create();
-			client.close({ drain: false });
+			void client.close({ drain: false });
 
 			expect(() => client.get(`${server.url}/test`)).toThrow(ConfigurationError);
 			expect(() => client.get(`${server.url}/test`)).toThrow("client closed");
@@ -629,7 +629,7 @@ describe("HttpClient integration", () => {
 		it("close({ drain: false }) cancels in-flight tickets", async () => {
 			let resolveRequest: (() => void) | undefined;
 			server.setHandler((_req, res) => {
-				new Promise<void>((r) => {
+				void new Promise<void>((r) => {
 					resolveRequest = r;
 				}).then(() => {
 					res.writeHead(200, { "Content-Type": "application/json" });
@@ -680,7 +680,7 @@ describe("HttpClient integration", () => {
 		it("close({ drain: true, timeoutMs }) cancels after timeout", async () => {
 			let resolveRequest: (() => void) | undefined;
 			server.setHandler((_req, res) => {
-				new Promise<void>((r) => {
+				void new Promise<void>((r) => {
 					resolveRequest = r;
 				}).then(() => {
 					res.writeHead(200, { "Content-Type": "application/json" });
