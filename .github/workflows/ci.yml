@@ -64,7 +64,7 @@ jobs:
       - name: Format check
         run: |
           if [ "${{ matrix.runtime }}" = "bun" ]; then
-            prettier --check .
+            bunx prettier --check .
           else
             npm run format:check
           fi
