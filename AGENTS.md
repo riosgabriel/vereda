@@ -11,13 +11,21 @@ npx vitest run test/queue/bulkhead.test.ts      # single test file
 npx vitest run -t "name fragment"               # single test by name
 npm run typecheck                               # tsc --noEmit
 npm run build                                   # tsc -> dist/
-npm run format                                  # format all files with Prettier
-npm run format:check                            # check formatting without writing
-npm run lint                                    # run ESLint
-npm run lint:fix                                # run ESLint with auto-fix
+bun run check                                   # Biome lint + format + import order (the CI gate)
+bun run check:fix                               # same, applying safe fixes
+bun run format                                  # format all files with Biome
+bun run format:check                            # check formatting without writing
+bun run lint                                    # Biome lint only
+bun run lint:fix                                # Biome lint with safe auto-fix
 ```
 
-Prettier and ESLint are configured. Run `npm run format` and `npm run lint:fix` before committing.
+Biome is the sole linter/formatter (no ESLint, no Prettier). Run `bun run check:fix` before committing;
+the pre-commit hook runs the same check over staged files.
+
+**Never run `biome check --write --unsafe` on this repo without reading the diff.** Unsafe fixes have
+been observed deleting the private `markQueued`/`markRetrying`/`markDone` mutators in
+`src/ticket/ticket.ts` (Biome can't see they're reached via bracket notation) and no-opping the default
+logger in `src/middleware/index.ts`. Both sites carry `biome-ignore` comments explaining why — leave them.
 
 ## Gotchas
 

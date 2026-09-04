@@ -1,21 +1,17 @@
-import type { AppError } from "../core/errors.js"
+import type { AppError } from "../core/errors.js";
 
 export interface RetryPolicyContext {
-  method: string
-  headers?: Record<string, string>
-  /** value of merged retry.idempotent for this request */
-  idempotent?: boolean
+	method: string;
+	headers?: Record<string, string>;
+	/** value of merged retry.idempotent for this request */
+	idempotent?: boolean;
 }
 
-export type RetryPolicy = (error: AppError, attempt: number, ctx: RetryPolicyContext) => boolean
+export type RetryPolicy = (error: AppError, attempt: number, ctx: RetryPolicyContext) => boolean;
 
-const RETRIABLE_KINDS: ReadonlySet<AppError["kind"]> = new Set([
-  "network",
-  "timeout",
-  "retryable_status",
-])
+const RETRIABLE_KINDS: ReadonlySet<AppError["kind"]> = new Set(["network", "timeout", "retryable_status"]);
 
-const IDEMPOTENT_METHODS = new Set(["GET", "HEAD", "OPTIONS", "PUT", "DELETE", "TRACE"])
+const IDEMPOTENT_METHODS = new Set(["GET", "HEAD", "OPTIONS", "PUT", "DELETE", "TRACE"]);
 
 /**
  * The default retry policy (decision D3). An attempt is retried iff all hold:
@@ -26,18 +22,14 @@ const IDEMPOTENT_METHODS = new Set(["GET", "HEAD", "OPTIONS", "PUT", "DELETE", "
  * 4. user `retryWhen` (consulted separately via `shouldRetry`) returns true
  * 5. the request is not cancelled / past its deadline (handled elsewhere)
  */
-export function defaultRetryPolicy(
-  error: AppError,
-  _attempt: number,
-  ctx: RetryPolicyContext,
-): boolean {
-  // Rule 2 — the error kind must be transient.
-  if (!RETRIABLE_KINDS.has(error.kind)) return false
-  // Rule 3 — the request must be safe to repeat (idempotent by method or opt-in).
-  if (IDEMPOTENT_METHODS.has(ctx.method.toUpperCase())) return true
-  if (ctx.idempotent) return true
-  if (ctx.headers && hasHeader(ctx.headers, "idempotency-key")) return true
-  return false
+export function defaultRetryPolicy(error: AppError, _attempt: number, ctx: RetryPolicyContext): boolean {
+	// Rule 2 — the error kind must be transient.
+	if (!RETRIABLE_KINDS.has(error.kind)) return false;
+	// Rule 3 — the request must be safe to repeat (idempotent by method or opt-in).
+	if (IDEMPOTENT_METHODS.has(ctx.method.toUpperCase())) return true;
+	if (ctx.idempotent) return true;
+	if (ctx.headers && hasHeader(ctx.headers, "idempotency-key")) return true;
+	return false;
 }
 
 /**
@@ -46,21 +38,21 @@ export function defaultRetryPolicy(
  * consulted. `retryWhen` can only veto a retry, never force one.
  */
 export function shouldRetry(
-  error: AppError,
-  attempt: number,
-  ctx: RetryPolicyContext,
-  retryWhen?: (error: AppError, attempt: number) => boolean,
+	error: AppError,
+	attempt: number,
+	ctx: RetryPolicyContext,
+	retryWhen?: (error: AppError, attempt: number) => boolean,
 ): boolean {
-  if (!defaultRetryPolicy(error, attempt, ctx)) return false
-  if (retryWhen && !retryWhen(error, attempt)) return false
-  return true
+	if (!defaultRetryPolicy(error, attempt, ctx)) return false;
+	if (retryWhen && !retryWhen(error, attempt)) return false;
+	return true;
 }
 
 /** Case-insensitive lookup on a plain header Record. */
 function hasHeader(headers: Record<string, string>, name: string): boolean {
-  const lower = name.toLowerCase()
-  for (const key of Object.keys(headers)) {
-    if (key.toLowerCase() === lower) return true
-  }
-  return false
+	const lower = name.toLowerCase();
+	for (const key of Object.keys(headers)) {
+		if (key.toLowerCase() === lower) return true;
+	}
+	return false;
 }

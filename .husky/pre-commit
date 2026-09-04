@@ -1,1 +1,4 @@
-npx lint-staged
+# Lint + format-check only what's staged. Mirrors the CI gate (`biome ci
+# --error-on-warnings`) so a commit that passes here passes there.
+# --no-errors-on-unmatched keeps docs-only commits from failing on "no files processed".
+bunx biome check --staged --error-on-warnings --no-errors-on-unmatched

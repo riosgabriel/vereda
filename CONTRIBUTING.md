@@ -20,8 +20,9 @@ Requires Node 18+.
 npm test          # run the full suite (vitest)
 npm run typecheck # tsc --noEmit
 npm run build     # compile TypeScript to dist/
-npm run format    # format all files with Prettier
-npm run lint      # run ESLint
+npm run format    # format all files with Biome
+npm run lint      # lint with Biome
+npm run check     # lint + format + import order — the same gate CI runs
 ```
 
 Run a single test file or a single test:
@@ -40,21 +41,33 @@ Tests are self-contained: integration tests spin up `node:http` servers on ephem
 - Every relative import in `src/` and `test/` must use the `.js` extension (NodeNext ESM), even when importing a `.ts` file.
 - `npm run typecheck` skips `**/*.test.ts`; run the tests to keep test code type-safe.
 - Zod is an optional peer dependency. Only `src/adapters/zod.ts` may import it; `src/core/` must stay zod-free.
-- CI runs `npm run lint` and `npm run format:check` — make sure both pass before pushing.
+- CI runs `bun run ci` (`biome ci --error-on-warnings`) over the whole tree — run `bun run check` before pushing.
 
 ## Code Style
 
-This project uses Prettier for formatting and ESLint for linting.
+[Biome](https://biomejs.dev) is the single source of truth for both formatting and linting — there is no
+ESLint or Prettier config. Style is tabs, 120-column lines, double quotes, with imports auto-organized.
 
-**Format on save:** If your editor supports format-on-save (VS Code, etc.), it will work automatically with the `.prettierrc` and `.editorconfig` files.
+**Format on save:** install the Biome editor extension and set it as the default formatter. `.editorconfig`
+is kept in sync with `biome.json`, so editors without the extension still indent correctly.
 
 **Commands:**
 ```bash
-npm run format         # Format all files
-npm run format:check   # Check formatting without fixing
-npm run lint           # Run ESLint
-npm run lint:fix       # Run ESLint with auto-fix
+bun run check          # Lint + format + import order (what CI enforces)
+bun run check:fix      # Same, applying safe fixes
+bun run format         # Format all files
+bun run format:check   # Check formatting without fixing
+bun run lint           # Lint only
+bun run lint:fix       # Lint with safe auto-fix
 ```
+
+Warnings fail the build (`--error-on-warnings`), so a lint warning is a lint error here — fix it or
+suppress it deliberately with a `// biome-ignore lint/<rule>: <reason>` comment that says *why*.
+The reason is required, and the comment must sit on the line immediately above the offending line.
+
+**Avoid `--unsafe` fixes.** `biome check --write --unsafe` is known to break this codebase: it deletes
+the private ticket mutators in `src/ticket/ticket.ts` and silently no-ops the logger middleware. If you
+run it, read the diff carefully.
 
 ## Behavioral invariants (don't break these)
 
