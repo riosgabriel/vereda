@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
-import type { Result } from "../core/types.js";
 import type { AppError } from "../core/errors.js";
 import { CancelledError } from "../core/errors.js";
+import type { Result } from "../core/types.js";
 
 export type TicketStatus =
 	| { state: "pending" }
