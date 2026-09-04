@@ -26,6 +26,7 @@ import { Ticket, createTicket, type TicketController } from "../ticket/ticket.js
 import { nanoid } from "./nanoid.js"
 import { METRICS, type MetricsSink } from "./metrics.js"
 import { validateConfig, validateRequestBody } from "./validate.js"
+import { redactUrl } from "./redact.js"
 
 /** Pairs an in-flight ticket with its cleanup function so that
  *  resources (signal listeners, deadline timers) are released synchronously
@@ -43,6 +44,7 @@ export class HttpClient {
   private readonly partitionConfigs: Record<string, PartitionConfig>
   private readonly logger: Logger | undefined
   private readonly metrics: MetricsSink | undefined
+  private readonly redactQuery: boolean
   private _closed = false
   private readonly _inflightTickets = new Set<InflightTicket>()
 
@@ -50,6 +52,7 @@ export class HttpClient {
     this.config = config
     this.logger = config.logger
     this.metrics = config.metrics
+    this.redactQuery = config.redactQuery !== false
     this.partitionConfigs = config.partitions ?? {}
     const semaphore = new Semaphore(config.concurrency ?? 50)
     this.bulkheads = new BulkheadRegistry({}, this.partitionConfigs, 60_000, semaphore)
@@ -198,7 +201,7 @@ export class HttpClient {
       const durationMs = Date.now() - startTime
       this.emit("failure", {
         ticketId: ticket.id,
-        url,
+        url: this.logUrl(url),
         attempts: 1,
         durationMs,
         queuedMs: 0,
@@ -218,7 +221,7 @@ export class HttpClient {
       const durationMs = Date.now() - startTime
       this.emit("failure", {
         ticketId: ticket.id,
-        url,
+        url: this.logUrl(url),
         attempts: 1,
         durationMs,
         queuedMs: 0,
@@ -232,16 +235,17 @@ export class HttpClient {
     const timeoutConfig = this.mergeTimeout(options, partitionName)
     const retryConfig = this.mergeRetry(options, partitionName)
     const bulkhead = this.bulkheads.get(partitionName)
+    const displayUrl = this.logUrl(fullUrl)
 
     this.emit("request", {
       ticketId: ticket.id,
-      url: fullUrl,
+      url: displayUrl,
       method: options.method ?? "GET",
       partition: partitionName,
     })
     this.logger?.info("Request initiated", {
       ticketId: ticket.id,
-      url: fullUrl,
+      url: displayUrl,
       method: options.method ?? "GET",
       partition: partitionName,
     })
@@ -276,13 +280,13 @@ export class HttpClient {
         const statusCode = result.result.success ? result.result.raw.status : 0
         this.emit("success", {
           ticketId: ticket.id,
-          url,
+          url: displayUrl,
           attempts: 1,
           durationMs,
           queuedMs: 0,
           statusCode,
         })
-        this.logger?.info("Request succeeded", { ticketId: ticket.id, url })
+        this.logger?.info("Request succeeded", { ticketId: ticket.id, url: displayUrl })
         controller.markDone(result.result)
         cleanup()
         return
@@ -290,7 +294,7 @@ export class HttpClient {
 
       case "cancelled": {
         const durationMs = Date.now() - startTime
-        this.emit("cancelled", { ticketId: ticket.id, url, attempts: 1, durationMs })
+        this.emit("cancelled", { ticketId: ticket.id, url: displayUrl, attempts: 1, durationMs })
         if (!ticket.isCancelled && timeoutConfig.totalMs !== undefined) {
           controller.markDone({
             success: false,
@@ -320,7 +324,7 @@ export class HttpClient {
             const durationMs = Date.now() - startTime
             this.emit("failure", {
               ticketId: ticket.id,
-              url,
+              url: displayUrl,
               attempts: 1,
               durationMs,
               queuedMs: 0,
@@ -336,6 +340,7 @@ export class HttpClient {
           ticket,
           controller,
           url,
+          displayUrl,
           options,
           timeoutConfig,
           retryConfig,
@@ -360,7 +365,7 @@ export class HttpClient {
             const durationMs = Date.now() - startTime
             this.emit("failure", {
               ticketId: ticket.id,
-              url,
+              url: this.logUrl(url),
               attempts: 1,
               durationMs,
               queuedMs: 0,
@@ -376,6 +381,7 @@ export class HttpClient {
           ticket,
           controller,
           url,
+          displayUrl,
           options,
           timeoutConfig,
           retryConfig,
@@ -428,6 +434,7 @@ export class HttpClient {
     ticket: Ticket<unknown>,
     controller: TicketController<unknown>,
     url: string,
+    displayUrl: string,
     options: RequestOptions<unknown>,
     timeoutConfig: TimeoutConfig,
     retryConfig: RetryConfig,
@@ -439,7 +446,7 @@ export class HttpClient {
   ): void {
     this.logger?.info("Request queued for retry", {
       ticketId: ticket.id,
-      url,
+      url: displayUrl,
       partition: partitionName,
     })
 
@@ -459,13 +466,13 @@ export class HttpClient {
       semaphore: this.bulkheads.getSemaphore(),
       firstError,
       onRetry: (attempt, delayMs, error) => {
-        this.emit("retry", { ticketId: ticket.id, url, attempt, delayMs, error })
+        this.emit("retry", { ticketId: ticket.id, url: displayUrl, attempt, delayMs, error })
       },
       onSuccess: (statusCode, attempts) => {
         const durationMs = Date.now() - startTime
         this.emit("success", {
           ticketId: ticket.id,
-          url,
+          url: displayUrl,
           attempts,
           durationMs,
           queuedMs: 0,
@@ -476,7 +483,7 @@ export class HttpClient {
         const durationMs = Date.now() - startTime
         this.emit("failure", {
           ticketId: ticket.id,
-          url,
+          url: displayUrl,
           attempts,
           durationMs,
           queuedMs: 0,
@@ -484,13 +491,13 @@ export class HttpClient {
         })
         this.logger?.warn("Request failed after retries", {
           ticketId: ticket.id,
-          url,
+          url: displayUrl,
           error: error.message,
         })
       },
       onCancelled: (attempts) => {
         const durationMs = Date.now() - startTime
-        this.emit("cancelled", { ticketId: ticket.id, url, attempts, durationMs })
+        this.emit("cancelled", { ticketId: ticket.id, url: displayUrl, attempts, durationMs })
       },
       onCleanup: cleanup,
     })
@@ -501,7 +508,7 @@ export class HttpClient {
           const durationMs = Date.now() - startTime
           this.emit("failure", {
             ticketId: ticket.id,
-            url,
+            url: displayUrl,
             attempts: 1,
             durationMs,
             queuedMs: 0,
@@ -516,7 +523,7 @@ export class HttpClient {
         })
         this.emit("failure", {
           ticketId: ticket.id,
-          url,
+          url: displayUrl,
           attempts: 1,
           durationMs: Date.now() - startTime,
           queuedMs: 0,
@@ -648,6 +655,11 @@ export class HttpClient {
   private mergeRetry(options: RequestOptions<unknown>, partitionName?: string): RetryConfig {
     const partitionConfig = partitionName ? this.partitionConfigs[partitionName] : undefined
     return { ...this.config.retry, ...partitionConfig?.retry, ...options.retry }
+  }
+
+  /** Returns the URL for logging, redacted if redactQuery is enabled. */
+  private logUrl(url: string): string {
+    return this.redactQuery ? redactUrl(url) : url
   }
 
   private emit<K extends keyof LifecycleEventMap>(event: K, data: LifecycleEventMap[K]): void {

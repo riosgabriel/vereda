@@ -165,4 +165,6 @@ export interface ClientConfig {
   logger?: Logger
   /** Optional metrics sink for counters, histograms, and gauges. */
   metrics?: MetricsSink
+  /** Redact query parameter values in logged URLs (default: true). */
+  redactQuery?: boolean
 }
