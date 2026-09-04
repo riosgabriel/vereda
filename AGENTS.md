@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Vereda: resilient HTTP client for Node.js (queuing, retries, bulkhead isolation) built on global `fetch`. ESM-only, Node 18+, zero runtime dependencies. Not published to npm; installed from GitHub, where the `prepare` script builds `dist/`.
+Vereda: resilient HTTP client for Node.js (queuing, retries, bulkhead isolation) built on global `fetch`. ESM-only, Node 20+, zero runtime dependencies. Not published to npm; installed from GitHub, where the `prepare` script builds `dist/`.
 
 ## Commands
 
