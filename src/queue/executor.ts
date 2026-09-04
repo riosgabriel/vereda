@@ -16,6 +16,8 @@ export interface ExecuteRequest {
   timeoutConfig: TimeoutConfig
   retryConfig: RetryConfig
   signal: AbortSignal
+  /** Custom fetch function. Falls back to globalThis.fetch. */
+  fetch?: typeof globalThis.fetch
 }
 
 export type ExecuteResult =
@@ -62,7 +64,7 @@ export async function executeRequest(
   const retryOnStatus = retryConfig.retryOnStatus ?? DEFAULT_RETRY_ON_STATUS
 
   // Build the fetch call wrapped in middleware
-  const fetchCall = buildFetchCall(url, resolvedOptions)
+  const fetchCall = buildFetchCall(url, resolvedOptions, req.fetch)
   const composed = composeMiddleware(middleware, fetchCall)
 
   // Merge the per-attempt signals with AbortSignal.any. It wires its sources
@@ -195,7 +197,12 @@ export async function executeRequest(
 export type NextFn = (options: RequestOptions<unknown>) => Promise<Response>
 export type MiddlewareFn = (options: RequestOptions<unknown>, next: NextFn) => Promise<Response>
 
-function buildFetchCall(url: string, _baseOptions: RequestOptions<unknown>): NextFn {
+function buildFetchCall(
+  url: string,
+  _baseOptions: RequestOptions<unknown>,
+  customFetch?: typeof globalThis.fetch,
+): NextFn {
+  const fetchFn = customFetch ?? globalThis.fetch.bind(globalThis)
   return async (options: RequestOptions<unknown>): Promise<Response> => {
     const body = options.body as BodyInit | undefined
     const init: RequestInit = {
@@ -208,7 +215,7 @@ function buildFetchCall(url: string, _baseOptions: RequestOptions<unknown>): Nex
       // Node's fetch requires duplex: "half" for stream bodies.
       ;(init as { duplex?: "half" }).duplex = "half"
     }
-    return fetch(url, init)
+    return fetchFn(url, init)
   }
 }
 

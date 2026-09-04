@@ -29,6 +29,8 @@ export {
   MaxRetriesExceededError,
 } from "./errors.js"
 export type { AppError } from "./errors.js"
+export type { MetricsSink, MetricTags } from "./metrics.js"
+export { METRICS } from "./metrics.js"
 export { validateConfig } from "./validate.js"
 export { Ticket, createTicket } from "../ticket/ticket.js"
 export type { TicketStatus, TicketUpdate, TicketController } from "../ticket/ticket.js"
