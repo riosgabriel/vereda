@@ -19,6 +19,7 @@ import { nanoid } from "./nanoid.js";
 import { redactUrl } from "./redact.js";
 import type {
 	ClientConfig,
+	CloseOptions,
 	LifecycleEventMap,
 	Logger,
 	PartitionConfig,
@@ -626,7 +627,7 @@ export class HttpClient {
 	 *
 	 *  `timeoutMs` is required when `drain` is true to prevent indefinite
 	 *  hangs — use a value that fits your shutdown budget. */
-	async close(opts?: { drain?: boolean; timeoutMs: number }): Promise<void> {
+	async close(opts?: CloseOptions): Promise<void> {
 		if (this._closed) return; // idempotent
 		this._closed = true;
 

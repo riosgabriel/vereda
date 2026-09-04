@@ -27,6 +27,7 @@ export type {
 	BackoffFn,
 	BackoffOptions,
 	ClientConfig,
+	CloseOptions,
 	LifecycleEventMap,
 	Logger,
 	ParseFn,

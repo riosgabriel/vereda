@@ -99,12 +99,13 @@ describe("replayable bodies", () => {
 		});
 
 		const client = HttpClient.create();
-		let ticket: ReturnType<HttpClient["post"]>;
+		// `!`: the expect() callback runs synchronously, so this is assigned before use.
+		let ticket!: ReturnType<HttpClient["post"]>;
 		expect(() => {
 			ticket = client.post(`${server.url}/raw`, makeStream("hello"));
 		}).not.toThrow();
 
-		const result = await ticket?.toPromise();
+		const result = await ticket.toPromise();
 		expect(hits).toBe(0);
 		expect(result.success).toBe(false);
 		if (!result.success) {
