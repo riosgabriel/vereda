@@ -14,7 +14,7 @@
   <a href="https://github.com/riosgabriel/vereda/actions/workflows/ci.yml"><img src="https://github.com/riosgabriel/vereda/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://github.com/riosgabriel/vereda/blob/main/LICENSE"><img src="https://img.shields.io/github/license/riosgabriel/vereda" alt="License" /></a>
   <a href="https://github.com/riosgabriel/vereda"><img src="https://img.shields.io/github/stars/riosgabriel/vereda?style=social" alt="GitHub stars" /></a>
-  <a href="https://nodejs.org/en/about/previous-releases"><img src="https://img.shields.io/badge/node-18%2B-green" alt="Node 18+" /></a>
+  <a href="https://nodejs.org/en/about/previous-releases"><img src="https://img.shields.io/badge/node-20%2B-green" alt="Node 20+" /></a>
   <a href="https://github.com/riosgabriel/vereda"><img src="https://img.shields.io/badge/ESM-only-blue" alt="ESM only" /></a>
   <a href="https://github.com/riosgabriel/vereda"><img src="https://img.shields.io/badge/TypeScript-6.0-blue" alt="TypeScript" /></a>
 </p>
