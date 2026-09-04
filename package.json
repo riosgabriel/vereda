@@ -21,7 +21,7 @@
   },
   "scripts": {
     "build": "bunx tsc",
-    "prepare": "npm run build && husky",
+    "prepare": "npx tsc && husky",
     "test": "bunx vitest run",
     "test:watch": "bun vitest",
     "typecheck": "bunx tsc --noEmit",
