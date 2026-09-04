@@ -45,6 +45,7 @@ export class HttpClient {
   private readonly logger: Logger | undefined
   private readonly metrics: MetricsSink | undefined
   private readonly redactQuery: boolean
+  private readonly customFetch: typeof globalThis.fetch | undefined
   private _closed = false
   private readonly _inflightTickets = new Set<InflightTicket>()
 
@@ -53,6 +54,7 @@ export class HttpClient {
     this.logger = config.logger
     this.metrics = config.metrics
     this.redactQuery = config.redactQuery !== false
+    this.customFetch = config.fetch
     this.partitionConfigs = config.partitions ?? {}
     const semaphore = new Semaphore(config.concurrency ?? 50)
     this.bulkheads = new BulkheadRegistry({}, this.partitionConfigs, 60_000, semaphore)
@@ -256,7 +258,14 @@ export class HttpClient {
     const semaphore = this.bulkheads.getSemaphore()
     const execute = () =>
       executeRequest(
-        { url: fullUrl, options, timeoutConfig, retryConfig, signal: ticket.signal },
+        {
+          url: fullUrl,
+          options,
+          timeoutConfig,
+          retryConfig,
+          signal: ticket.signal,
+          fetch: this.customFetch,
+        },
         this.middlewares,
       )
 
@@ -465,6 +474,7 @@ export class HttpClient {
       bulkhead,
       semaphore: this.bulkheads.getSemaphore(),
       firstError,
+      fetch: this.customFetch,
       onRetry: (attempt, delayMs, error) => {
         this.emit("retry", { ticketId: ticket.id, url: displayUrl, attempt, delayMs, error })
       },
@@ -500,40 +510,39 @@ export class HttpClient {
         this.emit("cancelled", { ticketId: ticket.id, url: displayUrl, attempts, durationMs })
       },
       onCleanup: cleanup,
-    })
-      .catch((err: unknown) => {
-        // QueueFullError is already handled inside runRetryLoop (marks done +
-        // re-throws). The client catches it here for emission and cleanup.
-        if (err instanceof QueueFullError) {
-          const durationMs = Date.now() - startTime
-          this.emit("failure", {
-            ticketId: ticket.id,
-            url: displayUrl,
-            attempts: 1,
-            durationMs,
-            queuedMs: 0,
-            error: err,
-          })
-          // Ticket already marked done inside the loop — skip markDone.
-          cleanup()
-          return
-        }
-        const error = new NetworkError(err instanceof Error ? err.message : "Queue error", {
-          cause: err,
-        })
+    }).catch((err: unknown) => {
+      // QueueFullError is already handled inside runRetryLoop (marks done +
+      // re-throws). The client catches it here for emission and cleanup.
+      if (err instanceof QueueFullError) {
+        const durationMs = Date.now() - startTime
         this.emit("failure", {
           ticketId: ticket.id,
           url: displayUrl,
           attempts: 1,
-          durationMs: Date.now() - startTime,
+          durationMs,
           queuedMs: 0,
-          error,
+          error: err,
         })
-        if (ticket.status.state !== "done" && !ticket.isCancelled) {
-          controller.markDone({ success: false, error } as never)
-        }
+        // Ticket already marked done inside the loop — skip markDone.
         cleanup()
+        return
+      }
+      const error = new NetworkError(err instanceof Error ? err.message : "Queue error", {
+        cause: err,
       })
+      this.emit("failure", {
+        ticketId: ticket.id,
+        url: displayUrl,
+        attempts: 1,
+        durationMs: Date.now() - startTime,
+        queuedMs: 0,
+        error,
+      })
+      if (ticket.status.state !== "done" && !ticket.isCancelled) {
+        controller.markDone({ success: false, error } as never)
+      }
+      cleanup()
+    })
   }
 
   // ---------------------------------------------------------------------------

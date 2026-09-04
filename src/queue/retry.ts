@@ -42,6 +42,8 @@ export interface RetryJobOptions {
   onCancelled?: (attempts: number) => void
   /** Called before markDone to clean up external resources (e.g. signal listeners). */
   onCleanup?: () => void
+  /** Custom fetch function. Falls back to globalThis.fetch. */
+  fetch?: typeof globalThis.fetch
 }
 
 export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
@@ -61,6 +63,7 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
     onFailure,
     onCancelled,
     onCleanup,
+    fetch: customFetch,
   } = job
 
   const maxRetries = retryConfig.maxRetries ?? 3
@@ -146,6 +149,7 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
               timeoutConfig,
               retryConfig,
               signal: ticket.signal,
+              fetch: customFetch,
             },
             middleware,
           ),

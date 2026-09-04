@@ -167,4 +167,6 @@ export interface ClientConfig {
   metrics?: MetricsSink
   /** Redact query parameter values in logged URLs (default: true). */
   redactQuery?: boolean
+  /** Custom fetch function (defaults to globalThis.fetch). */
+  fetch?: typeof globalThis.fetch
 }
