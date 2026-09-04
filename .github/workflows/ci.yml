@@ -53,20 +53,12 @@ jobs:
             npm run typecheck
           fi
 
-      - name: Biome check
+      - name: Biome ci
         run: |
           if [ "${{ matrix.runtime }}" = "bun" ]; then
-            bunx biome check
+            biome ci --changed
           else
             npm run biome:check
-          fi
-
-      - name: Biome format
-        run: |
-          if [ "${{ matrix.runtime }}" = "bun" ]; then
-            bunx biome format
-          else
-            npm run biome:format
           fi
 
       - name: Test
