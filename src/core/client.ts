@@ -3,6 +3,7 @@ import type {
   ClientConfig,
   LifecycleEventMap,
   Logger,
+  PartitionConfig,
   RequestOptions,
   RetryConfig,
   TimeoutConfig,
@@ -16,13 +17,16 @@ import {
   QueueFullError,
   ConfigurationError,
 } from "./errors.js"
-import { BulkheadRegistry } from "../queue/bulkhead.js"
+import { BulkheadRegistry, type BulkheadSnapshot } from "../queue/bulkhead.js"
+import { Semaphore } from "../queue/semaphore.js"
 import { executeRequest, type MiddlewareFn } from "../queue/executor.js"
 import { shouldRetry, type RetryPolicyContext } from "../queue/policy.js"
 import { runRetryLoop } from "../queue/retry.js"
 import { Ticket, createTicket, type TicketController } from "../ticket/ticket.js"
 import { nanoid } from "./nanoid.js"
+import { METRICS, type MetricsSink } from "./metrics.js"
 import { validateConfig, validateRequestBody } from "./validate.js"
+import { redactUrl } from "./redact.js"
 
 /** Pairs an in-flight ticket with its cleanup function so that
  *  resources (signal listeners, deadline timers) are released synchronously
@@ -37,17 +41,23 @@ export class HttpClient {
   private readonly emitter = new EventEmitter()
   private readonly middlewares: MiddlewareFn[] = []
   private readonly bulkheads: BulkheadRegistry
+  private readonly partitionConfigs: Record<string, PartitionConfig>
   private readonly logger: Logger | undefined
+  private readonly metrics: MetricsSink | undefined
+  private readonly redactQuery: boolean
+  private readonly customFetch: typeof globalThis.fetch | undefined
   private _closed = false
   private readonly _inflightTickets = new Set<InflightTicket>()
 
   private constructor(config: ClientConfig) {
     this.config = config
     this.logger = config.logger
-    this.bulkheads = new BulkheadRegistry(
-      { concurrency: config.concurrency ?? 10 },
-      config.partitions ?? {},
-    )
+    this.metrics = config.metrics
+    this.redactQuery = config.redactQuery !== false
+    this.customFetch = config.fetch
+    this.partitionConfigs = config.partitions ?? {}
+    const semaphore = new Semaphore(config.concurrency ?? 50)
+    this.bulkheads = new BulkheadRegistry({}, this.partitionConfigs, 60_000, semaphore)
   }
 
   static create(config: ClientConfig = {}): HttpClient {
@@ -93,6 +103,7 @@ export class HttpClient {
       throw new ConfigurationError("client closed")
     }
 
+    const startTime = Date.now()
     const ticketId = nanoid()
     const { ticket, controller } = createTicket<T>(ticketId)
 
@@ -118,7 +129,9 @@ export class HttpClient {
 
     // Total deadline: a single unref'd timer that aborts the ticket signal
     // on expiry, cancelling in-flight attempts and breaking sleep (#R3).
-    const timeoutConfig = this.mergeTimeout(options)
+    // Use the explicit partition if available for the merge; the resolved
+    // partition (hostname) will be used for retries in _fireFirstAttempt.
+    const timeoutConfig = this.mergeTimeout(options, options.partition)
     let deadlineTimer: ReturnType<typeof setTimeout> | undefined
     const cleanupDeadline = () => {
       if (deadlineTimer !== undefined) {
@@ -153,6 +166,7 @@ export class HttpClient {
       ticket as Ticket<unknown>,
       controller as TicketController<unknown>,
       entry.cleanup,
+      startTime,
     ).catch((err: unknown) => {
       // Catch any unexpected throws and surface them as ticket failures
       const error = new NetworkError(err instanceof Error ? err.message : "Unexpected error", {
@@ -173,6 +187,7 @@ export class HttpClient {
     ticket: Ticket<unknown>,
     controller: TicketController<unknown>,
     cleanup: () => void,
+    startTime: number,
   ): Promise<void> {
     // Resolve URL and partition inside the async path so relative URLs
     // without a baseUrl surface as ticket errors instead of throwing.
@@ -180,12 +195,20 @@ export class HttpClient {
     let partitionName: string
     try {
       fullUrl = this.resolveUrl(url)
-      partitionName = options.partition ?? new URL(fullUrl).hostname
+      partitionName = options.partition ?? new URL(fullUrl).host
     } catch (err) {
       const error = new NetworkError(err instanceof Error ? err.message : "Invalid URL", {
         cause: err,
       })
-      this.emit("failure", { ticketId: ticket.id, url, error })
+      const durationMs = Date.now() - startTime
+      this.emit("failure", {
+        ticketId: ticket.id,
+        url: this.logUrl(url),
+        attempts: 1,
+        durationMs,
+        queuedMs: 0,
+        error,
+      })
       controller.markDone({ success: false, error } as never)
       cleanup()
       return
@@ -197,37 +220,90 @@ export class HttpClient {
       validateRequestBody(options.body)
     } catch (err) {
       const error = err as ConfigurationError
-      this.emit("failure", { ticketId: ticket.id, url, error })
+      const durationMs = Date.now() - startTime
+      this.emit("failure", {
+        ticketId: ticket.id,
+        url: this.logUrl(url),
+        attempts: 1,
+        durationMs,
+        queuedMs: 0,
+        error,
+      })
       controller.markDone({ success: false, error } as never)
       cleanup()
       return
     }
 
-    const timeoutConfig = this.mergeTimeout(options)
-    const retryConfig = this.mergeRetry(options)
+    const timeoutConfig = this.mergeTimeout(options, partitionName)
+    const retryConfig = this.mergeRetry(options, partitionName)
     const bulkhead = this.bulkheads.get(partitionName)
+    const displayUrl = this.logUrl(fullUrl)
 
-    this.emit("request", { ticketId: ticket.id, url: fullUrl, method: options.method ?? "GET" })
-    this.logger?.info("Request initiated", {
+    this.emit("request", {
       ticketId: ticket.id,
-      url: fullUrl,
+      url: displayUrl,
       method: options.method ?? "GET",
       partition: partitionName,
     })
-    const result = await executeRequest(
-      { url: fullUrl, options, timeoutConfig, retryConfig, signal: ticket.signal },
-      this.middlewares,
-    )
+    this.logger?.info("Request initiated", {
+      ticketId: ticket.id,
+      url: displayUrl,
+      method: options.method ?? "GET",
+      partition: partitionName,
+    })
+
+    // The global semaphore limits total concurrent executions across all
+    // partitions. It is acquired for every attempt (including the first),
+    // while the per-partition bulkhead slot only applies to retries (D4).
+    const semaphore = this.bulkheads.getSemaphore()
+    const execute = () =>
+      executeRequest(
+        {
+          url: fullUrl,
+          options,
+          timeoutConfig,
+          retryConfig,
+          signal: ticket.signal,
+          fetch: this.customFetch,
+        },
+        this.middlewares,
+      )
+
+    // When partition.limitFirstAttempts is enabled (R6), the first attempt
+    // also goes through the per-partition bulkhead. Otherwise it bypasses
+    // the partition slot entirely (D4). The global semaphore is always
+    // acquired for every attempt.
+    const usePartitionBulkhead = bulkhead.limitFirstAttempts
+    const result = usePartitionBulkhead
+      ? await bulkhead.run(
+          () => (semaphore ? semaphore.acquire().then((r) => execute().finally(r)) : execute()),
+          semaphore,
+        )
+      : semaphore
+        ? await semaphore.acquire().then((release) => execute().finally(release))
+        : await execute()
 
     switch (result.kind) {
-      case "success":
-        this.emit("success", { ticketId: ticket.id, url, attempt: 1 })
-        this.logger?.info("Request succeeded", { ticketId: ticket.id, url })
+      case "success": {
+        const durationMs = Date.now() - startTime
+        const statusCode = result.result.success ? result.result.raw.status : 0
+        this.emit("success", {
+          ticketId: ticket.id,
+          url: displayUrl,
+          attempts: 1,
+          durationMs,
+          queuedMs: 0,
+          statusCode,
+        })
+        this.logger?.info("Request succeeded", { ticketId: ticket.id, url: displayUrl })
         controller.markDone(result.result)
         cleanup()
         return
+      }
 
-      case "cancelled":
+      case "cancelled": {
+        const durationMs = Date.now() - startTime
+        this.emit("cancelled", { ticketId: ticket.id, url: displayUrl, attempts: 1, durationMs })
         if (!ticket.isCancelled && timeoutConfig.totalMs !== undefined) {
           controller.markDone({
             success: false,
@@ -238,11 +314,14 @@ export class HttpClient {
         }
         cleanup()
         return
+      }
 
       case "error":
         // Apply the unified retry gate (default policy + retryWhen). Errors
         // that fail it (e.g. ValidationError, HttpError) resolve immediately.
-        if (this.vetoed(retryConfig, result.error, 0, options, ticket, controller, url)) {
+        if (
+          this.vetoed(retryConfig, result.error, 0, options, ticket, controller, url, startTime)
+        ) {
           cleanup()
           return
         }
@@ -251,7 +330,15 @@ export class HttpClient {
         {
           const effectiveMaxRetries = retryConfig.maxRetries ?? 3
           if (effectiveMaxRetries === 0) {
-            this.emit("failure", { ticketId: ticket.id, url, error: result.error })
+            const durationMs = Date.now() - startTime
+            this.emit("failure", {
+              ticketId: ticket.id,
+              url: displayUrl,
+              attempts: 1,
+              durationMs,
+              queuedMs: 0,
+              error: result.error,
+            })
             controller.markDone({ success: false, error: result.error } as never)
             cleanup()
             return
@@ -262,6 +349,7 @@ export class HttpClient {
           ticket,
           controller,
           url,
+          displayUrl,
           options,
           timeoutConfig,
           retryConfig,
@@ -269,12 +357,13 @@ export class HttpClient {
           bulkhead,
           result.error,
           cleanup,
+          startTime,
         )
         return
 
       case "timeout": {
         const error = new TimeoutError(url, timeoutConfig.attemptMs ?? 0)
-        if (this.vetoed(retryConfig, error, 0, options, ticket, controller, url)) {
+        if (this.vetoed(retryConfig, error, 0, options, ticket, controller, url, startTime)) {
           cleanup()
           return
         }
@@ -282,7 +371,15 @@ export class HttpClient {
         {
           const effectiveMaxRetries = retryConfig.maxRetries ?? 3
           if (effectiveMaxRetries === 0) {
-            this.emit("failure", { ticketId: ticket.id, url, error })
+            const durationMs = Date.now() - startTime
+            this.emit("failure", {
+              ticketId: ticket.id,
+              url: this.logUrl(url),
+              attempts: 1,
+              durationMs,
+              queuedMs: 0,
+              error,
+            })
             controller.markDone({ success: false, error } as never)
             cleanup()
             return
@@ -293,6 +390,7 @@ export class HttpClient {
           ticket,
           controller,
           url,
+          displayUrl,
           options,
           timeoutConfig,
           retryConfig,
@@ -300,6 +398,7 @@ export class HttpClient {
           bulkhead,
           error,
           cleanup,
+          startTime,
         )
         return
       }
@@ -317,6 +416,7 @@ export class HttpClient {
     ticket: Ticket<unknown>,
     controller: TicketController<unknown>,
     url: string,
+    startTime: number,
   ): boolean {
     const ctx: RetryPolicyContext = {
       method: options.method ?? "GET",
@@ -324,7 +424,15 @@ export class HttpClient {
       idempotent: retryConfig.idempotent,
     }
     if (!shouldRetry(error, attempt, ctx, retryConfig.retryWhen)) {
-      this.emit("failure", { ticketId: ticket.id, url, error })
+      const durationMs = Date.now() - startTime
+      this.emit("failure", {
+        ticketId: ticket.id,
+        url,
+        attempts: 1,
+        durationMs,
+        queuedMs: 0,
+        error,
+      })
       controller.markDone({ success: false, error } as never)
       return true
     }
@@ -335,6 +443,7 @@ export class HttpClient {
     ticket: Ticket<unknown>,
     controller: TicketController<unknown>,
     url: string,
+    displayUrl: string,
     options: RequestOptions<unknown>,
     timeoutConfig: TimeoutConfig,
     retryConfig: RetryConfig,
@@ -342,58 +451,98 @@ export class HttpClient {
     bulkhead: ReturnType<BulkheadRegistry["get"]>,
     firstError: AppError,
     cleanup: () => void,
+    startTime: number,
   ): void {
     this.logger?.info("Request queued for retry", {
       ticketId: ticket.id,
-      url,
+      url: displayUrl,
       partition: partitionName,
     })
 
-    bulkhead
-      .schedule(async () => {
-        await runRetryLoop({
-          url,
-          requestOptions: options,
-          timeoutConfig,
-          retryConfig,
-          ticket,
-          controller,
-          middleware: this.middlewares,
-          firstError,
-          onRetry: (attempt, delayMs, error) => {
-            this.emit("retry", { ticketId: ticket.id, url, attempt, delayMs, error })
-          },
-          onCleanup: cleanup,
+    // Run the retry loop directly — each attempt inside the loop acquires its
+    // own bulkhead slot via bulkhead.run() so other tickets are not blocked
+    // for the entire retry lifetime (#5, D4). QueueFullError from the loop
+    // is caught here and surfaced as a terminal ticket failure.
+    runRetryLoop({
+      url,
+      requestOptions: options,
+      timeoutConfig,
+      retryConfig,
+      ticket,
+      controller,
+      middleware: this.middlewares,
+      bulkhead,
+      semaphore: this.bulkheads.getSemaphore(),
+      firstError,
+      fetch: this.customFetch,
+      onRetry: (attempt, delayMs, error) => {
+        this.emit("retry", { ticketId: ticket.id, url: displayUrl, attempt, delayMs, error })
+      },
+      onSuccess: (statusCode, attempts) => {
+        const durationMs = Date.now() - startTime
+        this.emit("success", {
+          ticketId: ticket.id,
+          url: displayUrl,
+          attempts,
+          durationMs,
+          queuedMs: 0,
+          statusCode,
         })
-
-        const status = ticket.status
-        if (status.state === "done") {
-          if (status.result.success) {
-            this.emit("success", { ticketId: ticket.id, url, attempt: -1 })
-          } else {
-            this.emit("failure", { ticketId: ticket.id, url, error: status.result.error })
-            this.logger?.warn("Request failed after retries", {
-              ticketId: ticket.id,
-              url,
-              error: status.result.error.message,
-            })
-          }
-        }
-      })
-      .catch((err: unknown) => {
-        if (err instanceof QueueFullError) {
-          this.emit("failure", { ticketId: ticket.id, url, error: err })
-          controller.markDone({ success: false, error: err } as never)
-          cleanup()
-          return
-        }
-        const error = new NetworkError(err instanceof Error ? err.message : "Queue error", {
-          cause: err,
+      },
+      onFailure: (error, attempts) => {
+        const durationMs = Date.now() - startTime
+        this.emit("failure", {
+          ticketId: ticket.id,
+          url: displayUrl,
+          attempts,
+          durationMs,
+          queuedMs: 0,
+          error,
         })
-        this.emit("failure", { ticketId: ticket.id, url, error })
-        controller.markDone({ success: false, error } as never)
+        this.logger?.warn("Request failed after retries", {
+          ticketId: ticket.id,
+          url: displayUrl,
+          error: error.message,
+        })
+      },
+      onCancelled: (attempts) => {
+        const durationMs = Date.now() - startTime
+        this.emit("cancelled", { ticketId: ticket.id, url: displayUrl, attempts, durationMs })
+      },
+      onCleanup: cleanup,
+    }).catch((err: unknown) => {
+      // QueueFullError is already handled inside runRetryLoop (marks done +
+      // re-throws). The client catches it here for emission and cleanup.
+      if (err instanceof QueueFullError) {
+        const durationMs = Date.now() - startTime
+        this.emit("failure", {
+          ticketId: ticket.id,
+          url: displayUrl,
+          attempts: 1,
+          durationMs,
+          queuedMs: 0,
+          error: err,
+        })
+        // Ticket already marked done inside the loop — skip markDone.
         cleanup()
+        return
+      }
+      const error = new NetworkError(err instanceof Error ? err.message : "Queue error", {
+        cause: err,
       })
+      this.emit("failure", {
+        ticketId: ticket.id,
+        url: displayUrl,
+        attempts: 1,
+        durationMs: Date.now() - startTime,
+        queuedMs: 0,
+        error,
+      })
+      if (ticket.status.state !== "done" && !ticket.isCancelled) {
+        controller.markDone({ success: false, error } as never)
+      }
+      cleanup()
+    })
   }
 
   // ---------------------------------------------------------------------------
@@ -430,6 +579,17 @@ export class HttpClient {
 
   delete<T>(url: string, options: Omit<RequestOptions<T>, "method"> = {}): Ticket<T> {
     return this.request<T>(url, { ...options, method: "DELETE" })
+  }
+
+  // ---------------------------------------------------------------------------
+  // Partition snapshots
+  // ---------------------------------------------------------------------------
+
+  /** Return a snapshot of all active bulkhead partitions.
+   *  Each entry includes the partition name, running/queued counts,
+   *  and configured concurrency/maxQueueSize limits. */
+  partitions(): BulkheadSnapshot[] {
+    return this.bulkheads.getAll()
   }
 
   // ---------------------------------------------------------------------------
@@ -496,15 +656,48 @@ export class HttpClient {
     return url
   }
 
-  private mergeTimeout(options: RequestOptions<unknown>): TimeoutConfig {
-    return { ...this.config.timeout, ...options.timeout }
+  private mergeTimeout(options: RequestOptions<unknown>, partitionName?: string): TimeoutConfig {
+    const partitionConfig = partitionName ? this.partitionConfigs[partitionName] : undefined
+    return { ...this.config.timeout, ...partitionConfig?.timeout, ...options.timeout }
   }
 
-  private mergeRetry(options: RequestOptions<unknown>): RetryConfig {
-    return { ...this.config.retry, ...options.retry }
+  private mergeRetry(options: RequestOptions<unknown>, partitionName?: string): RetryConfig {
+    const partitionConfig = partitionName ? this.partitionConfigs[partitionName] : undefined
+    return { ...this.config.retry, ...partitionConfig?.retry, ...options.retry }
+  }
+
+  /** Returns the URL for logging, redacted if redactQuery is enabled. */
+  private logUrl(url: string): string {
+    return this.redactQuery ? redactUrl(url) : url
   }
 
   private emit<K extends keyof LifecycleEventMap>(event: K, data: LifecycleEventMap[K]): void {
     this.emitter.emit(event, data)
+
+    // Emit metrics if a sink is configured
+    if (this.metrics) {
+      const e = event as string
+      if (e === "request") {
+        const d = data as LifecycleEventMap["request"]
+        this.metrics.counter(METRICS.REQUESTS, 1, { partition: d.partition, method: d.method })
+        this.metrics.gauge(METRICS.IN_FLIGHT, this._inflightTickets.size)
+      } else if (e === "retry") {
+        const d = data as LifecycleEventMap["retry"]
+        this.metrics.counter(METRICS.RETRIES, 1, { kind: d.error.kind })
+      } else if (e === "success" || e === "failure" || e === "cancelled") {
+        const d = data as
+          | LifecycleEventMap["success"]
+          | LifecycleEventMap["failure"]
+          | LifecycleEventMap["cancelled"]
+        const kind =
+          e === "success"
+            ? "success"
+            : e === "failure"
+              ? (d as LifecycleEventMap["failure"]).error.kind
+              : "cancelled"
+        this.metrics.histogram(METRICS.DURATION, d.durationMs, { kind })
+        this.metrics.gauge(METRICS.IN_FLIGHT, this._inflightTickets.size)
+      }
+    }
   }
 }

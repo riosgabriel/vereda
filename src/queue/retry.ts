@@ -3,6 +3,7 @@ import {
   CancelledError,
   DeadlineExceededError,
   MaxRetriesExceededError,
+  QueueFullError,
   RetryableStatusError,
   TimeoutError,
 } from "../core/errors.js"
@@ -10,6 +11,8 @@ import type { AppError } from "../core/errors.js"
 import type { BackoffOptions, RequestOptions, RetryConfig, TimeoutConfig } from "../core/types.js"
 import type { Ticket } from "../ticket/ticket.js"
 import type { TicketController } from "../ticket/ticket.js"
+import type { Bulkhead } from "./bulkhead.js"
+import type { Semaphore } from "./semaphore.js"
 import { executeRequest, type MiddlewareFn } from "./executor.js"
 import { shouldRetry, type RetryPolicyContext } from "./policy.js"
 
@@ -21,11 +24,26 @@ export interface RetryJobOptions {
   ticket: Ticket<unknown>
   controller: TicketController<unknown>
   middleware: MiddlewareFn[]
+  /** Per-attempt bulkhead for retry scheduling. */
+  bulkhead: Bulkhead
+  /** Global concurrency semaphore acquired after the partition slot (D4). */
+  semaphore?: Semaphore
   /** The error from the first attempt (fired client-side before queuing). */
   firstError: AppError
   onRetry?: (attempt: number, delayMs: number, error: AppError) => void
+  /** Called on success so the client can emit the success event with the
+   *  response status code and the total attempt count. */
+  onSuccess?: (statusCode: number, attempts: number) => void
+  /** Called on failure (exhausted retries or policy veto inside the loop)
+   *  so the client can emit the failure event. */
+  onFailure?: (error: AppError, attempts: number) => void
+  /** Called on cancellation (user cancel, deadline, or external signal)
+   *  so the client can emit the cancelled event. */
+  onCancelled?: (attempts: number) => void
   /** Called before markDone to clean up external resources (e.g. signal listeners). */
   onCleanup?: () => void
+  /** Custom fetch function. Falls back to globalThis.fetch. */
+  fetch?: typeof globalThis.fetch
 }
 
 export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
@@ -37,9 +55,15 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
     ticket,
     controller,
     middleware,
+    bulkhead,
+    semaphore,
     firstError,
     onRetry,
+    onSuccess,
+    onFailure,
+    onCancelled,
     onCleanup,
+    fetch: customFetch,
   } = job
 
   const maxRetries = retryConfig.maxRetries ?? 3
@@ -50,10 +74,12 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
       : 30_000
 
   let lastError: AppError = firstError
+  let totalAttempts = 1 // first attempt already fired client-side
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     if (ticket.isCancelled) {
       onCleanup?.()
+      onCancelled?.(totalAttempts)
       controller.markDone({ success: false, error: new CancelledError() } as never)
       return
     }
@@ -69,6 +95,7 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
     }
     if (!shouldRetry(lastError, attempt, ctx, retryConfig.retryWhen)) {
       onCleanup?.()
+      onFailure?.(lastError, totalAttempts)
       controller.markDone({ success: false, error: lastError } as never)
       return
     }
@@ -86,11 +113,14 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
       // while user cancellation sets _cancelled = true via cancel().
       onCleanup?.()
       if (!ticket.isCancelled && timeoutConfig.totalMs !== undefined) {
+        const error = new DeadlineExceededError(url, timeoutConfig.totalMs)
+        onFailure?.(error, totalAttempts)
         controller.markDone({
           success: false,
-          error: new DeadlineExceededError(url, timeoutConfig.totalMs),
+          error,
         } as never)
       } else {
+        onCancelled?.(totalAttempts)
         controller.markDone({ success: false, error: new CancelledError() } as never)
       }
       return
@@ -98,35 +128,65 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 
     if (ticket.isCancelled) {
       onCleanup?.()
+      onCancelled?.(totalAttempts)
       controller.markDone({ success: false, error: new CancelledError() } as never)
       return
     }
 
-    const result = await executeRequest(
-      {
-        url,
-        options: requestOptions,
-        timeoutConfig,
-        retryConfig,
-        signal: ticket.signal,
-      },
-      middleware,
-    )
+    totalAttempts++
+
+    // Per-attempt bulkhead scheduling: each retry acquires its own slot,
+    // releases it after execution, so other tickets aren't blocked (#5, D4).
+    // The global semaphore is acquired after the partition slot (D4).
+    let result: Awaited<ReturnType<typeof executeRequest>>
+    try {
+      result = await bulkhead.run(
+        () =>
+          executeRequest(
+            {
+              url,
+              options: requestOptions,
+              timeoutConfig,
+              retryConfig,
+              signal: ticket.signal,
+              fetch: customFetch,
+            },
+            middleware,
+          ),
+        semaphore,
+      )
+    } catch (err) {
+      if (err instanceof QueueFullError) {
+        // Queue is at capacity — mark done and let the error propagate to the
+        // client which handles QueueFullError emission and cleanup.
+        onCleanup?.()
+        controller.markDone({ success: false, error: err } as never)
+        throw err
+      }
+      throw err
+    }
 
     switch (result.kind) {
-      case "success":
+      case "success": {
         onCleanup?.()
+        if (result.result.success) {
+          onSuccess?.(result.result.raw.status, totalAttempts)
+        }
         controller.markDone(result.result)
         return
+      }
 
       case "cancelled":
         onCleanup?.()
         if (!ticket.isCancelled && timeoutConfig.totalMs !== undefined) {
+          const error = new DeadlineExceededError(url, timeoutConfig.totalMs)
+          onFailure?.(error, totalAttempts)
           controller.markDone({
             success: false,
-            error: new DeadlineExceededError(url, timeoutConfig.totalMs),
+            error,
           } as never)
         } else {
+          onCancelled?.(totalAttempts)
           controller.markDone({ success: false, error: new CancelledError() } as never)
         }
         return
@@ -145,16 +205,19 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
     // Zero retries configured/executed — surface the underlying error raw,
     // never wrapped in MaxRetriesExceededError.
     onCleanup?.()
+    onFailure?.(lastError, totalAttempts)
     controller.markDone({ success: false, error: lastError } as never)
     return
   }
 
   // All retries exhausted — total attempts = 1 (first) + maxRetries (loop)
-  const totalAttempts = maxRetries + 1
+  totalAttempts = 1 + maxRetries
   onCleanup?.()
+  const exhaustedError = new MaxRetriesExceededError(totalAttempts, lastError)
+  onFailure?.(exhaustedError, totalAttempts)
   controller.markDone({
     success: false,
-    error: new MaxRetriesExceededError(totalAttempts, lastError),
+    error: exhaustedError,
   } as never)
 }
 
