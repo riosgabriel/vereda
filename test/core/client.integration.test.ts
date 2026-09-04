@@ -1,7 +1,7 @@
 import { getEventListeners } from "node:events";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { z } from "zod";
+import * as z from "zod";
 import { withZod } from "../../src/adapters/zod.js";
 import { HttpClient } from "../../src/core/client.js";
 import {

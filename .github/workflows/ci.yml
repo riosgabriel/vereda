@@ -72,13 +72,6 @@ jobs:
   test-bun:
     name: test (bun runtime)
     runs-on: ubuntu-latest
-    # Non-blocking: the suite has 3 known failures under the Bun runtime
-    # (zod resolving to undefined in test/core/client.integration.test.ts, and a
-    # retry-count divergence in test/core/retry-matrix.test.ts). They are
-    # pre-existing and unrelated to this workflow. Flip this to blocking once
-    # they're fixed — until then this leg reports Bun compatibility without
-    # gating merges.
-    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -103,5 +96,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check job results
-        if: needs.lint.result != 'success' || needs.test.result != 'success'
+        if: needs.lint.result != 'success' || needs.test.result != 'success' || needs['test-bun'].result != 'success'
         run: exit 1
