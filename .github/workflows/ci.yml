@@ -61,10 +61,10 @@ jobs:
             npm run biome:check
           fi
 
-      - name: Biome format check
+      - name: Biome format
         run: |
           if [ "${{ matrix.runtime }}" = "bun" ]; then
-            bunx biome format --check
+            bunx biome format
           else
             npm run biome:format
           fi
