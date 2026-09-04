@@ -20,11 +20,11 @@
     }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "bunx tsc",
     "prepare": "npm run build && husky",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
+    "test": "bunx vitest run",
+    "test:watch": "bun vitest",
+    "typecheck": "bunx tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",

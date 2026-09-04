@@ -13,33 +13,70 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: [20, 22, 24]
+        runtime: [bun, node]
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Set up Node.js ${{ matrix.node-version }}
+      - name: Set up Bun
+        if: matrix.runtime == 'bun'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Set up Node.js
+        if: matrix.runtime == 'node'
         uses: actions/setup-node@v7
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: 20
 
       - name: Install dependencies
+        if: matrix.runtime == 'bun'
+        run: bun install --frozen-lockfile
+
+      - name: Install dependencies
+        if: matrix.runtime == 'node'
         run: npm ci
 
       - name: Typecheck
-        run: npm run typecheck
+        run: |
+          if [ "${{ matrix.runtime }}" = "bun" ]; then
+            bunx tsc --noEmit
+          else
+            npm run typecheck
+          fi
 
       - name: Lint
-        run: npm run lint
+        run: |
+          if [ "${{ matrix.runtime }}" = "bun" ]; then
+            eslint .
+          else
+            npm run lint
+          fi
 
       - name: Format check
-        run: npm run format:check
+        run: |
+          if [ "${{ matrix.runtime }}" = "bun" ]; then
+            prettier --check .
+          else
+            npm run format:check
+          fi
 
       - name: Test
-        run: npm test
+        run: |
+          if [ "${{ matrix.runtime }}" = "bun" ]; then
+            bunx vitest run
+          else
+            npm test
+          fi
 
       - name: Build
-        run: npm run build
+        run: |
+          if [ "${{ matrix.runtime }}" = "bun" ]; then
+            bunx tsc
+          else
+            npm run build
+          fi
 
   ci:
     if: always()
