@@ -9,10 +9,13 @@ Thanks for your interest! Vereda is a small, focused library, and we're glad to 
 ```bash
 git clone https://github.com/riosgabriel/vereda.git
 cd vereda
-npm install
+bun install
 ```
 
-Requires Node 20+ (enforced via `engines` in package.json).
+`bun.lock` is the only lockfile — install with Bun so you get the same
+dependency tree CI does. Requires Node 20+ (enforced via `engines` in
+package.json); the library itself is runtime-agnostic and CI tests it under
+both Node and Bun.
 
 ## Commands
 
@@ -31,6 +34,15 @@ Run a single test file or a single test:
 npx vitest run test/queue/bulkhead.test.ts
 npx vitest run -t "name fragment"
 ```
+
+CI also runs the suite under the Bun runtime. To reproduce that leg locally:
+
+```bash
+bun run --bun test    # the --bun is load-bearing
+```
+
+Without `--bun`, `bun run test` respects the vitest shebang and silently runs
+under Node, so it will not reproduce a Bun-only failure.
 
 Tests are self-contained: integration tests spin up `node:http` servers on ephemeral localhost ports. No network, services, or env vars needed. Keep timing-sensitive tests fast — the suite uses tiny backoff delays (e.g. `baseDelayMs: 10`, `jitter: false`).
 

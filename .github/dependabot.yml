@@ -3,6 +3,11 @@ updates:
   # Bun is its own ecosystem (GA since 2025-02-13), not part of "npm". With
   # package-lock.json gone there is no npm lockfile left for the npm updater to
   # act on, so this must be "bun" or dependency updates silently stop.
+  #
+  # Tradeoff: the bun ecosystem supports version updates only — GitHub does not
+  # run Dependabot *security* updates against it, which the npm ecosystem did.
+  # The daily version-update cadence below is what covers advisories now; a
+  # Dependabot alert will not open its own PR.
   - package-ecosystem: "bun"
     directory: "/"
     schedule:

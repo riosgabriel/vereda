@@ -6,6 +6,7 @@ Vereda: resilient HTTP client for Node.js (queuing, retries, bulkhead isolation)
 
 ```bash
 npm test                                        # vitest run (all tests)
+bun run --bun test                              # same suite under Bun (CI's test-bun leg)
 npm run test:watch                              # vitest watch mode
 npx vitest run test/queue/bulkhead.test.ts      # single test file
 npx vitest run -t "name fragment"               # single test by name
@@ -33,7 +34,8 @@ logger in `src/middleware/index.ts`. Both sites carry `biome-ignore` comments ex
 - **Test files are typechecked separately**: `tsconfig.json` excludes `**/*.test.ts` (it drives the `dist/` build, which must not contain tests). `tsconfig.test.json` covers `src/` + `test/` with `noEmit`, and `npm run typecheck` runs both, so test code is type-safe in CI.
 - **Zod boundary**: zod is an optional peer dependency. Only `src/adapters/zod.ts` may import it; `src/core/` must stay zod-free.
 - **`dist/` is a gitignored** build artifact — never edit `dist/`.
-- `package-lock.json` is committed (npm is the package manager). CI uses `npm ci`.
+- **`bun.lock` is the only lockfile.** Install with `bun install`; CI uses `bun install --frozen-lockfile`. Do not run `npm install` — it ignores `bun.lock` and writes a `package-lock.json` (now gitignored). Note `bun install` also runs the root `prepare` script (`tsc && husky`), so installing builds `dist/`.
+- **Two test runtimes.** CI runs the suite under Node 20/22/24 *and* under Bun. `bun run --bun test` reproduces the Bun leg — without `--bun`, bun respects the vitest shebang and silently runs under Node. Runtime-conditional expectations (currently only the TRACE row in `test/core/retry-matrix.test.ts`) key off a `Bun` global check; CI sets `EXPECTED_RUNTIME` on both legs so a leg that silently changes runtime fails instead of passing.
 - README prose can drift (e.g. it claims N tests; suite has a different count). Trust code, config, and test output over README claims.
 
 ## Architecture

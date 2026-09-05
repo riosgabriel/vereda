@@ -436,8 +436,9 @@ if (!result.success) {
 ```bash
 git clone https://github.com/riosgabriel/vereda.git
 cd vereda
-npm install
+bun install       # bun.lock is the only lockfile
 npm test          # vitest run
+bun run --bun test # same suite under the Bun runtime (as CI does)
 npm run typecheck
 npm run build
 npm run format
