@@ -63,8 +63,13 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # EXPECTED_RUNTIME makes the runtime an assertion instead of an
+      # assumption: test/core/retry-matrix.test.ts fails the run if the suite
+      # is not executing under the runtime this leg is meant to cover.
       - name: Test
         run: npm test
+        env:
+          EXPECTED_RUNTIME: node
 
       - name: Build
         run: npm run build
@@ -86,9 +91,14 @@ jobs:
 
       # `--bun` forces the Bun runtime. Without it, bun respects the vitest
       # shebang and silently runs the suite under Node — which is why the old
-      # `bunx vitest run` matrix never actually exercised Bun.
+      # `bunx vitest run` matrix never actually exercised Bun. EXPECTED_RUNTIME
+      # turns that into a checked invariant: if `--bun` ever stops reaching
+      # vitest's workers, this leg fails loudly instead of quietly becoming a
+      # fourth Node run.
       - name: Test
         run: bun run --bun test
+        env:
+          EXPECTED_RUNTIME: bun
 
   ci:
     if: always()
