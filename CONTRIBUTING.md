@@ -12,7 +12,7 @@ cd vereda
 npm install
 ```
 
-Requires Node 18+.
+Requires Node 20+ (enforced via `engines` in package.json).
 
 ## Commands
 

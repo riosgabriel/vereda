@@ -180,3 +180,11 @@ export interface ClientConfig {
 	/** Custom fetch function (defaults to globalThis.fetch). */
 	fetch?: typeof globalThis.fetch;
 }
+
+/** Options for `HttpClient.close()`.
+ *
+ *  Modelled as a union so the type mirrors the runtime contract: `timeoutMs` is
+ *  required only when draining. A single `{ drain?: boolean; timeoutMs: number }`
+ *  shape made `close({ drain: false })` a type error even though it is the
+ *  documented, working way to close without draining. */
+export type CloseOptions = { drain?: false; timeoutMs?: number } | { drain: true; timeoutMs: number };

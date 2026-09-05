@@ -71,10 +71,12 @@ export class Bulkhead {
 
 				if (semaphore) {
 					semaphore.acquire().then((release) => {
-						runTask().finally(release);
+						// void: outcomes are routed to the outer resolve/reject inside runTask.
+						void runTask().finally(release);
 					}, reject);
 				} else {
-					runTask();
+					// void: outcomes are routed to the outer resolve/reject inside runTask.
+					void runTask();
 				}
 			};
 

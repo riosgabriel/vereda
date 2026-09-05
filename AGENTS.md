@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Vereda: resilient HTTP client for Node.js (queuing, retries, bulkhead isolation) built on global `fetch`. ESM-only, Node 18+, zero runtime dependencies. Not published to npm; installed from GitHub, where the `prepare` script builds `dist/`.
+Vereda: resilient HTTP client for Node.js (queuing, retries, bulkhead isolation) built on global `fetch`. ESM-only, Node 20+, zero runtime dependencies. Not published to npm; installed from GitHub, where the `prepare` script builds `dist/`.
 
 ## Commands
 
@@ -9,7 +9,7 @@ npm test                                        # vitest run (all tests)
 npm run test:watch                              # vitest watch mode
 npx vitest run test/queue/bulkhead.test.ts      # single test file
 npx vitest run -t "name fragment"               # single test by name
-npm run typecheck                               # tsc --noEmit
+npm run typecheck                               # tsc --noEmit (src + tests)
 npm run build                                   # tsc -> dist/
 bun run check                                   # Biome lint + format + import order (the CI gate)
 bun run check:fix                               # same, applying safe fixes
@@ -30,7 +30,7 @@ logger in `src/middleware/index.ts`. Both sites carry `biome-ignore` comments ex
 ## Gotchas
 
 - **NodeNext ESM**: every relative import in `src/` and `test/` must use the `.js` extension even when importing `.ts` files (`from "./client.js"`).
-- **`npm run typecheck` skips test files**: tsconfig excludes `**/*.test.ts`, so nothing else typechecks them. Keep test code type-safe by running the tests.
+- **Test files are typechecked separately**: `tsconfig.json` excludes `**/*.test.ts` (it drives the `dist/` build, which must not contain tests). `tsconfig.test.json` covers `src/` + `test/` with `noEmit`, and `npm run typecheck` runs both, so test code is type-safe in CI.
 - **Zod boundary**: zod is an optional peer dependency. Only `src/adapters/zod.ts` may import it; `src/core/` must stay zod-free.
 - **`dist/` is a gitignored** build artifact — never edit `dist/`.
 - `package-lock.json` is committed (npm is the package manager). CI uses `npm ci`.

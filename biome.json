@@ -8,7 +8,7 @@
 	},
 	"files": {
 		"ignoreUnknown": false,
-		"includes": ["**", "!**/dist", "!**/coverage", "!package-lock.json", "!bun.lock"]
+		"includes": ["**", "!**/dist", "!**/coverage", "!bun.lock"]
 	},
 	"formatter": {
 		"enabled": true,
@@ -30,7 +30,18 @@
 			},
 			"suspicious": {
 				"noExplicitAny": "error",
-				"noConsole": { "level": "error", "options": { "allow": ["warn", "error"] } }
+				"noConsole": {
+					"level": "error",
+					"options": {
+						"allow": ["warn", "error"]
+					}
+				},
+				"noNestedPromises": "error"
+			},
+			"nursery": {
+				"noFloatingPromises": "error",
+				"noMisusedPromises": "error",
+				"useAwaitThenable": "error"
 			}
 		}
 	},
@@ -55,6 +66,9 @@
 					"suspicious": {
 						"noExplicitAny": "off",
 						"noConsole": "off"
+					},
+					"nursery": {
+						"noMisusedPromises": "off"
 					}
 				}
 			}

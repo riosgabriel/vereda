@@ -1,6 +1,9 @@
 version: 2
 updates:
-  - package-ecosystem: "npm"
+  # Bun is its own ecosystem (GA since 2025-02-13), not part of "npm". With
+  # package-lock.json gone there is no npm lockfile left for the npm updater to
+  # act on, so this must be "bun" or dependency updates silently stop.
+  - package-ecosystem: "bun"
     directory: "/"
     schedule:
       interval: "daily"
