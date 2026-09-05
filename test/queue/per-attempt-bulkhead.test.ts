@@ -86,7 +86,8 @@ describe("Per-attempt bulkhead scheduling (5.1)", () => {
 		const bh = new Bulkhead("test", { concurrency: 1, maxQueueSize: 0 });
 
 		// Fill the only running slot so the next run() must queue
-		let release: () => void;
+		// `!`: the Promise executor runs synchronously, so this is assigned before use.
+		let release!: () => void;
 		const blocker = new Promise<void>((r) => {
 			release = r;
 		});
@@ -98,7 +99,7 @@ describe("Per-attempt bulkhead scheduling (5.1)", () => {
 		await expect(bh.run(async () => "second")).rejects.toThrow("full");
 
 		// Clean up
-		release?.();
+		release();
 		await p1;
 	});
 });

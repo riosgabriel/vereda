@@ -24,9 +24,9 @@ describe("Bulkhead", () => {
 		const slow = () => new Promise<void>((r) => setTimeout(r, 100));
 
 		// First fills the runner
-		bh.schedule(slow);
+		void bh.schedule(slow);
 		// Second fills the queue
-		bh.schedule(slow);
+		void bh.schedule(slow);
 		// Third should be rejected
 		await expect(bh.schedule(slow)).rejects.toThrow("full");
 	});
@@ -36,7 +36,7 @@ describe("Bulkhead", () => {
 		const slow = () => new Promise<void>((r) => setTimeout(r, 50));
 
 		const p1 = bh.schedule(slow);
-		bh.schedule(slow);
+		void bh.schedule(slow);
 
 		expect(bh.runningCount).toBe(1);
 		expect(bh.queueSize).toBe(1);

@@ -59,12 +59,17 @@ interface Row {
 	expectedKind: string;
 }
 
+/** Bun's fetch does not enforce the Fetch spec's forbidden-method list, so a
+ *  TRACE request is issued for real; Node/undici rejects it client-side. */
+const IS_BUN = typeof (globalThis as { Bun?: unknown }).Bun !== "undefined";
+
 // A: Q4 method set over a network error (socket destroyed).
 // CONNECT is classified non-idempotent at the policy level but undici fetch
 // forbids issuing it, so it's covered in test/queue/policy.test.ts unit tests.
-// TRACE is likewise forbidden by undici (a forbidden method per the Fetch
-// spec) — it fails client-side before reaching the server (0 hits), but the
-// retry policy still classifies it as idempotent, so all 3 attempts run.
+// TRACE is a forbidden method per the Fetch spec. The retry policy classifies
+// it as idempotent either way, so all 3 attempts run and the terminal error is
+// max_retries — but how many reach the server is runtime-dependent (see the
+// TRACE row below).
 const networkRows: Row[] = ["GET", "HEAD", "OPTIONS", "PUT", "DELETE"].map((method) => ({
 	method,
 	mode: "destroy" as Mode,
@@ -74,7 +79,11 @@ const networkRows: Row[] = ["GET", "HEAD", "OPTIONS", "PUT", "DELETE"].map((meth
 networkRows.push({
 	method: "TRACE",
 	mode: "destroy",
-	expectedRequests: 0,
+	// Node/undici throws "'TRACE' HTTP method is unsupported" before opening a
+	// socket, so no attempt reaches the server. Bun issues the request, so each
+	// of the 3 idempotent attempts lands and is destroyed. Same retry behaviour,
+	// different fetch implementation.
+	expectedRequests: IS_BUN ? 3 : 0,
 	expectedKind: "max_retries_exceeded",
 });
 for (const method of ["POST", "PATCH"]) {
