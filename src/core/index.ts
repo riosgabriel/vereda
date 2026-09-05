@@ -6,7 +6,7 @@ export type {
 	TicketUpdate,
 } from "../ticket/ticket.js";
 export { createTicket, Ticket } from "../ticket/ticket.js";
-export { HttpClient } from "./client.js";
+export { HttpClient, json } from "./client.js";
 export type { AppError } from "./errors.js";
 export {
 	CancelledError,

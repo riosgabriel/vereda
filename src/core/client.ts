@@ -22,6 +22,7 @@ import type {
 	CloseOptions,
 	LifecycleEventMap,
 	Logger,
+	ParseFn,
 	PartitionConfig,
 	RequestOptions,
 	RetryConfig,
@@ -572,8 +573,24 @@ export class HttpClient {
 	// Convenience methods
 	// ---------------------------------------------------------------------------
 
-	get<T>(url: string, options: Omit<RequestOptions<T>, "method"> = {}): Ticket<T> {
-		return this.request<T>(url, { ...options, method: "GET" });
+	/** GET request with JSON parsing. */
+	get<T>(url: string, options: Omit<RequestOptions<T>, "method">): Ticket<T> {
+		return this.request(url, { ...options, method: "GET" });
+	}
+
+	/** HEAD request. */
+	head<T>(url: string, options: Omit<RequestOptions<T>, "method"> = {}): Ticket<T> {
+		return this.request<T>(url, { ...options, method: "HEAD" });
+	}
+
+	/** OPTIONS request. */
+	options<T>(url: string, options: Omit<RequestOptions<T>, "method"> = {}): Ticket<T> {
+		return this.request<T>(url, { ...options, method: "OPTIONS" });
+	}
+
+	/** Parse JSON response body without validation. */
+	json<T>(): ParseFn<T> {
+		return (data: unknown): T => data as T;
 	}
 
 	post<T>(
@@ -727,4 +744,11 @@ export class HttpClient {
 			}
 		}
 	}
+}
+
+/** Parse JSON response body without validation.
+ *  Useful when you just need the raw parsed JSON object/array.
+ *  Unlike `parse` with Zod, this does not validate the shape. */
+export function json<T>(): ParseFn<T> {
+	return (data: unknown): T => data as T;
 }

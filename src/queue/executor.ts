@@ -177,6 +177,17 @@ export async function executeRequest(req: ExecuteRequest, middleware: Middleware
 // Middleware types + composition
 // ---------------------------------------------------------------------------
 
+export interface RequestContext {
+	url: string;
+	method?: string;
+	headers: Record<string, string>;
+	body?: BodyInit | (() => BodyInit);
+	signal: AbortSignal;
+	attempt: number;
+	ticketId: string;
+	partition: string;
+}
+
 export type NextFn = (options: RequestOptions<unknown>) => Promise<Response>;
 export type MiddlewareFn = (options: RequestOptions<unknown>, next: NextFn) => Promise<Response>;
 

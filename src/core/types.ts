@@ -154,6 +154,8 @@ export interface RequestOptions<T = unknown> {
 	timeout?: TimeoutConfig;
 	/** Signal to cancel the request externally */
 	signal?: AbortSignal;
+	/** Request URL - available for middleware to read/rewrite */
+	url?: string;
 }
 
 // ---------------------------------------------------------------------------
