@@ -93,6 +93,7 @@ run it, read the diff carefully.
 ## Behavioral invariants (don't break these)
 
 - The first attempt skips the bulkhead; the bulkhead throttles retry traffic only.
+- The opt-in per-partition circuit breaker is checked before the bulkhead, before the first attempt, **and again before every retry** — while open it rejects with `CircuitOpenError` and nothing is attempted.
 - `retryWhen` is consulted after **every** failed attempt, including attempt 0.
 - A failed `parse` (`ValidationError`) resolves immediately and is never retried.
 - Cancellation wins over timeouts and retries; a cancelled ticket is never retried.

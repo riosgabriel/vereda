@@ -54,6 +54,7 @@ Three public entry points, mirrored by `package.json` `exports`:
 Request flow: `client.get()` returns a `Ticket` synchronously → first attempt fires **outside** the bulkhead → only retries go through the per-host partition bulkhead (`src/queue/`). Behavioral invariants — preserve these when touching retry/queue logic:
 
 - First attempt skips the bulkhead (bulkhead throttles retry traffic only).
+- Per-partition circuit breaker (opt-in, `circuitBreaker` config) gates admission before the first attempt **and is re-checked before every retry** — trips open on consecutive failures or a rolling failure-rate window, rejects with `CircuitOpenError` while open, half-opens after `resetTimeoutMs` to trial recovery.
 - Default retry policy — only `network`/`timeout`/`retryable_status` errors on idempotent requests (or `retry.idempotent`/`Idempotency-Key` opt-in) are retried; user `retryWhen` is consulted after it and can only veto.
 - `retryWhen` is consulted after **every** failed attempt, including attempt 0.
 - `ValidationError` (failed `parse`) resolves immediately and is never retried.
@@ -62,7 +63,7 @@ Request flow: `client.get()` returns a `Ticket` synchronously → first attempt 
 - Retries honor `Retry-After` (seconds or HTTP-date) capped at `maxDelayMs`; backoff otherwise.
 - `ticket.toPromise()` never rejects — failures are a `Result` union with the closed `RequestError` hierarchy (`src/core/errors.ts`).
 - Graceful shutdown: `client.close({ drain: true, timeoutMs })` waits for in-flight tickets up to `timeoutMs`, then cancels remaining; `client.close()` without drain cancels immediately. New requests throw `ConfigurationError("client closed")`.
-- Lifecycle events: `client.on(event, listener)` for `request`, `retry`, `success`, `failure`, `cancelled` — exactly one of `success`/`failure`/`cancelled` fires per ticket. The `retry` event fires with zero-based retry index (0 = first retry after initial attempt).
+- Lifecycle events: `client.on(event, listener)` for `request`, `retry`, `success`, `failure`, `cancelled` — exactly one of `success`/`failure`/`cancelled` fires per ticket. The `retry` event fires with zero-based retry index (0 = first retry after initial attempt). `circuitOpen`/`circuitClose` (`{ partition }`) fire independently of any single ticket, only when the circuit breaker is enabled.
 - Verb methods: `get`, `head`, `options`, `post`, `put`, `patch`, `delete` on `HttpClient`, plus the generic `request()`. `json<T>()` (exported from `src/core/index.ts`) is a dependency-free `ParseFn<T>` for callers who want typed JSON without a schema library.
 - `ticket.subscribe()` is an async generator yielding `TicketUpdate` events (`queued`, `retrying`, `done`, `cancelled`).
 
@@ -88,6 +89,7 @@ An LLM can stand in for a library's docs website: interactively walk a new contr
 - `ValidationError` (failed `parse`) resolves immediately and is never retried.
 - Cancellation wins over timeouts/retries; a cancelled ticket is never retried.
 - `ticket.toPromise()` never rejects — failures are a `Result` union with the closed `RequestError` hierarchy (`src/core/errors.ts`).
+- A per-partition circuit breaker (opt-in) can reject a request outright before any attempt, once that partition trips open.
 
 **Key file per concern** (for "where do I look?" questions)
 - Public API / `Ticket` / errors: `src/core/` (`index.ts`, `client.ts`, `errors.ts`, `types.ts`)
@@ -96,6 +98,7 @@ An LLM can stand in for a library's docs website: interactively walk a new contr
 - Retry loop: `src/queue/retry.ts`
 - Retry policy + `shouldRetry`: `src/queue/policy.ts`
 - Bulkhead + per-host queue: `src/queue/bulkhead.ts`
+- Circuit breaker: `src/queue/circuit-breaker.ts`
 - Backoff: `src/core/backoff.ts`
 - Config validation: `src/core/validate.ts`
 - Ticket ID generation: `src/core/nanoid.ts`

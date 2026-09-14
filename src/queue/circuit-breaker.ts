@@ -186,21 +186,6 @@ export class CircuitBreaker {
 		this.halfOpenInFlight = 0;
 	}
 
-	/**
-	 * TODO(human): Decide whether the circuit should trip to OPEN, given the
-	 * failure that was just recorded in `recordFailure()` (already classified
-	 * as failure — this is only called for classified failures, and only while
-	 * the breaker is "closed").
-	 *
-	 * - If `this.config.window` is configured, use the rolling window: trip when
-	 *   `this.window.totalRequests() >= this.config.window.minimumRequests` AND
-	 *   `this.window.failureRate() > this.config.window.failureRatePercent`.
-	 * - Otherwise, use consecutive-failure counting: trip when
-	 *   `this.consecutiveFailures >= (this.config.failureThreshold ?? DEFAULT_FAILURE_THRESHOLD)`.
-	 *
-	 * Return true to trip to "open" (the caller in recordFailure() handles the
-	 * actual state transition and event emission); false to stay "closed".
-	 */
 	private evaluateTripCondition(): boolean {
 		const windowConfig = this.config.window;
 		if (this.window && windowConfig) {

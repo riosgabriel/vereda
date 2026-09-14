@@ -51,8 +51,9 @@ Implement `MetricsSink` (`counter`, `histogram`, `gauge` — all synchronous, no
 | `METRICS.DURATION` (`vereda.duration_ms`) | histogram | `partition`, `kind`, `status` | Total ticket duration at settlement |
 | `METRICS.QUEUE_DEPTH` (`vereda.queue_depth`) | gauge | `partition` | Current per-partition queue size |
 | `METRICS.IN_FLIGHT` (`vereda.in_flight`) | gauge | — | Current in-flight executions across all partitions |
+| `METRICS.CIRCUIT_OPEN` (`vereda.circuit_open`) | counter | `partition` | One per circuit breaker trip to open (opt-in feature; silent unless `circuitBreaker.enabled`) |
 
-`examples/otel.ts` shows a minimal OpenTelemetry-backed `MetricsSink` implementation end to end. Lifecycle events (`client.on("request" | "retry" | "success" | "failure" | "cancelled", ...)`) are the complementary hook for structured logging or alerting rather than metrics — see the README's [Lifecycle events](../README.md#lifecycle-events) section.
+`examples/otel.ts` shows a minimal OpenTelemetry-backed `MetricsSink` implementation end to end. Lifecycle events (`client.on("request" | "retry" | "success" | "failure" | "cancelled" | "circuitOpen" | "circuitClose", ...)`) are the complementary hook for structured logging or alerting rather than metrics — see the README's [Lifecycle events](../README.md#lifecycle-events) section.
 
 ## Shutdown sequence
 

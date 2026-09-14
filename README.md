@@ -7,7 +7,7 @@
 <h3 align="center">Make <code>fetch</code> resilient.</h3>
 
 <p align="center">
-  Retries · Backoff · Bulkheads · Timeouts · Typed Results
+  Retries · Backoff · Bulkheads · Circuit Breaker · Timeouts · Typed Results
 </p>
 
 <p align="center">
@@ -60,7 +60,7 @@ Service             │                          │
             logging?   ...
 ```
 
-Vereda handles retries, exponential backoff, per-host bulkhead isolation, timeouts, and typed results, so you don't have to wire it up yourself.
+Vereda handles retries, exponential backoff, per-host bulkhead isolation, circuit breaking, timeouts, and typed results, so you don't have to wire it up yourself.
 
 **What Vereda does not do.** No response caching, no request deduplication, no streaming helpers, no browser support.
 
@@ -162,9 +162,10 @@ With zero configuration:
 | Per-partition queue size | 100 waiting retries |
 | Retries | 3 retries after the first attempt (4 total executions) |
 | Backoff | Exponential: 200ms base, 30s cap, full jitter |
-| Timeout | None |
+| Timeout | Required — no library default; pass `Infinity` explicitly to opt out of a per-attempt cap |
 | Retry-on status codes | `[408, 425, 429, 500, 502, 503, 504]` |
 | First-attempt concurrency | Unbounded — the initial attempt bypasses the bulkhead unless `partition.limitFirstAttempts` is set |
+| Circuit breaker | Disabled — opt in with `circuitBreaker: { enabled: true }` |
 
 ## Quick start
 
@@ -175,7 +176,10 @@ npm install vereda
 ```typescript
 import { HttpClient } from "vereda";
 
-const client = HttpClient.create({ baseUrl: "https://api.example.com" });
+const client = HttpClient.create({
+  baseUrl: "https://api.example.com",
+  timeout: { attemptMs: 5000 },
+});
 
 const result = await client.get("/users/1").toPromise();
 if (result.success) {
@@ -282,6 +286,32 @@ client.get("/path", { partition: "high-priority" });
 
 When a partition's queue is full, the ticket resolves with a `QueueFullError`. That is deliberate backpressure: the alternative is unbounded memory growth.
 
+### Circuit breaker
+
+Opt-in, per-partition. Once a host is clearly failing, stop sending it requests instead of retrying into it. Disabled by default.
+
+```typescript
+const client = HttpClient.create({
+  timeout: { attemptMs: 5000 },
+  circuitBreaker: {
+    enabled: true,
+    failureThreshold: 5, // consecutive failures that trip it open
+    resetTimeoutMs: 30_000, // how long to stay open before a half-open trial
+  },
+});
+```
+
+The breaker is checked before the first attempt and again before every retry — while open, requests to that partition fail immediately with `CircuitOpenError` and no attempt is made. After `resetTimeoutMs`, one trial request is let through (`halfOpenMaxAttempts`); success closes the circuit, another failure reopens it.
+
+Trip on a rolling failure rate instead of consecutive failures:
+
+```typescript
+circuitBreaker: {
+  enabled: true,
+  window: { sizeMs: 60_000, minimumRequests: 20, failureRatePercent: 50 },
+}
+```
+
 ### Timeouts
 
 ```typescript
@@ -295,7 +325,7 @@ const client = HttpClient.create({
 });
 ```
 
-- `attemptMs` — a hard per-attempt timeout. The attempt is aborted and the request joins the retry loop.
+- `attemptMs` — a hard per-attempt timeout. The attempt is aborted and the request joins the retry loop. Required on the client-level `timeout` config — pass `Infinity` to explicitly opt out of a cap. Partition- and request-level `timeout` stay optional and inherit the client default.
 - `retryOnStatus` — status codes that mean the server is busy rather than broken. Matching responses are queued for retry without being treated as errors.
 
 Both settings merge per request:
@@ -379,6 +409,13 @@ client.on("cancelled", ({ ticketId, url, attempts, durationMs }) => {});
 ```
 
 `retry`'s `attempt` is a zero-based retry index (`0` = the first retry, after the initial attempt). `off(event, listener)` removes a listener with the same signature as `on`.
+
+If the circuit breaker is enabled, a partition also fires `circuitOpen`/`circuitClose` independently of any single ticket:
+
+```typescript
+client.on("circuitOpen",  ({ partition }) => {});
+client.on("circuitClose", ({ partition }) => {});
+```
 
 ### Cancellation
 
