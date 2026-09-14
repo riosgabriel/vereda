@@ -28,10 +28,11 @@ describe("runRetryLoop", () => {
 			circuitBreaker: disabledBreaker(),
 			partition: "test",
 			firstError,
+			initialQueuedMs: 0,
 			onFailure,
 		});
 
-		expect(onFailure).toHaveBeenCalledWith(firstError, 1);
+		expect(onFailure).toHaveBeenCalledWith(firstError, 1, 0);
 		expect(ticket.status.state).toBe("done");
 		if (ticket.status.state === "done" && !ticket.status.result.success) {
 			expect(ticket.status.result.error).toBe(firstError);
@@ -59,6 +60,7 @@ describe("runRetryLoop", () => {
 			circuitBreaker: disabledBreaker(),
 			partition: "test",
 			firstError,
+			initialQueuedMs: 0,
 			onCancelled,
 			onCleanup,
 		});
@@ -66,6 +68,6 @@ describe("runRetryLoop", () => {
 		// cancel() itself resolves the ticket; runRetryLoop's cancellation guard
 		// should still run its cleanup/onCancelled path rather than starting a retry.
 		expect(onCleanup).toHaveBeenCalled();
-		expect(onCancelled).toHaveBeenCalledWith(1);
+		expect(onCancelled).toHaveBeenCalledWith(1, 0);
 	});
 });

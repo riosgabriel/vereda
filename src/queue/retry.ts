@@ -43,16 +43,23 @@ export interface RetryJobOptions {
 	partition: string;
 	/** The error from the first attempt (fired client-side before queuing). */
 	firstError: AppError;
+	/** Ms the first attempt spent waiting for a bulkhead/semaphore permit,
+	 *  carried over so the final queuedMs reported to the client covers the
+	 *  whole ticket lifetime, not just the retries run inside this loop. */
+	initialQueuedMs: number;
 	onRetry?: (attempt: number, delayMs: number, error: AppError) => void;
 	/** Called on success so the client can emit the success event with the
-	 *  response status code and the total attempt count. */
-	onSuccess?: (statusCode: number, attempts: number) => void;
+	 *  response status code, the total attempt count, and the cumulative ms
+	 *  spent waiting for a bulkhead/semaphore permit across all attempts. */
+	onSuccess?: (statusCode: number, attempts: number, queuedMs: number) => void;
 	/** Called on failure (exhausted retries or policy veto inside the loop)
-	 *  so the client can emit the failure event. */
-	onFailure?: (error: AppError, attempts: number) => void;
+	 *  so the client can emit the failure event. `queuedMs` is cumulative
+	 *  across all attempts made so far. */
+	onFailure?: (error: AppError, attempts: number, queuedMs: number) => void;
 	/** Called on cancellation (user cancel, deadline, or external signal)
-	 *  so the client can emit the cancelled event. */
-	onCancelled?: (attempts: number) => void;
+	 *  so the client can emit the cancelled event. `queuedMs` is cumulative
+	 *  across all attempts made so far. */
+	onCancelled?: (attempts: number, queuedMs: number) => void;
 	/** Called before markDone to clean up external resources (e.g. signal listeners). */
 	onCleanup?: () => void;
 	/** Custom fetch function. Falls back to globalThis.fetch. */
@@ -73,6 +80,7 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 		circuitBreaker,
 		partition,
 		firstError,
+		initialQueuedMs,
 		onRetry,
 		onSuccess,
 		onFailure,
@@ -90,11 +98,12 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 
 	let lastError: AppError = firstError;
 	let totalAttempts = 1; // first attempt already fired client-side
+	let totalQueuedMs = initialQueuedMs; // cumulative bulkhead/semaphore wait across all attempts
 
 	for (let attempt = 0; attempt < maxRetries; attempt++) {
 		if (ticket.isCancelled) {
 			onCleanup?.();
-			onCancelled?.(totalAttempts);
+			onCancelled?.(totalAttempts, totalQueuedMs);
 			controller.markDone({
 				success: false,
 				error: new CancelledError(),
@@ -105,7 +114,7 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 		if (!circuitBreaker.canRequest()) {
 			onCleanup?.();
 			const error = new CircuitOpenError(partition);
-			onFailure?.(error, totalAttempts);
+			onFailure?.(error, totalAttempts, totalQueuedMs);
 			controller.markDone({ success: false, error } as never);
 			return;
 		}
@@ -121,7 +130,7 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 		};
 		if (!shouldRetry(lastError, attempt, ctx, retryConfig.retryWhen)) {
 			onCleanup?.();
-			onFailure?.(lastError, totalAttempts);
+			onFailure?.(lastError, totalAttempts, totalQueuedMs);
 			controller.markDone({ success: false, error: lastError } as never);
 			return;
 		}
@@ -140,13 +149,13 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 			onCleanup?.();
 			if (!ticket.isCancelled && isBoundedMs(timeoutConfig.totalMs)) {
 				const error = new DeadlineExceededError(url, timeoutConfig.totalMs);
-				onFailure?.(error, totalAttempts);
+				onFailure?.(error, totalAttempts, totalQueuedMs);
 				controller.markDone({
 					success: false,
 					error,
 				} as never);
 			} else {
-				onCancelled?.(totalAttempts);
+				onCancelled?.(totalAttempts, totalQueuedMs);
 				controller.markDone({
 					success: false,
 					error: new CancelledError(),
@@ -157,7 +166,7 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 
 		if (ticket.isCancelled) {
 			onCleanup?.();
-			onCancelled?.(totalAttempts);
+			onCancelled?.(totalAttempts, totalQueuedMs);
 			controller.markDone({
 				success: false,
 				error: new CancelledError(),
@@ -189,6 +198,9 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 						middleware,
 					),
 				semaphore,
+				(queuedMs) => {
+					totalQueuedMs += queuedMs;
+				},
 			);
 		} catch (err) {
 			if (err instanceof QueueFullError) {
@@ -206,7 +218,7 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 				circuitBreaker.recordSuccess();
 				onCleanup?.();
 				if (result.result.success) {
-					onSuccess?.(result.result.raw.status, totalAttempts);
+					onSuccess?.(result.result.raw.status, totalAttempts, totalQueuedMs);
 				}
 				controller.markDone(result.result);
 				return;
@@ -216,13 +228,13 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 				onCleanup?.();
 				if (!ticket.isCancelled && isBoundedMs(timeoutConfig.totalMs)) {
 					const error = new DeadlineExceededError(url, timeoutConfig.totalMs);
-					onFailure?.(error, totalAttempts);
+					onFailure?.(error, totalAttempts, totalQueuedMs);
 					controller.markDone({
 						success: false,
 						error,
 					} as never);
 				} else {
-					onCancelled?.(totalAttempts);
+					onCancelled?.(totalAttempts, totalQueuedMs);
 					controller.markDone({
 						success: false,
 						error: new CancelledError(),
@@ -246,7 +258,7 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 		// Zero retries configured/executed — surface the underlying error raw,
 		// never wrapped in MaxRetriesExceededError.
 		onCleanup?.();
-		onFailure?.(lastError, totalAttempts);
+		onFailure?.(lastError, totalAttempts, totalQueuedMs);
 		controller.markDone({ success: false, error: lastError } as never);
 		return;
 	}
@@ -255,7 +267,7 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 	totalAttempts = 1 + maxRetries;
 	onCleanup?.();
 	const exhaustedError = new MaxRetriesExceededError(totalAttempts, lastError);
-	onFailure?.(exhaustedError, totalAttempts);
+	onFailure?.(exhaustedError, totalAttempts, totalQueuedMs);
 	controller.markDone({
 		success: false,
 		error: exhaustedError,

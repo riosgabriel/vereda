@@ -21,6 +21,16 @@ export class Semaphore {
 		this.maxQueueSize = maxQueueSize;
 	}
 
+	/** Number of callers currently waiting for a permit. */
+	get queueLength(): number {
+		return this.waitQueue.length;
+	}
+
+	/** Number of permits currently free (not held by an in-flight request). */
+	get availablePermits(): number {
+		return this.available;
+	}
+
 	/** Acquire a permit. Resolves to a `release` function when granted. */
 	acquire(): Promise<() => void> {
 		if (this.available > 0) {

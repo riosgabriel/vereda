@@ -113,6 +113,39 @@ describe("Lifecycle events (6.1)", () => {
 	});
 
 	// -----------------------------------------------------------------------
+	// queuedMs — reflects real wait time under global cap saturation
+	// -----------------------------------------------------------------------
+
+	it("queuedMs reflects real wait time when the global concurrency cap is saturated", async () => {
+		const client = HttpClient.create({
+			timeout: { attemptMs: 5_000 },
+			concurrency: 1, // global cap: only one request in flight at a time
+			retry: { maxRetries: 0 },
+		});
+		const events = collectEvents(client);
+
+		server.setHandler((_req, res) => {
+			setTimeout(() => {
+				res.writeHead(200, { "Content-Type": "application/json" });
+				res.end("{}");
+			}, 60);
+		});
+
+		await Promise.all([client.get(`${server.url}/a`).toPromise(), client.get(`${server.url}/b`).toPromise()]);
+
+		const successes = events.filter((e) => e.name === "success").map((e) => e.data as LifecycleEventMap["success"]);
+		expect(successes).toHaveLength(2);
+
+		const queuedMsValues = successes.map((s) => s.queuedMs).sort((a, b) => a - b);
+		// One request found the permit free (queuedMs ~0); the other waited for
+		// the first to release it (~60ms) before it could even start.
+		expect(queuedMsValues[0]).toBeLessThan(20);
+		expect(queuedMsValues[1]).toBeGreaterThanOrEqual(40);
+
+		await client.close();
+	});
+
+	// -----------------------------------------------------------------------
 	// failure event — terminal, includes timing
 	// -----------------------------------------------------------------------
 

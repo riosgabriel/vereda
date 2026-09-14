@@ -42,6 +42,39 @@ describe("Bulkhead", () => {
 
 		await p1;
 	});
+
+	it("reports queue size for callers waiting on run() (regression: was reading the dead schedule() queue)", async () => {
+		const bh = new Bulkhead("test", { concurrency: 1 });
+		const slow = () => new Promise<void>((r) => setTimeout(r, 50));
+
+		const p1 = bh.run(slow);
+		const p2 = bh.run(slow);
+
+		expect(bh.queueSize).toBe(1);
+
+		await Promise.all([p1, p2]);
+		expect(bh.queueSize).toBe(0);
+	});
+
+	it("invokes onDequeue with the real elapsed wait, not immediately on run()", async () => {
+		const bh = new Bulkhead("test", { concurrency: 1 });
+		const slow = (ms: number) => () => new Promise<void>((r) => setTimeout(r, ms));
+
+		let firstQueuedMs = -1;
+		let secondQueuedMs = -1;
+
+		const p1 = bh.run(slow(50), undefined, (ms) => {
+			firstQueuedMs = ms;
+		});
+		const p2 = bh.run(slow(10), undefined, (ms) => {
+			secondQueuedMs = ms;
+		});
+
+		await Promise.all([p1, p2]);
+
+		expect(firstQueuedMs).toBeLessThan(10); // slot was free — ran immediately
+		expect(secondQueuedMs).toBeGreaterThanOrEqual(40); // waited for the first task's slot
+	});
 });
 
 describe("BulkheadRegistry", () => {

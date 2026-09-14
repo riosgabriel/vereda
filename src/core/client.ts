@@ -326,16 +326,24 @@ export class HttpClient {
 		// When partition.limitFirstAttempts is enabled (R6), the first attempt
 		// also goes through the per-partition bulkhead. Otherwise it bypasses
 		// the partition slot entirely (D4). The global semaphore is always
-		// acquired for every attempt.
+		// acquired for every attempt — bulkhead.run() acquires it internally
+		// when passed, so the task itself must not acquire it a second time.
 		const usePartitionBulkhead = bulkhead.limitFirstAttempts;
-		const result = usePartitionBulkhead
-			? await bulkhead.run(
-					() => (semaphore ? semaphore.acquire().then((r) => execute().finally(r)) : execute()),
-					semaphore,
-				)
-			: semaphore
-				? await semaphore.acquire().then((release) => execute().finally(release))
-				: await execute();
+		let queuedMs = 0;
+		let result: Awaited<ReturnType<typeof execute>>;
+		if (usePartitionBulkhead) {
+			result = await bulkhead.run(execute, semaphore, (ms) => {
+				queuedMs = ms;
+			});
+		} else if (semaphore) {
+			const enqueuedAt = Date.now();
+			result = await semaphore.acquire().then((release) => {
+				queuedMs = Date.now() - enqueuedAt;
+				return execute().finally(release);
+			});
+		} else {
+			result = await execute();
+		}
 
 		switch (result.kind) {
 			case "success": {
@@ -347,7 +355,7 @@ export class HttpClient {
 					url: displayUrl,
 					attempts: 1,
 					durationMs,
-					queuedMs: 0,
+					queuedMs,
 					statusCode,
 				});
 				this.logger?.info("Request succeeded", {
@@ -388,7 +396,7 @@ export class HttpClient {
 				breaker.recordFailure(result.error);
 				// Apply the unified retry gate (default policy + retryWhen). Errors
 				// that fail it (e.g. ValidationError, HttpError) resolve immediately.
-				if (this.vetoed(retryConfig, result.error, 0, options, ticket, controller, url, startTime)) {
+				if (this.vetoed(retryConfig, result.error, 0, options, ticket, controller, url, startTime, queuedMs)) {
 					cleanup();
 					return;
 				}
@@ -403,7 +411,7 @@ export class HttpClient {
 							url: displayUrl,
 							attempts: 1,
 							durationMs,
-							queuedMs: 0,
+							queuedMs,
 							error: result.error,
 						});
 						controller.markDone({
@@ -429,6 +437,7 @@ export class HttpClient {
 					result.error,
 					cleanup,
 					startTime,
+					queuedMs,
 				);
 				return;
 
@@ -437,7 +446,7 @@ export class HttpClient {
 				// Record the raw attempt outcome against the circuit breaker
 				// regardless of what the retry policy decides to do with it.
 				breaker.recordFailure(error);
-				if (this.vetoed(retryConfig, error, 0, options, ticket, controller, url, startTime)) {
+				if (this.vetoed(retryConfig, error, 0, options, ticket, controller, url, startTime, queuedMs)) {
 					cleanup();
 					return;
 				}
@@ -451,7 +460,7 @@ export class HttpClient {
 							url: this.logUrl(url),
 							attempts: 1,
 							durationMs,
-							queuedMs: 0,
+							queuedMs,
 							error,
 						});
 						controller.markDone({ success: false, error } as never);
@@ -474,6 +483,7 @@ export class HttpClient {
 					error,
 					cleanup,
 					startTime,
+					queuedMs,
 				);
 				return;
 			}
@@ -492,6 +502,7 @@ export class HttpClient {
 		controller: TicketController<unknown>,
 		url: string,
 		startTime: number,
+		queuedMs: number,
 	): boolean {
 		const ctx: RetryPolicyContext = {
 			method: options.method ?? "GET",
@@ -505,7 +516,7 @@ export class HttpClient {
 				url,
 				attempts: 1,
 				durationMs,
-				queuedMs: 0,
+				queuedMs,
 				error,
 			});
 			controller.markDone({ success: false, error } as never);
@@ -528,6 +539,7 @@ export class HttpClient {
 		firstError: AppError,
 		cleanup: () => void,
 		startTime: number,
+		initialQueuedMs: number,
 	): void {
 		this.logger?.info("Request queued for retry", {
 			ticketId: ticket.id,
@@ -552,6 +564,7 @@ export class HttpClient {
 			circuitBreaker: breaker,
 			partition: partitionName,
 			firstError,
+			initialQueuedMs,
 			fetch: this.customFetch,
 			onRetry: (attempt, delayMs, error) => {
 				this.emit("retry", {
@@ -562,25 +575,25 @@ export class HttpClient {
 					error,
 				});
 			},
-			onSuccess: (statusCode, attempts) => {
+			onSuccess: (statusCode, attempts, queuedMs) => {
 				const durationMs = Date.now() - startTime;
 				this.emit("success", {
 					ticketId: ticket.id,
 					url: displayUrl,
 					attempts,
 					durationMs,
-					queuedMs: 0,
+					queuedMs,
 					statusCode,
 				});
 			},
-			onFailure: (error, attempts) => {
+			onFailure: (error, attempts, queuedMs) => {
 				const durationMs = Date.now() - startTime;
 				this.emit("failure", {
 					ticketId: ticket.id,
 					url: displayUrl,
 					attempts,
 					durationMs,
-					queuedMs: 0,
+					queuedMs,
 					error,
 				});
 				this.logger?.warn("Request failed after retries", {
@@ -614,7 +627,7 @@ export class HttpClient {
 				url: displayUrl,
 				attempts: 1,
 				durationMs: Date.now() - startTime,
-				queuedMs: 0,
+				queuedMs: initialQueuedMs,
 				error,
 			});
 			if (ticket.status.state !== "done" && !ticket.isCancelled) {
@@ -787,6 +800,7 @@ export class HttpClient {
 					method: d.method,
 				});
 				this.metrics.gauge(METRICS.IN_FLIGHT, this._inflightTickets.size);
+				this.emitQueueDepthGauges();
 			} else if (e === "retry") {
 				const d = data as LifecycleEventMap["retry"];
 				this.metrics.counter(METRICS.RETRIES, 1, { kind: d.error.kind });
@@ -796,10 +810,24 @@ export class HttpClient {
 					e === "success" ? "success" : e === "failure" ? (d as LifecycleEventMap["failure"]).error.kind : "cancelled";
 				this.metrics.histogram(METRICS.DURATION, d.durationMs, { kind });
 				this.metrics.gauge(METRICS.IN_FLIGHT, this._inflightTickets.size);
+				this.emitQueueDepthGauges();
 			} else if (e === "circuitOpen") {
 				const d = data as LifecycleEventMap["circuitOpen"];
 				this.metrics.counter(METRICS.CIRCUIT_OPEN, 1, { partition: d.partition });
 			}
+		}
+	}
+
+	/** Push current queue-depth gauges: per-partition bulkhead backlog and the
+	 *  global semaphore backlog (the D1 cap devs most need visibility into). */
+	private emitQueueDepthGauges(): void {
+		if (!this.metrics) return;
+		for (const snapshot of this.bulkheads.getAll()) {
+			this.metrics.gauge(METRICS.QUEUE_DEPTH, snapshot.queued, { partition: snapshot.name });
+		}
+		const semaphore = this.bulkheads.getSemaphore();
+		if (semaphore) {
+			this.metrics.gauge(METRICS.GLOBAL_QUEUE_DEPTH, semaphore.queueLength);
 		}
 	}
 }

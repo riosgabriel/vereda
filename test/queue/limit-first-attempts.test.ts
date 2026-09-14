@@ -58,6 +58,34 @@ describe("Optional first-attempt limiting (5.5)", () => {
 		}
 	});
 
+	it("does not double-acquire the global semaphore permit when limitFirstAttempts is true (regression)", async () => {
+		// Before the fix, bulkhead.run(task, semaphore) acquired the global
+		// semaphore internally AND the task closure acquired it again — with
+		// concurrency: 1 that's a self-deadlock: the request holds the one
+		// permit and then waits forever for a second permit only its own
+		// completion could free. A single request must complete quickly.
+		const { url, host, close } = await createServer();
+
+		try {
+			const client = HttpClient.create({
+				baseUrl: url,
+				timeout: { attemptMs: 2_000 },
+				concurrency: 1, // global: exactly one permit — the smoking gun
+				retry: { maxRetries: 0 },
+				partitions: {
+					[host]: { concurrency: 5, limitFirstAttempts: true },
+				},
+			});
+
+			const result = await client.get("/a").toPromise();
+			expect(result.success).toBe(true);
+
+			await client.close();
+		} finally {
+			await close();
+		}
+	});
+
 	it("does not serialize first attempts when limitFirstAttempts is false (default)", async () => {
 		let maxConcurrent = 0;
 		let currentConcurrent = 0;

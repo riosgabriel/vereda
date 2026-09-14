@@ -2,8 +2,6 @@ import { QueueFullError } from "../core/errors.js";
 import { DEFAULT_CONCURRENCY, DEFAULT_MAX_QUEUE_SIZE, type PartitionConfig } from "../core/types.js";
 import type { Semaphore } from "./semaphore.js";
 
-type Task = () => Promise<void>;
-
 /** Default TTL (ms) before an idle partition registry entry (bulkhead or
  *  circuit breaker) is swept from its registry. Shared by both registries
  *  so the eviction policy stays in one place. */
@@ -15,7 +13,6 @@ export class Bulkhead {
 	private readonly maxQueueSize: number;
 	private readonly _limitFirstAttempts: boolean;
 	private running = 0;
-	private queue: Task[] = [];
 	private readonly _waitQueue: Array<() => void> = [];
 
 	constructor(name: string, config: PartitionConfig = {}) {
@@ -26,7 +23,7 @@ export class Bulkhead {
 	}
 
 	get queueSize(): number {
-		return this.queue.length;
+		return this._waitQueue.length;
 	}
 
 	get runningCount(): number {
@@ -50,13 +47,18 @@ export class Bulkhead {
 	 *  `this.running` is decremented *before* the returned Promise resolves,
 	 *  giving consumers an accurate count immediately after `await`.
 	 *  When a global `semaphore` is provided, a permit is acquired after the
-	 *  partition slot and released before it (D4). */
-	run<T>(task: () => Promise<T>, semaphore?: Semaphore): Promise<T> {
+	 *  partition slot and released before it (D4).
+	 *  `onDequeue`, if given, fires once — right before `task()` starts —
+	 *  with the ms elapsed since `run()` was called, covering both the
+	 *  partition wait and the semaphore wait. */
+	run<T>(task: () => Promise<T>, semaphore?: Semaphore, onDequeue?: (queuedMs: number) => void): Promise<T> {
+		const enqueuedAt = Date.now();
 		return new Promise<T>((resolve, reject) => {
 			const execute = () => {
 				this.running++;
-				const runTask = () =>
-					task().then(
+				const runTask = () => {
+					onDequeue?.(Date.now() - enqueuedAt);
+					return task().then(
 						(result) => {
 							this.running--;
 							this._drainWaitQueue();
@@ -68,6 +70,7 @@ export class Bulkhead {
 							reject(err);
 						},
 					);
+				};
 
 				if (semaphore) {
 					semaphore.acquire().then((release) => {

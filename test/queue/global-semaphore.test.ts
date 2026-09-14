@@ -102,6 +102,33 @@ describe("Global semaphore (5.2)", () => {
 		release3();
 	});
 
+	it("exposes queueLength and availablePermits for gauge reporting", async () => {
+		const sem = new Semaphore(1);
+		expect(sem.availablePermits).toBe(1);
+		expect(sem.queueLength).toBe(0);
+
+		const release1 = await sem.acquire();
+		expect(sem.availablePermits).toBe(0);
+
+		let acquired = false;
+		const p2 = sem.acquire().then((release) => {
+			acquired = true;
+			return release;
+		});
+
+		await new Promise((r) => setTimeout(r, 10));
+		expect(sem.queueLength).toBe(1);
+		expect(acquired).toBe(false);
+
+		release1();
+		const release2 = await p2;
+		expect(sem.queueLength).toBe(0);
+		expect(sem.availablePermits).toBe(0); // release2's permit still held
+
+		release2();
+		expect(sem.availablePermits).toBe(1);
+	});
+
 	it("Semaphore rejects when wait queue is full", async () => {
 		const sem = new Semaphore(1, 0); // 1 permit, 0 wait queue
 
