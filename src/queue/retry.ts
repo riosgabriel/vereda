@@ -204,9 +204,12 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 			);
 		} catch (err) {
 			if (err instanceof QueueFullError) {
-				// Queue is at capacity — mark done and let the error propagate to the
-				// client which handles QueueFullError emission and cleanup.
+				// Queue is at capacity. Emit failure here (not in the client's
+				// outer .catch) because totalQueuedMs — the wait accumulated by
+				// retries that already ran — only exists in this closure; the
+				// outer catch only has the first attempt's queuedMs.
 				onCleanup?.();
+				onFailure?.(err, totalAttempts, totalQueuedMs);
 				controller.markDone({ success: false, error: err } as never);
 				throw err;
 			}

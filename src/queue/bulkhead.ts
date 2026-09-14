@@ -73,10 +73,20 @@ export class Bulkhead {
 				};
 
 				if (semaphore) {
-					semaphore.acquire().then((release) => {
-						// void: outcomes are routed to the outer resolve/reject inside runTask.
-						void runTask().finally(release);
-					}, reject);
+					semaphore.acquire().then(
+						(release) => {
+							// void: outcomes are routed to the outer resolve/reject inside runTask.
+							void runTask().finally(release);
+						},
+						(err) => {
+							// The partition slot was granted but the global semaphore
+							// rejected (queue full) — release the slot we already
+							// counted, or it leaks as a permanently phantom-running slot.
+							this.running--;
+							this._drainWaitQueue();
+							reject(err);
+						},
+					);
 				} else {
 					// void: outcomes are routed to the outer resolve/reject inside runTask.
 					void runTask();

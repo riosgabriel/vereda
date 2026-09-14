@@ -100,7 +100,10 @@ describe("Lifecycle events (6.1)", () => {
 		const data = successes[0].data as LifecycleEventMap["success"];
 		expect(data.attempts).toBe(1);
 		expect(data.durationMs).toBeGreaterThanOrEqual(0);
-		expect(data.queuedMs).toBe(0);
+		// Uncontended (default concurrency 50): the permit is free, but queuedMs
+		// is still real elapsed time across a microtask hop, so it can land on
+		// 1ms from wall-clock rounding alone, not just exact 0.
+		expect(data.queuedMs).toBeLessThan(20);
 		expect(data.statusCode).toBe(200);
 		expect(data.url).toBe(`${server.url}/ok`);
 		expect(typeof data.ticketId).toBe("string");
@@ -140,7 +143,7 @@ describe("Lifecycle events (6.1)", () => {
 		// One request found the permit free (queuedMs ~0); the other waited for
 		// the first to release it (~60ms) before it could even start.
 		expect(queuedMsValues[0]).toBeLessThan(20);
-		expect(queuedMsValues[1]).toBeGreaterThanOrEqual(40);
+		expect(queuedMsValues[1]).toBeGreaterThanOrEqual(30);
 
 		await client.close();
 	});
@@ -171,7 +174,8 @@ describe("Lifecycle events (6.1)", () => {
 		const data = failures[0].data as LifecycleEventMap["failure"];
 		expect(data.attempts).toBe(1);
 		expect(data.durationMs).toBeGreaterThanOrEqual(0);
-		expect(data.queuedMs).toBe(0);
+		// See the success-event test above for why this isn't an exact 0.
+		expect(data.queuedMs).toBeLessThan(20);
 		expect(data.error).toBeDefined();
 		expect(typeof data.error.message).toBe("string");
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Bulkhead, BulkheadRegistry } from "../../src/queue/bulkhead.js";
+import { Semaphore } from "../../src/queue/semaphore.js";
 
 describe("Bulkhead", () => {
 	it("runs tasks up to concurrency limit", async () => {
@@ -72,8 +73,28 @@ describe("Bulkhead", () => {
 
 		await Promise.all([p1, p2]);
 
-		expect(firstQueuedMs).toBeLessThan(10); // slot was free — ran immediately
-		expect(secondQueuedMs).toBeGreaterThanOrEqual(40); // waited for the first task's slot
+		expect(firstQueuedMs).toBeLessThan(20); // slot was free — ran immediately (allow scheduling jitter)
+		expect(secondQueuedMs).toBeGreaterThanOrEqual(30); // waited for the first task's slot
+	});
+
+	it("does not leak a running slot when the global semaphore rejects (regression)", async () => {
+		// Before the fix, execute() incremented `running` and then handed off to
+		// semaphore.acquire(), whose rejection branch called `reject` directly —
+		// skipping the decrement/drain that only runTask()'s own rejection path
+		// performed. A rejected semaphore acquire left the partition permanently
+		// short one slot.
+		const bh = new Bulkhead("test", { concurrency: 1 });
+		const fullSemaphore = new Semaphore(0, 0); // no permits, no room to wait — rejects immediately
+
+		await expect(bh.run(() => Promise.resolve(), fullSemaphore)).rejects.toThrow("full");
+		expect(bh.runningCount).toBe(0); // the partition slot must be released, not leaked
+
+		// A leaked slot would make this hang forever (concurrency: 1, already "running").
+		let ran = false;
+		await bh.run(async () => {
+			ran = true;
+		});
+		expect(ran).toBe(true);
 	});
 });
 

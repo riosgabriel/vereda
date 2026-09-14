@@ -613,24 +613,25 @@ export class HttpClient {
 			},
 			onCleanup: cleanup,
 		}).catch((err: unknown) => {
-			// A pre-typed RequestError (e.g. QueueFullError, already marked done
-			// inside runRetryLoop before it re-throws) is preserved as-is.
-			// Anything else is a genuinely unexpected throw. Either way, markDone
-			// is only called if the ticket isn't already resolved — covers both
-			// the "already marked done inside the loop" case and a genuine bug.
+			// A pre-typed RequestError (e.g. QueueFullError) has already been
+			// emitted and marked done inside runRetryLoop before it re-throws —
+			// that's the only place with the real accumulated queuedMs. Only a
+			// genuinely unexpected throw (ticket still not "done") needs this
+			// catch to emit failure itself, falling back to initialQueuedMs
+			// since no attempt-loop total exists for an error this early.
 			const error =
 				err instanceof RequestError
 					? err
 					: new NetworkError(err instanceof Error ? err.message : "Queue error", { cause: err });
-			this.emit("failure", {
-				ticketId: ticket.id,
-				url: displayUrl,
-				attempts: 1,
-				durationMs: Date.now() - startTime,
-				queuedMs: initialQueuedMs,
-				error,
-			});
 			if (ticket.status.state !== "done" && !ticket.isCancelled) {
+				this.emit("failure", {
+					ticketId: ticket.id,
+					url: displayUrl,
+					attempts: 1,
+					durationMs: Date.now() - startTime,
+					queuedMs: initialQueuedMs,
+					error,
+				});
 				controller.markDone({ success: false, error } as never);
 			}
 			cleanup();
