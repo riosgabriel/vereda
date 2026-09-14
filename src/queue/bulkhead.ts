@@ -45,13 +45,8 @@ export class Bulkhead {
 		return this._limitFirstAttempts;
 	}
 
-	canAccept(): boolean {
-		return this.queue.length < this.maxQueueSize;
-	}
-
 	/** Acquire a concurrency slot, execute `task`, release the slot.
 	 *  Rejects with `QueueFullError` when the queue is at capacity.
-	 *  Unlike `schedule()`, `run()` manages its own slot lifecycle so that
 	 *  `this.running` is decremented *before* the returned Promise resolves,
 	 *  giving consumers an accurate count immediately after `await`.
 	 *  When a global `semaphore` is provided, a permit is acquired after the
@@ -93,38 +88,6 @@ export class Bulkhead {
 				reject(new QueueFullError(this.name, this._waitQueue.length, this.maxQueueSize));
 			}
 		});
-	}
-
-	schedule(task: Task): Promise<void> {
-		return new Promise((resolve, reject) => {
-			if (!this.canAccept()) {
-				reject(new QueueFullError(this.name, this.queue.length, this.maxQueueSize));
-				return;
-			}
-
-			const wrapped = async () => {
-				try {
-					await task();
-					resolve();
-				} catch (err) {
-					reject(err);
-				}
-			};
-
-			this.queue.push(wrapped);
-			this._drain();
-		});
-	}
-
-	private _drain(): void {
-		while (this.running < this.concurrency && this.queue.length > 0) {
-			const task = this.queue.shift()!;
-			this.running++;
-			task().finally(() => {
-				this.running--;
-				this._drain();
-			});
-		}
 	}
 
 	private _drainWaitQueue(): void {

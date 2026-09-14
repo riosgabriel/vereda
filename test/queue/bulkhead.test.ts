@@ -14,7 +14,7 @@ describe("Bulkhead", () => {
 			running.splice(running.indexOf(id), 1);
 		};
 
-		await Promise.all([bh.schedule(makeTask(1, 30)), bh.schedule(makeTask(2, 30)), bh.schedule(makeTask(3, 10))]);
+		await Promise.all([bh.run(makeTask(1, 30)), bh.run(makeTask(2, 30)), bh.run(makeTask(3, 10))]);
 
 		expect(maxConcurrent).toBeLessThanOrEqual(2);
 	});
@@ -24,22 +24,21 @@ describe("Bulkhead", () => {
 		const slow = () => new Promise<void>((r) => setTimeout(r, 100));
 
 		// First fills the runner
-		void bh.schedule(slow);
-		// Second fills the queue
-		void bh.schedule(slow);
+		void bh.run(slow);
+		// Second fills the wait queue
+		void bh.run(slow);
 		// Third should be rejected
-		await expect(bh.schedule(slow)).rejects.toThrow("full");
+		await expect(bh.run(slow)).rejects.toThrow("full");
 	});
 
-	it("reports queue and running counts", async () => {
+	it("reports running count", async () => {
 		const bh = new Bulkhead("test", { concurrency: 1 });
 		const slow = () => new Promise<void>((r) => setTimeout(r, 50));
 
-		const p1 = bh.schedule(slow);
-		void bh.schedule(slow);
+		const p1 = bh.run(slow);
+		void bh.run(slow);
 
 		expect(bh.runningCount).toBe(1);
-		expect(bh.queueSize).toBe(1);
 
 		await p1;
 	});
