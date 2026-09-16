@@ -374,6 +374,7 @@ export class HttpClient {
 					url: displayUrl,
 					attempts: 1,
 					durationMs,
+					queuedMs,
 				});
 				if (!ticket.isCancelled && isBoundedMs(timeoutConfig.totalMs)) {
 					controller.markDone({
@@ -602,13 +603,14 @@ export class HttpClient {
 					error: error.message,
 				});
 			},
-			onCancelled: (attempts) => {
+			onCancelled: (attempts, queuedMs) => {
 				const durationMs = Date.now() - startTime;
 				this.emit("cancelled", {
 					ticketId: ticket.id,
 					url: displayUrl,
 					attempts,
 					durationMs,
+					queuedMs,
 				});
 			},
 			onCleanup: cleanup,

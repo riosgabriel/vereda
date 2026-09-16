@@ -212,6 +212,7 @@ describe("Lifecycle events (6.1)", () => {
 		const data = cancelled[0].data as LifecycleEventMap["cancelled"];
 		expect(data.attempts).toBeGreaterThanOrEqual(1);
 		expect(data.durationMs).toBeGreaterThanOrEqual(0);
+		expect(data.queuedMs).toBeGreaterThanOrEqual(0);
 		expect(typeof data.ticketId).toBe("string");
 
 		// No success events for a cancelled ticket
