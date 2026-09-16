@@ -144,6 +144,48 @@ describe("Metrics sink (6.2)", () => {
 		await client.close();
 	});
 
+	it("records nonzero global_queue_depth while the global concurrency cap has a sustained backlog", async () => {
+		// Gauges are pushed only from emit()'s request-start and terminal-event
+		// hooks (client.ts emitQueueDepthGauges), not from the semaphore's own
+		// enqueue/dequeue — so a single momentarily-blocked request is invisible
+		// to this gauge (the request-start emit fires before it ever tries to
+		// acquire; the terminal emit fires after release() has already drained
+		// it). A *sustained* backlog (more waiters than one release can drain)
+		// is required to land a nonzero reading at one of those two hooks — the
+		// realistic case for a dashboard/alert on this metric. Per-request
+		// visibility for a single blocked request is `queuedMs` on the
+		// lifecycle events instead (see the saturation test in
+		// lifecycle-events.test.ts), which has no such blind spot.
+		const sink = createFakeSink();
+		const client = HttpClient.create({
+			timeout: { attemptMs: 5_000 },
+			metrics: sink,
+			concurrency: 1, // global cap: only one request in flight at a time
+			retry: { maxRetries: 0 },
+		});
+
+		server.setHandler((_req, res) => {
+			setTimeout(() => {
+				res.writeHead(200, { "Content-Type": "application/json" });
+				res.end("{}");
+			}, 60);
+		});
+
+		await Promise.all([
+			client.get(`${server.url}/a`).toPromise(),
+			client.get(`${server.url}/b`).toPromise(),
+			client.get(`${server.url}/c`).toPromise(),
+		]);
+
+		const globalDepthGauges = sink.gauges.filter((g) => g.name === METRICS.GLOBAL_QUEUE_DEPTH);
+		expect(globalDepthGauges.length).toBeGreaterThanOrEqual(1);
+		expect(Math.max(...globalDepthGauges.map((g) => g.value))).toBeGreaterThanOrEqual(1);
+		// Backlog must drain back to 0 once all three requests settle.
+		expect(globalDepthGauges[globalDepthGauges.length - 1].value).toBe(0);
+
+		await client.close();
+	});
+
 	it("does not record metrics when no sink is configured", async () => {
 		const client = HttpClient.create({ timeout: { attemptMs: 5_000 } });
 

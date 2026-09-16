@@ -822,7 +822,13 @@ export class HttpClient {
 	}
 
 	/** Push current queue-depth gauges: per-partition bulkhead backlog and the
-	 *  global semaphore backlog (the D1 cap devs most need visibility into). */
+	 *  global semaphore backlog (the D1 cap devs most need visibility into).
+	 *  Polled from emit()'s request-start/terminal-event hooks rather than
+	 *  pushed on the semaphore's own enqueue/dequeue, so a single request that
+	 *  is briefly queued and released between those two hooks can land on
+	 *  neither poll and never register — reliable for a sustained backlog,
+	 *  not for a lone momentary wait (see docs/operations.md). `queuedMs` on
+	 *  the lifecycle events has no such gap; it's measured, not polled. */
 	private emitQueueDepthGauges(): void {
 		if (!this.metrics) return;
 		for (const snapshot of this.bulkheads.getAll()) {
