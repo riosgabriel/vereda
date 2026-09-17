@@ -60,13 +60,11 @@ export class Bulkhead {
 					onDequeue?.(Date.now() - enqueuedAt);
 					return task().then(
 						(result) => {
-							this.running--;
-							this._drainWaitQueue();
+							this._releaseSlot();
 							resolve(result);
 						},
 						(err) => {
-							this.running--;
-							this._drainWaitQueue();
+							this._releaseSlot();
 							reject(err);
 						},
 					);
@@ -82,8 +80,7 @@ export class Bulkhead {
 							// The partition slot was granted but the global semaphore
 							// rejected (queue full) — release the slot we already
 							// counted, or it leaks as a permanently phantom-running slot.
-							this.running--;
-							this._drainWaitQueue();
+							this._releaseSlot();
 							reject(err);
 						},
 					);
@@ -101,6 +98,15 @@ export class Bulkhead {
 				reject(new QueueFullError(this.name, this._waitQueue.length, this.maxQueueSize));
 			}
 		});
+	}
+
+	/** Free a counted slot and hand it to the next waiter, if any. Every path
+	 *  that decrements `running` — task success, task failure, and a rejected
+	 *  semaphore acquire after the slot was already granted — must go through
+	 *  this, or a slot leaks as permanently phantom-running. */
+	private _releaseSlot(): void {
+		this.running--;
+		this._drainWaitQueue();
 	}
 
 	private _drainWaitQueue(): void {

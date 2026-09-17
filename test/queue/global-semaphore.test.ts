@@ -1,6 +1,6 @@
 import * as http from "node:http";
 import { describe, expect, it } from "vitest";
-import { QueueFullError } from "../../src/core/errors.js";
+import { CancelledError, QueueFullError } from "../../src/core/errors.js";
 import { Semaphore } from "../../src/queue/semaphore.js";
 
 function createServer(
@@ -181,6 +181,69 @@ describe("Global semaphore (5.2)", () => {
 				expect(second.error).toBeInstanceOf(QueueFullError);
 				expect(second.error.kind).toBe("queue_full");
 			}
+
+			await client.close();
+		} finally {
+			await close();
+		}
+	});
+
+	it("does not emit failure for a ticket already resolved by cancel() (regression)", async () => {
+		// request()'s outer .catch() (wrapping _fireFirstAttempt) used to emit
+		// "failure" unconditionally before checking whether the ticket was
+		// already resolved. cancel() resolves the ticket's own promise directly
+		// (ticket.ts) without going through the client's lifecycle-event
+		// emitter at all, so when the pending semaphore.acquire() rejection
+		// (QueueFullError, from the overflowed global queue) arrived afterward,
+		// this path fired a spurious "failure" event for a ticket that had
+		// already settled — violating "exactly one of success/failure/cancelled
+		// per ticket" (here: zero client-level terminal events is correct,
+		// since cancel() never goes through the emitter). concurrency: 1 +
+		// maxQueueSize: 0 makes the second ticket's semaphore.acquire() reject
+		// synchronously (a pre-rejected promise) — cancelling it in the same
+		// synchronous tick, before that rejection is ever awaited, reliably
+		// wins the race.
+
+		const { url, close } = await createServer((_req, res) => {
+			setTimeout(() => {
+				res.statusCode = 200;
+				res.end("ok");
+			}, 100);
+		});
+
+		try {
+			const { HttpClient } = await import("../../src/core/client.js");
+
+			const client = HttpClient.create({
+				baseUrl: url,
+				timeout: { attemptMs: 5_000 },
+				concurrency: 1,
+				maxQueueSize: 0,
+				retry: { maxRetries: 0 },
+			});
+
+			const events: string[] = [];
+			for (const name of ["success", "failure", "cancelled"] as const) {
+				client.on(name, (data) => {
+					if (data.ticketId === second.id) events.push(name);
+				});
+			}
+
+			const first = client.get("/a");
+			const second = client.get("/b");
+			second.cancel(); // same synchronous tick — races the pending rejection
+
+			const firstResult = await first.toPromise();
+			const secondResult = await second.toPromise();
+
+			expect(firstResult.success).toBe(true);
+			expect(secondResult.success).toBe(false);
+			if (!secondResult.success) {
+				expect(secondResult.error).toBeInstanceOf(CancelledError);
+			}
+			// The real regression: no spurious "failure" event once the ticket
+			// was already resolved by cancel().
+			expect(events).not.toContain("failure");
 
 			await client.close();
 		} finally {

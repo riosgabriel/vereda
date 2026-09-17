@@ -192,21 +192,26 @@ export class HttpClient {
 			// A pre-typed RequestError (e.g. QueueFullError from the global
 			// semaphore acquire in _fireFirstAttempt) is an expected, well-typed
 			// error — preserve it as-is instead of demoting it to a generic
-			// NetworkError. Anything else is a genuinely unexpected throw.
+			// NetworkError. Anything else is a genuinely unexpected throw. Only
+			// emit/markDone if the ticket isn't already resolved — e.g. the user
+			// called cancel() while bulkhead.run()/semaphore.acquire() was still
+			// pending, which settles the ticket via its own "cancelled" event
+			// before this rejection arrives; emitting "failure" too would violate
+			// "exactly one of success/failure/cancelled per ticket".
 			const error =
 				err instanceof RequestError
 					? err
 					: new NetworkError(err instanceof Error ? err.message : "Unexpected error", { cause: err });
-			const durationMs = Date.now() - startTime;
-			this.emit("failure", {
-				ticketId: ticket.id,
-				url: this.logUrl(url),
-				attempts: 1,
-				durationMs,
-				queuedMs: 0,
-				error,
-			});
 			if (ticket.status.state !== "done" && !ticket.isCancelled) {
+				const durationMs = Date.now() - startTime;
+				this.emit("failure", {
+					ticketId: ticket.id,
+					url: this.logUrl(url),
+					attempts: 1,
+					durationMs,
+					queuedMs: 0,
+					error,
+				});
 				controller.markDone({ success: false, error } as never);
 			}
 			entry.cleanup();
