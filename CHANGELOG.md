@@ -10,10 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Per-partition circuit breaker (opt-in via `circuitBreaker: { enabled: true }`), mirroring the bulkhead registry: trips on consecutive failures (default) or a rolling failure-rate window, then half-opens after `resetTimeoutMs` to trial recovery. Rejects immediately with the new `CircuitOpenError` — no attempt is made while open (#60).
+- Real `queuedMs` on `success`/`failure`/`cancelled` lifecycle events — total time a ticket spent waiting for a bulkhead/global-semaphore permit, summed across all attempts (previously always `0`). New `vereda.global_queue_depth` gauge reports the global concurrency cap's (D1) wait-queue backlog; `vereda.queue_depth` (declared previously but never emitted) now reports real per-partition backlog. See [Wiring a metrics sink](docs/operations.md#wiring-a-metrics-sink) (#72).
 
 ### Changed (breaking)
 
 - `ClientConfig.timeout.attemptMs` is now required. Every other default in the library fails safe when omitted; an omitted per-attempt timeout previously meant "unbounded." Pass `Infinity` explicitly to opt out of a cap. Partition- and request-level `timeout` remain optional and inherit the client-level default (#60).
+
+### Fixed
+
+- `Bulkhead.run()` leaked a phantom running-slot when the global semaphore rejected with `QueueFullError` (the global concurrency cap was saturated mid-retry), permanently degrading that partition's effective concurrency by one per occurrence (#72).
+- A `QueueFullError` mid-retry discarded the `queuedMs` already accumulated by retries that had run before it, undercounting exactly the signal `queuedMs` exists to report (#72).
 
 ## [1.0.0] - 2026-09-07
 

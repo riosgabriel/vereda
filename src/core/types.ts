@@ -200,6 +200,7 @@ export type LifecycleEventMap = {
 		url: string;
 		attempts: number;
 		durationMs: number;
+		queuedMs: number;
 	};
 	circuitOpen: { partition: string };
 	circuitClose: { partition: string };

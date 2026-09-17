@@ -405,10 +405,12 @@ client.on("request",   ({ ticketId, url, method, partition }) => {});
 client.on("retry",     ({ ticketId, url, attempt, delayMs, error }) => {});
 client.on("success",   ({ ticketId, url, attempts, durationMs, queuedMs, statusCode }) => {});
 client.on("failure",   ({ ticketId, url, attempts, durationMs, queuedMs, error }) => {});
-client.on("cancelled", ({ ticketId, url, attempts, durationMs }) => {});
+client.on("cancelled", ({ ticketId, url, attempts, durationMs, queuedMs }) => {});
 ```
 
 `retry`'s `attempt` is a zero-based retry index (`0` = the first retry, after the initial attempt). `off(event, listener)` removes a listener with the same signature as `on`.
+
+`queuedMs` is the total time this ticket spent waiting for a bulkhead/global-semaphore permit, summed across every attempt — it's `0` when a request never had to wait (the default global cap is 50 concurrent, so most single-service consumers never hit it). A consistently nonzero `queuedMs` relative to `durationMs` means you're throttled by `concurrency`/a partition's `concurrency`, not by downstream latency; see [Wiring a metrics sink](docs/operations.md#wiring-a-metrics-sink) for the companion `vereda.queue_depth` / `vereda.global_queue_depth` gauges.
 
 If the circuit breaker is enabled, a partition also fires `circuitOpen`/`circuitClose` independently of any single ticket:
 

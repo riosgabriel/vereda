@@ -49,11 +49,14 @@ Implement `MetricsSink` (`counter`, `histogram`, `gauge` — all synchronous, no
 | `METRICS.REQUESTS` (`vereda.requests`) | counter | `partition`, `method` | One per request initiated |
 | `METRICS.RETRIES` (`vereda.retries`) | counter | `partition`, `kind` | One per retry attempt, tagged by the error `kind` that triggered it |
 | `METRICS.DURATION` (`vereda.duration_ms`) | histogram | `partition`, `kind`, `status` | Total ticket duration at settlement |
-| `METRICS.QUEUE_DEPTH` (`vereda.queue_depth`) | gauge | `partition` | Current per-partition queue size |
+| `METRICS.QUEUE_DEPTH` (`vereda.queue_depth`) | gauge | `partition` | Current per-partition queue size — same retries-only caveat as `partitions()` above: a partition only shows queued first attempts if `limitFirstAttempts` is enabled for it |
+| `METRICS.GLOBAL_QUEUE_DEPTH` (`vereda.global_queue_depth`) | gauge | — | Callers currently waiting for a permit under the global concurrency cap (D1) — the signal that you're throttled by `concurrency`/`ClientConfig.concurrency` rather than downstream latency |
 | `METRICS.IN_FLIGHT` (`vereda.in_flight`) | gauge | — | Current in-flight executions across all partitions |
 | `METRICS.CIRCUIT_OPEN` (`vereda.circuit_open`) | counter | `partition` | One per circuit breaker trip to open (opt-in feature; silent unless `circuitBreaker.enabled`) |
 
 `examples/otel.ts` shows a minimal OpenTelemetry-backed `MetricsSink` implementation end to end. Lifecycle events (`client.on("request" | "retry" | "success" | "failure" | "cancelled" | "circuitOpen" | "circuitClose", ...)`) are the complementary hook for structured logging or alerting rather than metrics — see the README's [Lifecycle events](../README.md#lifecycle-events) section.
+
+**`QUEUE_DEPTH`/`GLOBAL_QUEUE_DEPTH` are polled, not pushed on change** — they're read at request-start and at each ticket's terminal event, not at the moment a caller actually joins or leaves the wait queue. That reliably shows a *sustained* backlog (a dashboard/alert on "depth > N for 5 minutes" works as expected), but a single request that's briefly queued and released between those two polling points can be invisible to the gauge. For guaranteed per-request visibility regardless of backlog size, use `queuedMs` on the lifecycle events instead — it's measured at the point of acquisition, not polled.
 
 ## Shutdown sequence
 

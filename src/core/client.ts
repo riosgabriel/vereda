@@ -192,21 +192,26 @@ export class HttpClient {
 			// A pre-typed RequestError (e.g. QueueFullError from the global
 			// semaphore acquire in _fireFirstAttempt) is an expected, well-typed
 			// error — preserve it as-is instead of demoting it to a generic
-			// NetworkError. Anything else is a genuinely unexpected throw.
+			// NetworkError. Anything else is a genuinely unexpected throw. Only
+			// emit/markDone if the ticket isn't already resolved — e.g. the user
+			// called cancel() while bulkhead.run()/semaphore.acquire() was still
+			// pending, which settles the ticket via its own "cancelled" event
+			// before this rejection arrives; emitting "failure" too would violate
+			// "exactly one of success/failure/cancelled per ticket".
 			const error =
 				err instanceof RequestError
 					? err
 					: new NetworkError(err instanceof Error ? err.message : "Unexpected error", { cause: err });
-			const durationMs = Date.now() - startTime;
-			this.emit("failure", {
-				ticketId: ticket.id,
-				url: this.logUrl(url),
-				attempts: 1,
-				durationMs,
-				queuedMs: 0,
-				error,
-			});
 			if (ticket.status.state !== "done" && !ticket.isCancelled) {
+				const durationMs = Date.now() - startTime;
+				this.emit("failure", {
+					ticketId: ticket.id,
+					url: this.logUrl(url),
+					attempts: 1,
+					durationMs,
+					queuedMs: 0,
+					error,
+				});
 				controller.markDone({ success: false, error } as never);
 			}
 			entry.cleanup();
@@ -374,6 +379,7 @@ export class HttpClient {
 					url: displayUrl,
 					attempts: 1,
 					durationMs,
+					queuedMs,
 				});
 				if (!ticket.isCancelled && isBoundedMs(timeoutConfig.totalMs)) {
 					controller.markDone({
@@ -602,35 +608,37 @@ export class HttpClient {
 					error: error.message,
 				});
 			},
-			onCancelled: (attempts) => {
+			onCancelled: (attempts, queuedMs) => {
 				const durationMs = Date.now() - startTime;
 				this.emit("cancelled", {
 					ticketId: ticket.id,
 					url: displayUrl,
 					attempts,
 					durationMs,
+					queuedMs,
 				});
 			},
 			onCleanup: cleanup,
 		}).catch((err: unknown) => {
-			// A pre-typed RequestError (e.g. QueueFullError, already marked done
-			// inside runRetryLoop before it re-throws) is preserved as-is.
-			// Anything else is a genuinely unexpected throw. Either way, markDone
-			// is only called if the ticket isn't already resolved — covers both
-			// the "already marked done inside the loop" case and a genuine bug.
+			// A pre-typed RequestError (e.g. QueueFullError) has already been
+			// emitted and marked done inside runRetryLoop before it re-throws —
+			// that's the only place with the real accumulated queuedMs. Only a
+			// genuinely unexpected throw (ticket still not "done") needs this
+			// catch to emit failure itself, falling back to initialQueuedMs
+			// since no attempt-loop total exists for an error this early.
 			const error =
 				err instanceof RequestError
 					? err
 					: new NetworkError(err instanceof Error ? err.message : "Queue error", { cause: err });
-			this.emit("failure", {
-				ticketId: ticket.id,
-				url: displayUrl,
-				attempts: 1,
-				durationMs: Date.now() - startTime,
-				queuedMs: initialQueuedMs,
-				error,
-			});
 			if (ticket.status.state !== "done" && !ticket.isCancelled) {
+				this.emit("failure", {
+					ticketId: ticket.id,
+					url: displayUrl,
+					attempts: 1,
+					durationMs: Date.now() - startTime,
+					queuedMs: initialQueuedMs,
+					error,
+				});
 				controller.markDone({ success: false, error } as never);
 			}
 			cleanup();
@@ -819,7 +827,13 @@ export class HttpClient {
 	}
 
 	/** Push current queue-depth gauges: per-partition bulkhead backlog and the
-	 *  global semaphore backlog (the D1 cap devs most need visibility into). */
+	 *  global semaphore backlog (the D1 cap devs most need visibility into).
+	 *  Polled from emit()'s request-start/terminal-event hooks rather than
+	 *  pushed on the semaphore's own enqueue/dequeue, so a single request that
+	 *  is briefly queued and released between those two hooks can land on
+	 *  neither poll and never register — reliable for a sustained backlog,
+	 *  not for a lone momentary wait (see docs/operations.md). `queuedMs` on
+	 *  the lifecycle events has no such gap; it's measured, not polled. */
 	private emitQueueDepthGauges(): void {
 		if (!this.metrics) return;
 		for (const snapshot of this.bulkheads.getAll()) {
