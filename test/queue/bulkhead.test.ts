@@ -96,6 +96,24 @@ describe("Bulkhead", () => {
 		});
 		expect(ran).toBe(true);
 	});
+
+	it("releases the semaphore permit before draining the next waiter (regression: was ordered the other way, spuriously rejecting a waiter with a permit about to free)", async () => {
+		// Before the fix, `.finally(release)` ran the semaphore release AFTER
+		// _releaseSlot() had already synchronously drained the bulkhead's own
+		// wait queue — so the next waiter's semaphore.acquire() call could see
+		// zero permits available (the just-finished task's permit not freed
+		// yet) and reject with QueueFullError even though one was about to
+		// free. A zero-room semaphore (1 permit, 0 queue) makes that rejection
+		// immediate and deterministic if the ordering regresses.
+		const bh = new Bulkhead("test", { concurrency: 1 });
+		const sem = new Semaphore(1, 0);
+
+		const p1 = bh.run(() => Promise.resolve("a"), sem);
+		const p2 = bh.run(() => Promise.resolve("b"), sem);
+
+		await expect(p1).resolves.toBe("a");
+		await expect(p2).resolves.toBe("b");
+	});
 });
 
 describe("BulkheadRegistry", () => {

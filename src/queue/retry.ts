@@ -204,12 +204,25 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 			);
 		} catch (err) {
 			if (err instanceof QueueFullError) {
-				// Queue is at capacity. Emit failure here (not in the client's
-				// outer .catch) because totalQueuedMs — the wait accumulated by
-				// retries that already ran — only exists in this closure; the
-				// outer catch only has the first attempt's queuedMs.
+				// Queue is at capacity — bulkhead.run() rejected before task()
+				// ever ran, so this iteration's optimistic totalAttempts++ above
+				// must be backed out; it reports attempts actually dispatched.
+				const attemptsMade = totalAttempts - 1;
 				onCleanup?.();
-				onFailure?.(err, totalAttempts, totalQueuedMs);
+				if (ticket.isCancelled) {
+					// cancel() may have resolved the ticket directly (ticket.ts),
+					// bypassing markDone, while this bulkhead/semaphore acquisition
+					// was still pending. Match every other cancellation checkpoint
+					// in this loop: notify via onCancelled, not onFailure, so the
+					// lifecycle-event stream agrees with the ticket's actual outcome.
+					onCancelled?.(attemptsMade, totalQueuedMs);
+				} else {
+					// Emit failure here (not in the client's outer .catch) because
+					// totalQueuedMs — the wait accumulated by retries that already
+					// ran — only exists in this closure; the outer catch only has
+					// the first attempt's queuedMs.
+					onFailure?.(err, attemptsMade, totalQueuedMs);
+				}
 				controller.markDone({ success: false, error: err } as never);
 				throw err;
 			}
