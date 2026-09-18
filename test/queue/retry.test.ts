@@ -80,18 +80,13 @@ describe("runRetryLoop", () => {
 		const firstError = new NetworkError("connection reset");
 		const onFailure = vi.fn();
 
-		let call = 0;
-		const bulkhead = {
-			name: "test",
-			run: vi.fn((_task: unknown, _semaphore: unknown, onDequeue?: (ms: number) => void) => {
-				call++;
-				if (call === 1) {
-					onDequeue?.(25); // this retry actually queued for 25ms before running
-					return Promise.resolve({ kind: "error", error: new NetworkError("still failing") });
-				}
-				return Promise.reject(new QueueFullError("global", 0, 0));
-			}),
-		} as unknown as Bulkhead;
+		const run = vi.fn();
+		run.mockImplementationOnce((_task: unknown, _semaphore: unknown, onDequeue?: (ms: number) => void) => {
+			onDequeue?.(25); // this retry actually queued for 25ms before running
+			return Promise.resolve({ kind: "error", error: new NetworkError("still failing") });
+		});
+		run.mockImplementation(() => Promise.reject(new QueueFullError("global", 0, 0)));
+		const bulkhead = { name: "test", run } as unknown as Bulkhead;
 
 		await expect(
 			runRetryLoop({
@@ -112,7 +107,54 @@ describe("runRetryLoop", () => {
 		).rejects.toBeInstanceOf(QueueFullError);
 
 		// 5ms (first attempt) + 25ms (the retry that actually ran) must survive —
-		// not collapse to just the first attempt's 5ms.
-		expect(onFailure).toHaveBeenCalledWith(expect.any(QueueFullError), 3, 30);
+		// not collapse to just the first attempt's 5ms. attempts is 2, not 3:
+		// the rejected bulkhead.run() call never dispatched the task, so it
+		// doesn't count as a real attempt.
+		expect(onFailure).toHaveBeenCalledWith(expect.any(QueueFullError), 2, 30);
+	});
+
+	it("does not settle a ticket via onFailure if it was already cancelled before a retry's QueueFullError arrives (regression)", async () => {
+		// Found by review: the QueueFullError catch called onFailure/markDone
+		// unconditionally, with no settlement guard — unlike the two client.ts
+		// .catch() blocks that already had one for the identical hazard. If the
+		// caller cancels the ticket while bulkhead.run() is still pending,
+		// cancel() (ticket.ts) resolves the ticket's promise directly; onFailure
+		// firing afterward would still reach the client and emit a spurious
+		// "failure" event for an already-settled ticket.
+		const { ticket, controller } = createTicket<unknown>("t-cancel-races-queuefull");
+		const firstError = new NetworkError("connection reset");
+		const onFailure = vi.fn();
+
+		const bulkhead = {
+			name: "test",
+			run: vi.fn(() => {
+				// Simulate the ticket being cancelled elsewhere while this call
+				// was still in flight, settling it before the rejection below is
+				// ever observed by the loop.
+				ticket.cancel();
+				return Promise.reject(new QueueFullError("global", 0, 0));
+			}),
+		} as unknown as Bulkhead;
+
+		await expect(
+			runRetryLoop({
+				url: "http://example.test/resource",
+				requestOptions: {},
+				timeoutConfig: {},
+				retryConfig: { maxRetries: 1, backoff: { baseDelayMs: 0, jitter: false } },
+				ticket,
+				controller,
+				middleware: [],
+				bulkhead,
+				circuitBreaker: disabledBreaker(),
+				partition: "test",
+				firstError,
+				initialQueuedMs: 0,
+				onFailure,
+			}),
+		).rejects.toBeInstanceOf(QueueFullError);
+
+		expect(onFailure).not.toHaveBeenCalled();
+		expect(ticket.isCancelled).toBe(true);
 	});
 });

@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `Bulkhead.run()` leaked a phantom running-slot when the global semaphore rejected with `QueueFullError` (the global concurrency cap was saturated mid-retry), permanently degrading that partition's effective concurrency by one per occurrence (#72).
 - A `QueueFullError` mid-retry discarded the `queuedMs` already accumulated by retries that had run before it, undercounting exactly the signal `queuedMs` exists to report (#72).
+- `cancel()`ing a ticket while it was mid-retry and about to hit a `QueueFullError`, or while a first attempt's global-permit acquire was still pending, could still emit a spurious `failure` event afterward — violating "exactly one of success/failure/cancelled per ticket" (#77).
+- `Bulkhead.run()` released a task's semaphore permit *after* draining the next queued waiter instead of before, so that waiter's own `semaphore.acquire()` could spuriously reject with `QueueFullError` even though a permit was about to free (#77).
+- A `QueueFullError` from a saturated global semaphore during a retry reported one more `attempts` than actually ran (the rejected call never dispatched the request), and dropped whatever time that same attempt had already spent waiting in its own partition's queue before hitting the global cap (#77).
 
 ## [1.0.0] - 2026-09-07
 

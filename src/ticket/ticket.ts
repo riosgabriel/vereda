@@ -177,6 +177,15 @@ export class Ticket<T> {
 		return this._cancelled;
 	}
 
+	/** True once this ticket has reached a terminal state by any path — a
+	 *  normal `done` transition or `cancel()` (which resolves the ticket
+	 *  directly, bypassing `done`). A terminal-event emitter must check this
+	 *  before firing, or a result racing a concurrent cancel() can emit a
+	 *  second, contradictory terminal event for the same ticket. */
+	get isSettled(): boolean {
+		return this._status.state === "done" || this._cancelled;
+	}
+
 	// -- Internal mutators (private, accessed via TicketController) ------------
 
 	// biome-ignore lint/correctness/noUnusedPrivateClassMembers: reached via bracket notation from createTicket(); Biome cannot see that access.

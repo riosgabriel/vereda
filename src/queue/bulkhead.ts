@@ -56,14 +56,22 @@ export class Bulkhead {
 		return new Promise<T>((resolve, reject) => {
 			const execute = () => {
 				this.running++;
-				const runTask = () => {
+				// `release`, when given, must run BEFORE _releaseSlot(): releasing
+				// the slot synchronously drains the next waiter, which may call
+				// semaphore.acquire() immediately — if the permit hasn't actually
+				// been freed yet (i.e. this ran after _releaseSlot instead of
+				// before), that acquire can spuriously see none available and
+				// reject even though one was about to free.
+				const runTask = (release?: () => void) => {
 					onDequeue?.(Date.now() - enqueuedAt);
 					return task().then(
 						(result) => {
+							release?.();
 							this._releaseSlot();
 							resolve(result);
 						},
 						(err) => {
+							release?.();
 							this._releaseSlot();
 							reject(err);
 						},
@@ -74,12 +82,15 @@ export class Bulkhead {
 					semaphore.acquire().then(
 						(release) => {
 							// void: outcomes are routed to the outer resolve/reject inside runTask.
-							void runTask().finally(release);
+							void runTask(release);
 						},
 						(err) => {
 							// The partition slot was granted but the global semaphore
 							// rejected (queue full) — release the slot we already
 							// counted, or it leaks as a permanently phantom-running slot.
+							// Report how long this attempt actually waited before being
+							// told no; it never reached runTask's own onDequeue call.
+							onDequeue?.(Date.now() - enqueuedAt);
 							this._releaseSlot();
 							reject(err);
 						},

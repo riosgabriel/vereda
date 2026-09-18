@@ -202,7 +202,7 @@ export class HttpClient {
 				err instanceof RequestError
 					? err
 					: new NetworkError(err instanceof Error ? err.message : "Unexpected error", { cause: err });
-			if (ticket.status.state !== "done" && !ticket.isCancelled) {
+			if (!ticket.isSettled) {
 				const durationMs = Date.now() - startTime;
 				this.emit("failure", {
 					ticketId: ticket.id,
@@ -630,7 +630,7 @@ export class HttpClient {
 				err instanceof RequestError
 					? err
 					: new NetworkError(err instanceof Error ? err.message : "Queue error", { cause: err });
-			if (ticket.status.state !== "done" && !ticket.isCancelled) {
+			if (!ticket.isSettled) {
 				this.emit("failure", {
 					ticketId: ticket.id,
 					url: displayUrl,
