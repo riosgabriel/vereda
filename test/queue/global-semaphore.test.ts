@@ -222,11 +222,9 @@ describe("Global semaphore (5.2)", () => {
 				retry: { maxRetries: 0 },
 			});
 
-			const events: string[] = [];
+			const allEvents: { name: string; ticketId: string }[] = [];
 			for (const name of ["success", "failure", "cancelled"] as const) {
-				client.on(name, (data) => {
-					if (data.ticketId === second.id) events.push(name);
-				});
+				client.on(name, (data) => allEvents.push({ name, ticketId: data.ticketId }));
 			}
 
 			const first = client.get("/a");
@@ -243,7 +241,8 @@ describe("Global semaphore (5.2)", () => {
 			}
 			// The real regression: no spurious "failure" event once the ticket
 			// was already resolved by cancel().
-			expect(events).not.toContain("failure");
+			const secondEvents = allEvents.filter((e) => e.ticketId === second.id).map((e) => e.name);
+			expect(secondEvents).not.toContain("failure");
 
 			await client.close();
 		} finally {
