@@ -113,17 +113,18 @@ describe("runRetryLoop", () => {
 		expect(onFailure).toHaveBeenCalledWith(expect.any(QueueFullError), 2, 30);
 	});
 
-	it("does not settle a ticket via onFailure if it was already cancelled before a retry's QueueFullError arrives (regression)", async () => {
+	it("notifies via onCancelled, not onFailure, if the ticket was already cancelled before a retry's QueueFullError arrives (regression)", async () => {
 		// Found by review: the QueueFullError catch called onFailure/markDone
-		// unconditionally, with no settlement guard — unlike the two client.ts
-		// .catch() blocks that already had one for the identical hazard. If the
-		// caller cancels the ticket while bulkhead.run() is still pending,
-		// cancel() (ticket.ts) resolves the ticket's promise directly; onFailure
-		// firing afterward would still reach the client and emit a spurious
-		// "failure" event for an already-settled ticket.
+		// unconditionally, with no cancellation check — unlike every other
+		// checkpoint in this same loop. If the caller cancels the ticket while
+		// bulkhead.run() is still pending, cancel() (ticket.ts) resolves the
+		// ticket's promise directly; onFailure firing afterward would still
+		// reach the client and emit a spurious "failure" event for a ticket
+		// whose outcome was actually cancellation.
 		const { ticket, controller } = createTicket<unknown>("t-cancel-races-queuefull");
 		const firstError = new NetworkError("connection reset");
 		const onFailure = vi.fn();
+		const onCancelled = vi.fn();
 
 		const bulkhead = {
 			name: "test",
@@ -151,10 +152,14 @@ describe("runRetryLoop", () => {
 				firstError,
 				initialQueuedMs: 0,
 				onFailure,
+				onCancelled,
 			}),
 		).rejects.toBeInstanceOf(QueueFullError);
 
 		expect(onFailure).not.toHaveBeenCalled();
+		// attempts is 1 (the pre-loop first attempt) — the rejected bulkhead.run()
+		// call never dispatched a task, so it doesn't count as a real attempt.
+		expect(onCancelled).toHaveBeenCalledWith(1, 0);
 		expect(ticket.isCancelled).toBe(true);
 	});
 });

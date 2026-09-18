@@ -209,17 +209,21 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 				// must be backed out; it reports attempts actually dispatched.
 				const attemptsMade = totalAttempts - 1;
 				onCleanup?.();
-				// Only settle if nothing else already has — e.g. the caller may
-				// have called ticket.cancel() while this bulkhead.run() was still
-				// pending, which resolves the ticket directly (ticket.ts) without
-				// going through onFailure/markDone here. Emit failure here (not
-				// in the client's outer .catch) because totalQueuedMs — the wait
-				// accumulated by retries that already ran — only exists in this
-				// closure; the outer catch only has the first attempt's queuedMs.
-				if (!ticket.isSettled) {
+				if (ticket.isCancelled) {
+					// cancel() may have resolved the ticket directly (ticket.ts),
+					// bypassing markDone, while this bulkhead/semaphore acquisition
+					// was still pending. Match every other cancellation checkpoint
+					// in this loop: notify via onCancelled, not onFailure, so the
+					// lifecycle-event stream agrees with the ticket's actual outcome.
+					onCancelled?.(attemptsMade, totalQueuedMs);
+				} else {
+					// Emit failure here (not in the client's outer .catch) because
+					// totalQueuedMs — the wait accumulated by retries that already
+					// ran — only exists in this closure; the outer catch only has
+					// the first attempt's queuedMs.
 					onFailure?.(err, attemptsMade, totalQueuedMs);
-					controller.markDone({ success: false, error: err } as never);
 				}
+				controller.markDone({ success: false, error: err } as never);
 				throw err;
 			}
 			throw err;
