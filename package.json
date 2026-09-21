@@ -71,7 +71,7 @@
 		"@arethetypeswrong/cli": "^0.18.5",
 		"@biomejs/biome": "^2.5.13",
 		"@types/node": "^26.5.1",
-		"@vitest/coverage-v8": "5.0.0",
+		"@vitest/coverage-v8": "5.0.1",
 		"husky": "^9.1.7",
 		"publint": "^0.3.24",
 		"tsx": "^4.23.13",
