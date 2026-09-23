@@ -74,7 +74,7 @@
 		"@vitest/coverage-v8": "5.0.1",
 		"husky": "^9.1.7",
 		"publint": "^0.3.24",
-		"tsx": "^4.23.13",
+		"tsx": "^4.23.14",
 		"typedoc": "^0.28.20",
 		"typescript": "^6.0.0",
 		"vitest": "^5.0.1",
