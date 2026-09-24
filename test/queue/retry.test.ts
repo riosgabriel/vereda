@@ -18,6 +18,7 @@ describe("runRetryLoop", () => {
 
 		await runRetryLoop({
 			url: "http://example.test/resource",
+			displayUrl: "http://example.test/resource",
 			requestOptions: {},
 			timeoutConfig: {},
 			retryConfig: { maxRetries: 0 },
@@ -50,6 +51,7 @@ describe("runRetryLoop", () => {
 
 		await runRetryLoop({
 			url: "http://example.test/resource",
+			displayUrl: "http://example.test/resource",
 			requestOptions: {},
 			timeoutConfig: {},
 			retryConfig: { maxRetries: 3 },
@@ -91,6 +93,7 @@ describe("runRetryLoop", () => {
 		await expect(
 			runRetryLoop({
 				url: "http://example.test/resource",
+				displayUrl: "http://example.test/resource",
 				requestOptions: {},
 				timeoutConfig: {},
 				retryConfig: { maxRetries: 2, backoff: { baseDelayMs: 0, jitter: false } },
@@ -140,6 +143,7 @@ describe("runRetryLoop", () => {
 		await expect(
 			runRetryLoop({
 				url: "http://example.test/resource",
+				displayUrl: "http://example.test/resource",
 				requestOptions: {},
 				timeoutConfig: {},
 				retryConfig: { maxRetries: 1, backoff: { baseDelayMs: 0, jitter: false } },

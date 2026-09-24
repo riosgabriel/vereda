@@ -142,6 +142,16 @@ export async function executeRequest(req: ExecuteRequest, middleware: Middleware
 				if (signal.aborted || options.signal?.aborted) {
 					return { kind: "cancelled" };
 				}
+				// The body arrived but isn't JSON: the server answered, and asking
+				// again will get the same answer — a parse failure, never retried
+				// (B6). Anything else here is the body stream dying mid-read
+				// (undici's "terminated" TypeError), which is a real network error.
+				if (err instanceof SyntaxError) {
+					return {
+						kind: "error",
+						error: new ValidationError("Response body is not valid JSON", [err], err),
+					};
+				}
 				return {
 					kind: "error",
 					error: new NetworkError("Failed to parse response body as JSON", {

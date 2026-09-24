@@ -12,16 +12,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Per-partition circuit breaker (opt-in via `circuitBreaker: { enabled: true }`), mirroring the bulkhead registry: trips on consecutive failures (default) or a rolling failure-rate window, then half-opens after `resetTimeoutMs` to trial recovery. Rejects immediately with the new `CircuitOpenError` — no attempt is made while open (#60).
 - Real `queuedMs` on `success`/`failure`/`cancelled` lifecycle events — total time a ticket spent waiting for a bulkhead/global-semaphore permit, summed across all attempts (previously always `0`). New `vereda.global_queue_depth` gauge reports the global concurrency cap's (D1) wait-queue backlog; `vereda.queue_depth` (declared previously but never emitted) now reports real per-partition backlog. See [Wiring a metrics sink](docs/operations.md#wiring-a-metrics-sink) (#72).
 
+- `redactUrl` is exported from `vereda`, for redacting URLs in your own logging the same way the client does. `requestLogger()` accepts `redactQuery` (default `true`).
+- `Semaphore.acquire()` and `Bulkhead.run()` accept an `AbortSignal`: a waiter whose signal aborts leaves the queue.
+
 ### Changed (breaking)
 
 - `ClientConfig.timeout.attemptMs` is now required. Every other default in the library fails safe when omitted; an omitted per-attempt timeout previously meant "unbounded." Pass `Infinity` explicitly to opt out of a cap. Partition- and request-level `timeout` remain optional and inherit the client-level default (#60).
 
 ### Changed
 
+- A response body that isn't valid JSON (when `parse` is set) now resolves with a `ValidationError` and is never retried. Previously it was a `NetworkError`, so it was retried against a server that would give the same answer. A body stream that fails mid-read is still a retriable `NetworkError`.
+- `redactQuery` (default `true`) now also redacts userinfo credentials (`https://user:pass@host` → `https://[redacted]@host`) and the URLs embedded in `TimeoutError`/`DeadlineExceededError` (`message` and `url`). The bundled `requestLogger()` middleware now redacts by default.
 - The circuit breaker now counts errors it doesn't classify as failures (e.g. a 404 or a `ValidationError`) as successes: the host answered. A half-open trial answered with a 404 closes the circuit; while closed, such a response resets the consecutive-failure count and counts as a non-failure in the rolling window. Previously these responses were ignored entirely.
 
 ### Fixed
 
+- **With `baseUrl` set, retries never reached the server.** Every retry fetched the caller's bare relative path (e.g. `/users`) instead of `baseUrl` + path, failed on the client with a `NetworkError`, and burned the full retry budget.
+- A partition-level `timeout.totalMs` was ignored unless the partition was named explicitly with `options.partition`, so it never applied to the default host-derived partitions.
+- A first attempt cut off by `timeout.totalMs` emitted a `cancelled` lifecycle event while the ticket resolved with `DeadlineExceededError`. It now emits `failure`, as the retry path already did.
+- The query-redacted URL leaked unredacted into the `failure` event when the retry policy or `retryWhen` rejected a first-attempt error.
+- `close({ drain: true })` with a missing or non-positive `timeoutMs` marked the client closed before throwing, so a corrected second `close()` returned immediately without draining. It now rejects and leaves the client open. A `close()` called while a drain is in progress now waits for that drain instead of resolving immediately.
+- A ticket cancelled (or past its `totalMs`) while waiting for a partition slot or a global concurrency permit kept its place in the queue until it reached the front, so live requests could get a `QueueFullError`. Waiters now leave the queue as soon as their ticket aborts.
 - The circuit breaker could get stuck half-open indefinitely. A half-open trial that ended in a non-failure error (e.g. a 404 or a failed `parse`), was cancelled, hit its deadline, was vetoed by `retryWhen`, or got a `QueueFullError` never gave its trial slot back, so every later request to that partition failed with `CircuitOpenError` until the partition sat idle for 60s. Also, a request admitted while the circuit was closed that finished during a later half-open period could close the circuit on behalf of trials still in flight.
 - A `ticket.on("done" | "update" | "error")` listener that threw left `ticket.toPromise()` unresolved forever, and stopped the remaining listeners from running.
 - A client lifecycle listener or `metrics` sink that threw turned a successful request into a `NetworkError` failure (and emitted a spurious `failure` event). Listener and sink errors are now isolated from the request and rethrown on a microtask.

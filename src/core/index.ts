@@ -26,6 +26,7 @@ export {
 } from "./errors.js";
 export type { MetricsSink, MetricTags } from "./metrics.js";
 export { METRICS } from "./metrics.js";
+export { redactUrl } from "./redact.js";
 export type {
 	BackoffFn,
 	BackoffOptions,

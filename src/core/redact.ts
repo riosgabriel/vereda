@@ -2,16 +2,26 @@
 // URL redaction for safe logging
 // ---------------------------------------------------------------------------
 
+/** Userinfo in an absolute URL's authority: `scheme://user:pass@`. Greedy up
+ *  to the last `@` before the path/query/fragment, as the URL spec parses it. */
+const USERINFO = /^([a-zA-Z][a-zA-Z\d+.-]*:\/\/)[^/?#]*@/;
+
 /**
- * Redacts query parameter values in a URL, replacing each value with
- * `[redacted]` while preserving parameter keys.
+ * Redacts the secret-bearing parts of a URL for safe logging: userinfo
+ * credentials become `[redacted]@`, and each query parameter value becomes
+ * `[redacted]` while its key is preserved.
  *
- * Example: `https://api.example.com/auth?token=abc123&user=joe`
- *      → `https://api.example.com/auth?token=[redacted]&user=[redacted]`
+ * Example: `https://bob:hunter2@api.example.com/auth?token=abc123&user=joe`
+ *      → `https://[redacted]@api.example.com/auth?token=[redacted]&user=[redacted]`
  *
- * URLs without query strings are returned unchanged.
+ * URLs with neither are returned unchanged.
  */
 export function redactUrl(url: string): string {
+	const withoutUserinfo = url.replace(USERINFO, "$1[redacted]@");
+	return redactQueryValues(withoutUserinfo);
+}
+
+function redactQueryValues(url: string): string {
 	const qIdx = url.indexOf("?");
 	if (qIdx === -1) return url;
 

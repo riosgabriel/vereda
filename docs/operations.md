@@ -69,12 +69,12 @@ await client.close({ drain: true, timeoutMs: 30_000 });
 
 Either way, all internal timers (backoff sleeps, `attemptMs`/`totalMs` deadlines) are `unref()`ed from the moment they're created, so a Vereda client never by itself keeps the Node event loop alive — `close()` is about resolving in-flight *tickets* cleanly, not about unblocking process exit.
 
-Call `close()` exactly once per client, before the process exits, in whichever shutdown handler your deployment already uses.
+Call `close()` once per client, before the process exits, in whichever shutdown handler your deployment already uses. Extra calls are harmless: a `close()` that arrives while a drain is in progress returns the same promise, so it resolves only when the shutdown actually finishes. `close({ drain: true })` without a positive `timeoutMs` rejects with a `ConfigurationError` and leaves the client open.
 
 ## Redaction
 
-`redactQuery` defaults to `true`. With it on, every URL that appears in a lifecycle event or passed to your `logger` has its query *values* replaced with `[redacted]` (keys are preserved, so `?token=abc123` becomes `?token=[redacted]`) — this covers the common case of API keys, session tokens, or PII passed as query parameters. Request/response *headers* are never logged or emitted by Vereda regardless of this setting, so an `Authorization` header is never at risk of leaking into logs via the library itself.
+`redactQuery` defaults to `true`. With it on, every URL that appears in a lifecycle event, is passed to your `logger`, or is embedded in an error (`TimeoutError`/`DeadlineExceededError`'s `message` and `url`, and so `MaxRetriesExceededError.message` too) has its query *values* replaced with `[redacted]` (keys are preserved, so `?token=abc123` becomes `?token=[redacted]`), and any userinfo credentials (`https://user:pass@host`) replaced with `[redacted]@`. This covers the common case of API keys, session tokens, or PII passed in the URL. Request/response *headers* are never logged or emitted by Vereda regardless of this setting, so an `Authorization` header is never at risk of leaking into logs via the library itself.
 
-Redaction only touches what Vereda itself surfaces (event payloads, log calls). If your own middleware logs `ctx`/`options` directly, or if the raw `Response`/request body contains sensitive data, redact that yourself before logging it.
+Redaction only touches what Vereda itself surfaces (event payloads, log calls, error messages). The bundled `requestLogger()` middleware redacts the same way by default. Middleware can't see the client's config, so pass `requestLogger({ redactQuery: false })` to turn it off there too. If your own middleware logs `ctx`/`options` directly, or the raw `Response` (including `HttpError.response.url`) or request body contains sensitive data, redact that yourself before logging it. `redactUrl` is exported from `vereda` for that.
 
 Set `redactQuery: false` only in trusted environments (e.g. local development against a mock server) where seeing full URLs in logs is worth more than the leak risk.

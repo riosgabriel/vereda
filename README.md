@@ -339,7 +339,7 @@ client.get("/api/data", {
 
 ### Typed results
 
-Pass a `parse` function to validate and type the response body. `parse` is just `(data: unknown) => T`, and any validator that throws on failure works. A failed parse resolves the ticket with a `ValidationError` and is never retried.
+Pass a `parse` function to validate and type the response body. `parse` is just `(data: unknown) => T`, and any validator that throws on failure works. A failed parse resolves the ticket with a `ValidationError` and is never retried. So does a body that isn't valid JSON: the server answered, and asking again would get the same answer.
 
 ```typescript
 const ticket = client.get<User>("/users/1", {
@@ -382,7 +382,7 @@ Middleware wraps every attempt (including retries) in the standard onion shape. 
 import { defaultHeaders, requestLogger } from "vereda/middleware";
 
 client.use(defaultHeaders({ Authorization: "Bearer token123" }));
-client.use(requestLogger());
+client.use(requestLogger()); // redacts URL query values/credentials by default
 
 client.use(async (ctx, next) => {
   console.log("Request:", ctx.url, "attempt", ctx.attempt);
@@ -445,7 +445,7 @@ Errors are a closed hierarchy under `RequestError`. Every class carries a readon
 | `RetryableStatusError` | `"retryable_status"` | Non-2xx response matching `retry.retryOnStatus` (e.g. `503`) | `statusCode`, `response`, `retryAfterMs?` |
 | `TimeoutError` | `"timeout"` | Attempt exceeded `timeout.attemptMs` | `url`, `timeoutMs` |
 | `DeadlineExceededError` | `"deadline"` | Ticket exceeded `timeout.totalMs` (terminal — not retried) | `url`, `totalMs` |
-| `ValidationError` | `"validation"` | Response body failed `parse` (terminal — never retried) | `issues`, `cause` |
+| `ValidationError` | `"validation"` | Response body failed `parse` or isn't valid JSON (terminal — never retried) | `issues`, `cause` |
 | `CancelledError` | `"cancelled"` | Ticket cancelled or signal aborted (terminal) | — |
 | `QueueFullError` | `"queue_full"` | Partition's queue was full when a retry tried to enqueue (terminal) | `partition`, `queueSize`, `maxQueueSize` |
 | `ConfigurationError` | `"configuration"` | Invalid client/request config, or a body factory that threw (terminal) | `key` |

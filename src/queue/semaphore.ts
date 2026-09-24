@@ -1,4 +1,4 @@
-import { QueueFullError } from "../core/errors.js";
+import { CancelledError, QueueFullError } from "../core/errors.js";
 import { DEFAULT_GLOBAL_QUEUE_SIZE } from "../core/types.js";
 
 /**
@@ -31,23 +31,50 @@ export class Semaphore {
 		return this.available;
 	}
 
-	/** Acquire a permit. Resolves to a `release` function when granted. */
-	acquire(): Promise<() => void> {
+	/** Acquire a permit. Resolves to a `release` function when granted;
+	 *  calling `release` more than once is a no-op.
+	 *
+	 *  If `signal` aborts while the caller is still queued, the waiter is
+	 *  removed from the queue — freeing its place for live callers — and the
+	 *  promise rejects with `CancelledError` (B9). An already-aborted signal
+	 *  rejects immediately without taking a permit. */
+	acquire(signal?: AbortSignal): Promise<() => void> {
+		if (signal?.aborted) {
+			return Promise.reject(new CancelledError());
+		}
+
 		if (this.available > 0) {
 			this.available--;
-			return Promise.resolve(() => this.release());
+			return Promise.resolve(this.releaseOnce());
 		}
 
 		if (this.waitQueue.length >= this.maxQueueSize) {
 			return Promise.reject(new QueueFullError("global", this.waitQueue.length, this.maxQueueSize));
 		}
 
-		return new Promise<() => void>((resolve) => {
-			this.waitQueue.push(() => {
+		return new Promise<() => void>((resolve, reject) => {
+			const onAbort = () => {
+				const idx = this.waitQueue.indexOf(grant);
+				if (idx !== -1) this.waitQueue.splice(idx, 1);
+				reject(new CancelledError());
+			};
+			const grant = () => {
+				signal?.removeEventListener("abort", onAbort);
 				this.available--;
-				resolve(() => this.release());
-			});
+				resolve(this.releaseOnce());
+			};
+			signal?.addEventListener("abort", onAbort, { once: true });
+			this.waitQueue.push(grant);
 		});
+	}
+
+	private releaseOnce(): () => void {
+		let released = false;
+		return () => {
+			if (released) return;
+			released = true;
+			this.release();
+		};
 	}
 
 	private release(): void {
