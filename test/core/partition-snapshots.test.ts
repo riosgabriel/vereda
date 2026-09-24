@@ -56,8 +56,11 @@ describe("Partition snapshots (5.4)", () => {
 			// Wait for both to resolve.
 			await Promise.all([t1.toPromise(), t2.toPromise()]);
 
-			// Both failed (503 + no more retries), so both attempted twice.
-			expect(requestCount).toBe(2);
+			// Both failed (503 + no more retries), so both attempted twice — four
+			// server hits. (This once read 2: retries used to fetch the bare
+			// relative path instead of baseUrl + path, and never reached the
+			// server, B16.)
+			expect(requestCount).toBe(4);
 
 			// After completion, snapshot should return to zeros.
 			const snapshots = client.partitions();

@@ -1,4 +1,4 @@
-import { QueueFullError } from "../core/errors.js";
+import { CancelledError, QueueFullError } from "../core/errors.js";
 import { DEFAULT_CONCURRENCY, DEFAULT_MAX_QUEUE_SIZE, type PartitionConfig } from "../core/types.js";
 import type { Semaphore } from "./semaphore.js";
 
@@ -50,11 +50,32 @@ export class Bulkhead {
 	 *  partition slot and released before it (D4).
 	 *  `onDequeue`, if given, fires once — right before `task()` starts —
 	 *  with the ms elapsed since `run()` was called, covering both the
-	 *  partition wait and the semaphore wait. */
-	run<T>(task: () => Promise<T>, semaphore?: Semaphore, onDequeue?: (queuedMs: number) => void): Promise<T> {
+	 *  partition wait and the semaphore wait.
+	 *  If `signal` aborts while the caller is still waiting (for a partition
+	 *  slot or a global permit), it leaves the queue and the promise rejects
+	 *  with `CancelledError` without running `task` (B9). Once `task` has
+	 *  started, cancelling it is the task's own job. */
+	run<T>(
+		task: () => Promise<T>,
+		semaphore?: Semaphore,
+		onDequeue?: (queuedMs: number) => void,
+		signal?: AbortSignal,
+	): Promise<T> {
 		const enqueuedAt = Date.now();
 		return new Promise<T>((resolve, reject) => {
+			if (signal?.aborted) {
+				reject(new CancelledError());
+				return;
+			}
+
+			const onAbort = () => {
+				const idx = this._waitQueue.indexOf(execute);
+				if (idx !== -1) this._waitQueue.splice(idx, 1);
+				reject(new CancelledError());
+			};
+
 			const execute = () => {
+				signal?.removeEventListener("abort", onAbort);
 				this.running++;
 				// `release`, when given, must run BEFORE _releaseSlot(): releasing
 				// the slot synchronously drains the next waiter, which may call
@@ -79,14 +100,15 @@ export class Bulkhead {
 				};
 
 				if (semaphore) {
-					semaphore.acquire().then(
+					semaphore.acquire(signal).then(
 						(release) => {
 							// void: outcomes are routed to the outer resolve/reject inside runTask.
 							void runTask(release);
 						},
 						(err) => {
 							// The partition slot was granted but the global semaphore
-							// rejected (queue full) — release the slot we already
+							// rejected (queue full, or cancelled while waiting for a
+							// permit) — release the slot we already
 							// counted, or it leaks as a permanently phantom-running slot.
 							// Report how long this attempt actually waited before being
 							// told no; it never reached runTask's own onDequeue call.
@@ -104,6 +126,7 @@ export class Bulkhead {
 			if (this.running < this.concurrency) {
 				execute();
 			} else if (this._waitQueue.length < this.maxQueueSize) {
+				signal?.addEventListener("abort", onAbort, { once: true });
 				this._waitQueue.push(execute);
 			} else {
 				reject(new QueueFullError(this.name, this._waitQueue.length, this.maxQueueSize));

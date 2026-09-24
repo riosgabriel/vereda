@@ -1,3 +1,5 @@
+import { redactUrl } from "../core/redact.js";
+
 export type { MiddlewareFn, NextFn, RequestContext } from "../queue/executor.js";
 
 /**
@@ -20,30 +22,38 @@ export function defaultHeaders(headers: HeadersInit): import("../queue/executor.
 }
 
 /**
- * Logs request timing to the console (or a provided logger).
+ * Logs request timing to the console (or a provided logger). Logged URLs are
+ * redacted like the client's own (`redactUrl`): query values and userinfo
+ * credentials are replaced with `[redacted]`. Middleware can't see the
+ * client's `redactQuery` setting, so pass `redactQuery: false` here too to
+ * log raw URLs.
  *
  * @example
  * client.use(requestLogger());
  */
 export function requestLogger(options?: {
 	log?: (msg: string, meta: Record<string, unknown>) => void;
+	/** @default true */
+	redactQuery?: boolean;
 }): import("../queue/executor.js").MiddlewareFn {
 	// biome-ignore lint/suspicious/noConsole: console is the intended default sink for this opt-in logger middleware; callers override it via options.log.
 	const log = options?.log ?? ((msg, meta) => console.log(msg, meta));
+
+	const shownUrl = options?.redactQuery === false ? (url: string) => url : redactUrl;
 
 	return async (ctx, next) => {
 		const start = Date.now();
 		try {
 			const response = await next(ctx);
 			log("Request completed", {
-				url: ctx.url,
+				url: shownUrl(ctx.url),
 				status: response.status,
 				durationMs: Date.now() - start,
 			});
 			return response;
 		} catch (err) {
 			log("Request failed", {
-				url: ctx.url,
+				url: shownUrl(ctx.url),
 				error: err instanceof Error ? err.message : String(err),
 				durationMs: Date.now() - start,
 			});

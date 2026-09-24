@@ -55,6 +55,7 @@ export class HttpClient {
 	private readonly redactQuery: boolean;
 	private readonly customFetch: typeof globalThis.fetch | undefined;
 	private _closed = false;
+	private _closing: Promise<void> | undefined;
 	private readonly _inflightTickets = new Set<InflightTicket>();
 
 	private constructor(config: ClientConfig) {
@@ -148,9 +149,10 @@ export class HttpClient {
 
 		// Total deadline: a single unref'd timer that aborts the ticket signal
 		// on expiry, cancelling in-flight attempts and breaking sleep (#R3).
-		// Use the explicit partition if available for the merge; the resolved
-		// partition (hostname) will be used for retries in _fireFirstAttempt.
-		const timeoutConfig = this.mergeTimeout(options, options.partition);
+		// Merged against the same partition _fireFirstAttempt resolves — the
+		// host, unless named explicitly — or a host partition's totalMs is
+		// silently ignored (B4).
+		const timeoutConfig = this.mergeTimeout(options, this.tryResolvePartition(url, options));
 		let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
 		const cleanupDeadline = () => {
 			if (deadlineTimer !== undefined) {
@@ -342,16 +344,36 @@ export class HttpClient {
 			const usePartitionBulkhead = bulkhead.limitFirstAttempts;
 			let queuedMs = 0;
 			let result: Awaited<ReturnType<typeof execute>>;
+			// Queue waits are abort-aware (B9): a ticket cancelled — or past its
+			// deadline — while waiting leaves the queue immediately and lands in
+			// the "cancelled" case below, which tells the two apart.
+			const cancelledWhileQueued = (err: unknown): Awaited<ReturnType<typeof execute>> => {
+				if (err instanceof CancelledError) return { kind: "cancelled" };
+				throw err;
+			};
 			if (usePartitionBulkhead) {
-				result = await bulkhead.run(execute, semaphore, (ms) => {
-					queuedMs = ms;
-				});
+				result = await bulkhead
+					.run(
+						execute,
+						semaphore,
+						(ms) => {
+							queuedMs = ms;
+						},
+						ticket.signal,
+					)
+					.catch(cancelledWhileQueued);
 			} else if (semaphore) {
 				const enqueuedAt = Date.now();
-				result = await semaphore.acquire().then((release) => {
-					queuedMs = Date.now() - enqueuedAt;
-					return execute().finally(release);
-				});
+				result = await semaphore.acquire(ticket.signal).then(
+					(release) => {
+						queuedMs = Date.now() - enqueuedAt;
+						return execute().finally(release);
+					},
+					(err: unknown) => {
+						queuedMs = Date.now() - enqueuedAt;
+						return cancelledWhileQueued(err);
+					},
+				);
 			} else {
 				result = await execute();
 			}
@@ -380,23 +402,16 @@ export class HttpClient {
 
 				case "cancelled": {
 					const durationMs = Date.now() - startTime;
-					this.emit("cancelled", {
-						ticketId: ticket.id,
-						url: displayUrl,
-						attempts: 1,
-						durationMs,
-						queuedMs,
-					});
+					// The deadline timer aborts the ticket signal without cancel(), so
+					// !isCancelled means the deadline fired: that's a failure, and the
+					// event must agree with the result (B7), as in the retry loop.
 					if (!ticket.isCancelled && isBoundedMs(timeoutConfig.totalMs)) {
-						controller.markDone({
-							success: false,
-							error: new DeadlineExceededError(url, timeoutConfig.totalMs),
-						} as never);
+						const error = new DeadlineExceededError(displayUrl, timeoutConfig.totalMs);
+						this.emit("failure", { ticketId: ticket.id, url: displayUrl, attempts: 1, durationMs, queuedMs, error });
+						controller.markDone({ success: false, error } as never);
 					} else {
-						controller.markDone({
-							success: false,
-							error: new CancelledError(),
-						} as never);
+						this.emit("cancelled", { ticketId: ticket.id, url: displayUrl, attempts: 1, durationMs, queuedMs });
+						controller.markDone({ success: false, error: new CancelledError() } as never);
 					}
 					cleanup();
 					return;
@@ -408,7 +423,7 @@ export class HttpClient {
 					permit.failure(result.error);
 					// Apply the unified retry gate (default policy + retryWhen). Errors
 					// that fail it (e.g. ValidationError, HttpError) resolve immediately.
-					if (this.vetoed(retryConfig, result.error, 0, options, ticket, controller, url, startTime, queuedMs)) {
+					if (this.vetoed(retryConfig, result.error, 0, options, ticket, controller, displayUrl, startTime, queuedMs)) {
 						cleanup();
 						return;
 					}
@@ -438,7 +453,7 @@ export class HttpClient {
 					this._scheduleInBulkhead(
 						ticket,
 						controller,
-						url,
+						fullUrl,
 						displayUrl,
 						options,
 						timeoutConfig,
@@ -454,11 +469,11 @@ export class HttpClient {
 					return;
 
 				case "timeout": {
-					const error = new TimeoutError(url, timeoutConfig.attemptMs ?? NO_TIMEOUT_CONFIGURED);
+					const error = new TimeoutError(displayUrl, timeoutConfig.attemptMs ?? NO_TIMEOUT_CONFIGURED);
 					// Record the raw attempt outcome against the circuit breaker
 					// regardless of what the retry policy decides to do with it.
 					permit.failure(error);
-					if (this.vetoed(retryConfig, error, 0, options, ticket, controller, url, startTime, queuedMs)) {
+					if (this.vetoed(retryConfig, error, 0, options, ticket, controller, displayUrl, startTime, queuedMs)) {
 						cleanup();
 						return;
 					}
@@ -469,7 +484,7 @@ export class HttpClient {
 							const durationMs = Date.now() - startTime;
 							this.emit("failure", {
 								ticketId: ticket.id,
-								url: this.logUrl(url),
+								url: displayUrl,
 								attempts: 1,
 								durationMs,
 								queuedMs,
@@ -484,7 +499,7 @@ export class HttpClient {
 					this._scheduleInBulkhead(
 						ticket,
 						controller,
-						url,
+						fullUrl,
 						displayUrl,
 						options,
 						timeoutConfig,
@@ -515,7 +530,7 @@ export class HttpClient {
 		options: RequestOptions<unknown>,
 		ticket: Ticket<unknown>,
 		controller: TicketController<unknown>,
-		url: string,
+		displayUrl: string,
 		startTime: number,
 		queuedMs: number,
 	): boolean {
@@ -528,7 +543,7 @@ export class HttpClient {
 			const durationMs = Date.now() - startTime;
 			this.emit("failure", {
 				ticketId: ticket.id,
-				url,
+				url: displayUrl,
 				attempts: 1,
 				durationMs,
 				queuedMs,
@@ -543,7 +558,7 @@ export class HttpClient {
 	private _scheduleInBulkhead(
 		ticket: Ticket<unknown>,
 		controller: TicketController<unknown>,
-		url: string,
+		fullUrl: string,
 		displayUrl: string,
 		options: RequestOptions<unknown>,
 		timeoutConfig: TimeoutConfig,
@@ -567,7 +582,8 @@ export class HttpClient {
 		// for the entire retry lifetime (#5, D4). QueueFullError from the loop
 		// is caught here and surfaced as a terminal ticket failure.
 		runRetryLoop({
-			url,
+			url: fullUrl,
+			displayUrl,
 			requestOptions: options,
 			timeoutConfig,
 			retryConfig,
@@ -729,13 +745,20 @@ export class HttpClient {
 	 *
 	 *  `timeoutMs` is required when `drain` is true to prevent indefinite
 	 *  hangs — use a value that fits your shutdown budget. */
-	async close(opts?: CloseOptions): Promise<void> {
-		if (this._closed) return; // idempotent
-		this._closed = true;
-
+	close(opts?: CloseOptions): Promise<void> {
+		// Validate before committing to close: a rejected call must leave the
+		// client open, or a corrected retry would no-op without draining (B8).
 		if (opts?.drain && (!opts.timeoutMs || opts.timeoutMs <= 0)) {
-			throw new ConfigurationError("close({ drain: true }) requires a positive timeoutMs");
+			return Promise.reject(new ConfigurationError("close({ drain: true }) requires a positive timeoutMs"));
 		}
+		// Idempotent, and a second caller waits for the same shutdown instead
+		// of resolving while the first one is still draining.
+		this._closing ??= this._close(opts);
+		return this._closing;
+	}
+
+	private async _close(opts?: CloseOptions): Promise<void> {
+		this._closed = true;
 		const { drain = false, timeoutMs = 0 } = opts ?? {};
 		const entries = [...this._inflightTickets];
 
@@ -773,6 +796,17 @@ export class HttpClient {
 	// ---------------------------------------------------------------------------
 	// Helpers
 	// ---------------------------------------------------------------------------
+
+	/** The partition `_fireFirstAttempt` will use, or undefined when the URL
+	 *  can't be resolved (that path surfaces the error on the ticket). */
+	private tryResolvePartition(url: string, options: RequestOptions<unknown>): string | undefined {
+		if (options.partition !== undefined) return options.partition;
+		try {
+			return new URL(this.resolveUrl(url)).host;
+		} catch {
+			return undefined;
+		}
+	}
 
 	private resolveUrl(url: string): string {
 		if (this.config.baseUrl) {

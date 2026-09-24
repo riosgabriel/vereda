@@ -26,7 +26,10 @@ import { type RetryPolicyContext, shouldRetry } from "./policy.js";
 import type { Semaphore } from "./semaphore.js";
 
 export interface RetryJobOptions {
+	/** Fully resolved request URL (baseUrl applied) — what each retry fetches. */
 	url: string;
+	/** `url` as it may appear in errors/logs (query-redacted unless disabled). */
+	displayUrl: string;
 	requestOptions: RequestOptions<unknown>;
 	timeoutConfig: TimeoutConfig;
 	retryConfig: RetryConfig;
@@ -69,6 +72,7 @@ export interface RetryJobOptions {
 export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 	const {
 		url,
+		displayUrl,
 		requestOptions,
 		timeoutConfig,
 		retryConfig,
@@ -152,7 +156,7 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 				// while user cancellation sets _cancelled = true via cancel().
 				onCleanup?.();
 				if (!ticket.isCancelled && isBoundedMs(timeoutConfig.totalMs)) {
-					const error = new DeadlineExceededError(url, timeoutConfig.totalMs);
+					const error = new DeadlineExceededError(displayUrl, timeoutConfig.totalMs);
 					onFailure?.(error, totalAttempts, totalQueuedMs);
 					controller.markDone({
 						success: false,
@@ -205,9 +209,16 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 					(queuedMs) => {
 						totalQueuedMs += queuedMs;
 					},
+					ticket.signal,
 				);
 			} catch (err) {
-				if (err instanceof QueueFullError) {
+				if (err instanceof CancelledError) {
+					// Cancelled (or deadline-aborted) while still queued for a slot or
+					// permit (B9): nothing was dispatched, so back out the optimistic
+					// totalAttempts++ and let the "cancelled" case settle it.
+					totalAttempts--;
+					result = { kind: "cancelled" };
+				} else if (err instanceof QueueFullError) {
 					// Queue is at capacity — bulkhead.run() rejected before task()
 					// ever ran, so this iteration's optimistic totalAttempts++ above
 					// must be backed out; it reports attempts actually dispatched.
@@ -229,8 +240,9 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 					}
 					controller.markDone({ success: false, error: err } as never);
 					throw err;
+				} else {
+					throw err;
 				}
-				throw err;
 			}
 
 			switch (result.kind) {
@@ -247,7 +259,7 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 				case "cancelled":
 					onCleanup?.();
 					if (!ticket.isCancelled && isBoundedMs(timeoutConfig.totalMs)) {
-						const error = new DeadlineExceededError(url, timeoutConfig.totalMs);
+						const error = new DeadlineExceededError(displayUrl, timeoutConfig.totalMs);
 						onFailure?.(error, totalAttempts, totalQueuedMs);
 						controller.markDone({
 							success: false,
@@ -263,7 +275,7 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 					return;
 
 				case "timeout":
-					lastError = new TimeoutError(url, timeoutConfig.attemptMs ?? NO_TIMEOUT_CONFIGURED);
+					lastError = new TimeoutError(displayUrl, timeoutConfig.attemptMs ?? NO_TIMEOUT_CONFIGURED);
 					permit.failure(lastError);
 					break;
 
