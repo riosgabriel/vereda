@@ -80,6 +80,23 @@ class RollingWindow {
 // CircuitBreaker — one per partition
 // ---------------------------------------------------------------------------
 
+/** One admission through the breaker, returned by `tryAcquire()`. Exactly one
+ *  of its methods takes effect (later calls are no-ops), so a caller can
+ *  report the outcome and still `release()` unconditionally in a `finally`.
+ *  In half-open, the permit owns a trial slot; every exit path — success,
+ *  failure, a non-failure error, cancellation, a veto — must hand it back,
+ *  or the breaker is wedged half-open with no trial slots left (B1). */
+export interface CircuitPermit {
+	/** The attempt succeeded. */
+	success(): void;
+	/** The attempt failed with `error`. Errors the breaker doesn't classify as
+	 *  failures (e.g. a 404) count as successes — the host answered. */
+	failure(error: AppError): void;
+	/** The permit was not used to reach the server (cancelled, vetoed, queue
+	 *  full…). Frees a half-open trial slot without recording an outcome. */
+	release(): void;
+}
+
 export class CircuitBreaker {
 	private readonly partition: string;
 	private readonly config: CircuitBreakerConfig;
@@ -89,6 +106,10 @@ export class CircuitBreaker {
 	private consecutiveFailures = 0;
 	private openedAt = 0;
 	private halfOpenInFlight = 0;
+	/** Bumped on every open -> half-open transition, so a permit can tell
+	 *  whether the trial slot it reserved still belongs to the current
+	 *  half-open episode or to one that has since ended. */
+	private halfOpenGeneration = 0;
 	private readonly window?: RollingWindow;
 
 	constructor(
@@ -116,6 +137,7 @@ export class CircuitBreaker {
 			if (Date.now() - this.openedAt >= resetTimeoutMs) {
 				this.state = "half-open";
 				this.halfOpenInFlight = 0;
+				this.halfOpenGeneration++;
 			} else {
 				return false;
 			}
@@ -134,6 +156,50 @@ export class CircuitBreaker {
 
 		// closed
 		return true;
+	}
+
+	/** Admit a request, or return `null` when the circuit rejects it. Prefer
+	 *  this over the raw `canRequest()`/`record*()` pair: the returned permit
+	 *  guarantees a reserved half-open trial slot is always given back. */
+	tryAcquire(): CircuitPermit | null {
+		if (!this.canRequest()) return null;
+
+		// null = admitted while closed (or disabled) — no trial slot held.
+		const trialGeneration = this.config.enabled && this.state === "half-open" ? this.halfOpenGeneration : null;
+		const isCurrentTrial = () => trialGeneration !== null && trialGeneration === this.halfOpenGeneration;
+		// A request admitted while closed that completes during a later
+		// half-open episode must not decide that episode: only its own trials do.
+		const mayRecord = () => this.state !== "half-open" || isCurrentTrial();
+		const freeTrialSlot = () => {
+			if (this.state === "half-open" && isCurrentTrial()) {
+				this.halfOpenInFlight = Math.max(0, this.halfOpenInFlight - 1);
+			}
+		};
+
+		let settled = false;
+		const settle = (fn: () => void) => {
+			if (settled) return;
+			settled = true;
+			fn();
+		};
+
+		return {
+			success: () =>
+				settle(() => {
+					if (mayRecord()) this.recordSuccess();
+				}),
+			failure: (error) =>
+				settle(() => {
+					if (!mayRecord()) return;
+					if (this.isFailure(error)) {
+						this.recordFailure(error);
+					} else {
+						this.recordNeutral();
+						freeTrialSlot();
+					}
+				}),
+			release: () => settle(freeTrialSlot),
+		};
 	}
 
 	/** Record a successful attempt outcome. No-op when disabled. */
@@ -159,8 +225,7 @@ export class CircuitBreaker {
 	recordFailure(error: AppError): void {
 		if (!this.config.enabled) return;
 
-		const isFailure = this.config.isFailure ? this.config.isFailure(error) : RETRIABLE_KINDS.has(error.kind);
-		if (!isFailure) return;
+		if (!this.isFailure(error)) return;
 
 		if (this.state === "half-open") {
 			this.halfOpenInFlight = Math.max(0, this.halfOpenInFlight - 1);
@@ -179,6 +244,21 @@ export class CircuitBreaker {
 				this.onStateChange?.(this.partition, "open");
 			}
 		}
+	}
+
+	private isFailure(error: AppError): boolean {
+		return this.config.isFailure ? this.config.isFailure(error) : RETRIABLE_KINDS.has(error.kind);
+	}
+
+	/** An attempt reached the server but ended in an error the breaker does
+	 *  not count as a failure — e.g. a 404, or a 200 whose body failed `parse`.
+	 *  The breaker measures availability, and the host answered, so this is
+	 *  recorded as a success in every state (the Resilience4j default for
+	 *  unrecorded errors): closed resets the consecutive-failure run and counts
+	 *  as a non-failure in the rolling window; a half-open trial closes the
+	 *  circuit. Classify it as a failure via `isFailure` to change that. */
+	private recordNeutral(): void {
+		this.recordSuccess();
 	}
 
 	private resetCounters(): void {

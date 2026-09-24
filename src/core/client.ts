@@ -17,6 +17,7 @@ import {
 	RequestError,
 	TimeoutError,
 } from "./errors.js";
+import { emitIsolated, reportCallbackError } from "./listeners.js";
 import { METRICS, type MetricsSink } from "./metrics.js";
 import { nanoid } from "./nanoid.js";
 import { redactUrl } from "./redact.js";
@@ -292,7 +293,8 @@ export class HttpClient {
 		});
 
 		const breaker = this.circuitBreakers.get(partitionName);
-		if (!breaker.canRequest()) {
+		const permit = breaker.tryAcquire();
+		if (!permit) {
 			const error = new CircuitOpenError(partitionName);
 			const durationMs = Date.now() - startTime;
 			this.emit("failure", {
@@ -308,191 +310,198 @@ export class HttpClient {
 			return;
 		}
 
-		// The global semaphore limits total concurrent executions across all
-		// partitions. It is acquired for every attempt (including the first),
-		// while the per-partition bulkhead slot only applies to retries (D4).
-		const semaphore = this.bulkheads.getSemaphore();
-		const execute = () =>
-			executeRequest(
-				{
-					url: fullUrl,
-					options,
-					timeoutConfig,
-					retryConfig,
-					signal: ticket.signal,
-					attempt: 0,
-					ticketId: ticket.id,
-					partition: partitionName,
-					fetch: this.customFetch,
-				},
-				this.middlewares,
-			);
+		// The permit must be settled on every exit — including a QueueFullError
+		// thrown by the semaphore below, and cancellation/deadline, which record
+		// no outcome — or a half-open trial slot leaks and wedges the breaker (B1).
+		try {
+			// The global semaphore limits total concurrent executions across all
+			// partitions. It is acquired for every attempt (including the first),
+			// while the per-partition bulkhead slot only applies to retries (D4).
+			const semaphore = this.bulkheads.getSemaphore();
+			const execute = () =>
+				executeRequest(
+					{
+						url: fullUrl,
+						options,
+						timeoutConfig,
+						retryConfig,
+						signal: ticket.signal,
+						attempt: 0,
+						ticketId: ticket.id,
+						partition: partitionName,
+						fetch: this.customFetch,
+					},
+					this.middlewares,
+				);
 
-		// When partition.limitFirstAttempts is enabled (R6), the first attempt
-		// also goes through the per-partition bulkhead. Otherwise it bypasses
-		// the partition slot entirely (D4). The global semaphore is always
-		// acquired for every attempt — bulkhead.run() acquires it internally
-		// when passed, so the task itself must not acquire it a second time.
-		const usePartitionBulkhead = bulkhead.limitFirstAttempts;
-		let queuedMs = 0;
-		let result: Awaited<ReturnType<typeof execute>>;
-		if (usePartitionBulkhead) {
-			result = await bulkhead.run(execute, semaphore, (ms) => {
-				queuedMs = ms;
-			});
-		} else if (semaphore) {
-			const enqueuedAt = Date.now();
-			result = await semaphore.acquire().then((release) => {
-				queuedMs = Date.now() - enqueuedAt;
-				return execute().finally(release);
-			});
-		} else {
-			result = await execute();
-		}
-
-		switch (result.kind) {
-			case "success": {
-				breaker.recordSuccess();
-				const durationMs = Date.now() - startTime;
-				const statusCode = result.result.success ? result.result.raw.status : 0;
-				this.emit("success", {
-					ticketId: ticket.id,
-					url: displayUrl,
-					attempts: 1,
-					durationMs,
-					queuedMs,
-					statusCode,
+			// When partition.limitFirstAttempts is enabled (R6), the first attempt
+			// also goes through the per-partition bulkhead. Otherwise it bypasses
+			// the partition slot entirely (D4). The global semaphore is always
+			// acquired for every attempt — bulkhead.run() acquires it internally
+			// when passed, so the task itself must not acquire it a second time.
+			const usePartitionBulkhead = bulkhead.limitFirstAttempts;
+			let queuedMs = 0;
+			let result: Awaited<ReturnType<typeof execute>>;
+			if (usePartitionBulkhead) {
+				result = await bulkhead.run(execute, semaphore, (ms) => {
+					queuedMs = ms;
 				});
-				this.logger?.info("Request succeeded", {
-					ticketId: ticket.id,
-					url: displayUrl,
+			} else if (semaphore) {
+				const enqueuedAt = Date.now();
+				result = await semaphore.acquire().then((release) => {
+					queuedMs = Date.now() - enqueuedAt;
+					return execute().finally(release);
 				});
-				controller.markDone(result.result);
-				cleanup();
-				return;
+			} else {
+				result = await execute();
 			}
 
-			case "cancelled": {
-				const durationMs = Date.now() - startTime;
-				this.emit("cancelled", {
-					ticketId: ticket.id,
-					url: displayUrl,
-					attempts: 1,
-					durationMs,
-					queuedMs,
-				});
-				if (!ticket.isCancelled && isBoundedMs(timeoutConfig.totalMs)) {
-					controller.markDone({
-						success: false,
-						error: new DeadlineExceededError(url, timeoutConfig.totalMs),
-					} as never);
-				} else {
-					controller.markDone({
-						success: false,
-						error: new CancelledError(),
-					} as never);
-				}
-				cleanup();
-				return;
-			}
-
-			case "error":
-				// Record the raw attempt outcome against the circuit breaker
-				// regardless of what the retry policy decides to do with it.
-				breaker.recordFailure(result.error);
-				// Apply the unified retry gate (default policy + retryWhen). Errors
-				// that fail it (e.g. ValidationError, HttpError) resolve immediately.
-				if (this.vetoed(retryConfig, result.error, 0, options, ticket, controller, url, startTime, queuedMs)) {
+			switch (result.kind) {
+				case "success": {
+					permit.success();
+					const durationMs = Date.now() - startTime;
+					const statusCode = result.result.success ? result.result.raw.status : 0;
+					this.emit("success", {
+						ticketId: ticket.id,
+						url: displayUrl,
+						attempts: 1,
+						durationMs,
+						queuedMs,
+						statusCode,
+					});
+					this.logger?.info("Request succeeded", {
+						ticketId: ticket.id,
+						url: displayUrl,
+					});
+					controller.markDone(result.result);
 					cleanup();
 					return;
 				}
-				// maxRetries=0: no retries configured, surface the raw error immediately
-				// without entering the bulkhead (which would waste a slot for no work).
-				{
-					const effectiveMaxRetries = retryConfig.maxRetries ?? DEFAULT_MAX_RETRIES;
-					if (effectiveMaxRetries === 0) {
-						const durationMs = Date.now() - startTime;
-						this.emit("failure", {
-							ticketId: ticket.id,
-							url: displayUrl,
-							attempts: 1,
-							durationMs,
-							queuedMs,
-							error: result.error,
-						});
+
+				case "cancelled": {
+					const durationMs = Date.now() - startTime;
+					this.emit("cancelled", {
+						ticketId: ticket.id,
+						url: displayUrl,
+						attempts: 1,
+						durationMs,
+						queuedMs,
+					});
+					if (!ticket.isCancelled && isBoundedMs(timeoutConfig.totalMs)) {
 						controller.markDone({
 							success: false,
-							error: result.error,
+							error: new DeadlineExceededError(url, timeoutConfig.totalMs),
 						} as never);
-						cleanup();
-						return;
+					} else {
+						controller.markDone({
+							success: false,
+							error: new CancelledError(),
+						} as never);
 					}
-				}
-				controller.markQueued();
-				this._scheduleInBulkhead(
-					ticket,
-					controller,
-					url,
-					displayUrl,
-					options,
-					timeoutConfig,
-					retryConfig,
-					partitionName,
-					bulkhead,
-					breaker,
-					result.error,
-					cleanup,
-					startTime,
-					queuedMs,
-				);
-				return;
-
-			case "timeout": {
-				const error = new TimeoutError(url, timeoutConfig.attemptMs ?? NO_TIMEOUT_CONFIGURED);
-				// Record the raw attempt outcome against the circuit breaker
-				// regardless of what the retry policy decides to do with it.
-				breaker.recordFailure(error);
-				if (this.vetoed(retryConfig, error, 0, options, ticket, controller, url, startTime, queuedMs)) {
 					cleanup();
 					return;
 				}
-				// maxRetries=0: surface timeout immediately without entering the bulkhead
-				{
-					const effectiveMaxRetries = retryConfig.maxRetries ?? DEFAULT_MAX_RETRIES;
-					if (effectiveMaxRetries === 0) {
-						const durationMs = Date.now() - startTime;
-						this.emit("failure", {
-							ticketId: ticket.id,
-							url: this.logUrl(url),
-							attempts: 1,
-							durationMs,
-							queuedMs,
-							error,
-						});
-						controller.markDone({ success: false, error } as never);
+
+				case "error":
+					// Record the raw attempt outcome against the circuit breaker
+					// regardless of what the retry policy decides to do with it.
+					permit.failure(result.error);
+					// Apply the unified retry gate (default policy + retryWhen). Errors
+					// that fail it (e.g. ValidationError, HttpError) resolve immediately.
+					if (this.vetoed(retryConfig, result.error, 0, options, ticket, controller, url, startTime, queuedMs)) {
 						cleanup();
 						return;
 					}
+					// maxRetries=0: no retries configured, surface the raw error immediately
+					// without entering the bulkhead (which would waste a slot for no work).
+					{
+						const effectiveMaxRetries = retryConfig.maxRetries ?? DEFAULT_MAX_RETRIES;
+						if (effectiveMaxRetries === 0) {
+							const durationMs = Date.now() - startTime;
+							this.emit("failure", {
+								ticketId: ticket.id,
+								url: displayUrl,
+								attempts: 1,
+								durationMs,
+								queuedMs,
+								error: result.error,
+							});
+							controller.markDone({
+								success: false,
+								error: result.error,
+							} as never);
+							cleanup();
+							return;
+						}
+					}
+					controller.markQueued();
+					this._scheduleInBulkhead(
+						ticket,
+						controller,
+						url,
+						displayUrl,
+						options,
+						timeoutConfig,
+						retryConfig,
+						partitionName,
+						bulkhead,
+						breaker,
+						result.error,
+						cleanup,
+						startTime,
+						queuedMs,
+					);
+					return;
+
+				case "timeout": {
+					const error = new TimeoutError(url, timeoutConfig.attemptMs ?? NO_TIMEOUT_CONFIGURED);
+					// Record the raw attempt outcome against the circuit breaker
+					// regardless of what the retry policy decides to do with it.
+					permit.failure(error);
+					if (this.vetoed(retryConfig, error, 0, options, ticket, controller, url, startTime, queuedMs)) {
+						cleanup();
+						return;
+					}
+					// maxRetries=0: surface timeout immediately without entering the bulkhead
+					{
+						const effectiveMaxRetries = retryConfig.maxRetries ?? DEFAULT_MAX_RETRIES;
+						if (effectiveMaxRetries === 0) {
+							const durationMs = Date.now() - startTime;
+							this.emit("failure", {
+								ticketId: ticket.id,
+								url: this.logUrl(url),
+								attempts: 1,
+								durationMs,
+								queuedMs,
+								error,
+							});
+							controller.markDone({ success: false, error } as never);
+							cleanup();
+							return;
+						}
+					}
+					controller.markQueued();
+					this._scheduleInBulkhead(
+						ticket,
+						controller,
+						url,
+						displayUrl,
+						options,
+						timeoutConfig,
+						retryConfig,
+						partitionName,
+						bulkhead,
+						breaker,
+						error,
+						cleanup,
+						startTime,
+						queuedMs,
+					);
+					return;
 				}
-				controller.markQueued();
-				this._scheduleInBulkhead(
-					ticket,
-					controller,
-					url,
-					displayUrl,
-					options,
-					timeoutConfig,
-					retryConfig,
-					partitionName,
-					bulkhead,
-					breaker,
-					error,
-					cleanup,
-					startTime,
-					queuedMs,
-				);
-				return;
 			}
+		} finally {
+			permit.release();
 		}
 	}
 
@@ -795,10 +804,18 @@ export class HttpClient {
 		return this.redactQuery ? redactUrl(url) : url;
 	}
 
+	/** Never throws: listener and metrics-sink errors are isolated (B3), since
+	 *  callers emit mid-transition — e.g. `success` right before `markDone`. */
 	private emit<K extends keyof LifecycleEventMap>(event: K, data: LifecycleEventMap[K]): void {
-		this.emitter.emit(event, data);
+		emitIsolated(this.emitter, event, data);
+		try {
+			this.emitMetrics(event, data);
+		} catch (err) {
+			reportCallbackError(err);
+		}
+	}
 
-		// Emit metrics if a sink is configured
+	private emitMetrics<K extends keyof LifecycleEventMap>(event: K, data: LifecycleEventMap[K]): void {
 		if (this.metrics) {
 			const e = event as string;
 			if (e === "request") {

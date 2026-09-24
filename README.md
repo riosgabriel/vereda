@@ -301,7 +301,7 @@ const client = HttpClient.create({
 });
 ```
 
-The breaker is checked before the first attempt and again before every retry — while open, requests to that partition fail immediately with `CircuitOpenError` and no attempt is made. After `resetTimeoutMs`, one trial request is let through (`halfOpenMaxAttempts`); success closes the circuit, another failure reopens it.
+The breaker is checked before the first attempt and again before every retry — while open, requests to that partition fail immediately with `CircuitOpenError` and no attempt is made. After `resetTimeoutMs`, one trial request is let through (`halfOpenMaxAttempts`); success closes the circuit, another failure reopens it. Only `network`, `timeout`, and `retryable_status` errors count as failures (override with `isFailure`). Any other response, such as a 404 or a body that fails `parse`, shows the host is up and counts as a success.
 
 Trip on a rolling failure rate instead of consecutive failures:
 
@@ -408,7 +408,7 @@ client.on("failure",   ({ ticketId, url, attempts, durationMs, queuedMs, error }
 client.on("cancelled", ({ ticketId, url, attempts, durationMs, queuedMs }) => {});
 ```
 
-`retry`'s `attempt` is a zero-based retry index (`0` = the first retry, after the initial attempt). `off(event, listener)` removes a listener with the same signature as `on`.
+`retry`'s `attempt` is a zero-based retry index (`0` = the first retry, after the initial attempt). `off(event, listener)` removes a listener with the same signature as `on`. A listener (or `metrics` sink) that throws never affects the request: every other listener still runs, and the error is rethrown on a microtask, so it surfaces through `process.on("uncaughtException")` the same way a throwing `EventEmitter` listener would.
 
 `queuedMs` is the total time this ticket spent waiting for a bulkhead/global-semaphore permit, summed across every attempt — it's `0` when a request never had to wait (the default global cap is 50 concurrent, so most single-service consumers never hit it). A consistently nonzero `queuedMs` relative to `durationMs` means you're throttled by `concurrency`/a partition's `concurrency`, not by downstream latency; see [Wiring a metrics sink](docs/operations.md#wiring-a-metrics-sink) for the companion `vereda.queue_depth` / `vereda.global_queue_depth` gauges.
 
