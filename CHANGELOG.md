@@ -16,8 +16,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `ClientConfig.timeout.attemptMs` is now required. Every other default in the library fails safe when omitted; an omitted per-attempt timeout previously meant "unbounded." Pass `Infinity` explicitly to opt out of a cap. Partition- and request-level `timeout` remain optional and inherit the client-level default (#60).
 
+### Changed
+
+- The circuit breaker now counts errors it doesn't classify as failures (e.g. a 404 or a `ValidationError`) as successes: the host answered. A half-open trial answered with a 404 closes the circuit; while closed, such a response resets the consecutive-failure count and counts as a non-failure in the rolling window. Previously these responses were ignored entirely.
+
 ### Fixed
 
+- The circuit breaker could get stuck half-open indefinitely. A half-open trial that ended in a non-failure error (e.g. a 404 or a failed `parse`), was cancelled, hit its deadline, was vetoed by `retryWhen`, or got a `QueueFullError` never gave its trial slot back, so every later request to that partition failed with `CircuitOpenError` until the partition sat idle for 60s. Also, a request admitted while the circuit was closed that finished during a later half-open period could close the circuit on behalf of trials still in flight.
+- A `ticket.on("done" | "update" | "error")` listener that threw left `ticket.toPromise()` unresolved forever, and stopped the remaining listeners from running.
+- A client lifecycle listener or `metrics` sink that threw turned a successful request into a `NetworkError` failure (and emitted a spurious `failure` event). Listener and sink errors are now isolated from the request and rethrown on a microtask.
 - `Bulkhead.run()` leaked a phantom running-slot when the global semaphore rejected with `QueueFullError` (the global concurrency cap was saturated mid-retry), permanently degrading that partition's effective concurrency by one per occurrence (#72).
 - A `QueueFullError` mid-retry discarded the `queuedMs` already accumulated by retries that had run before it, undercounting exactly the signal `queuedMs` exists to report (#72).
 - `cancel()`ing a ticket while it was mid-retry and about to hit a `QueueFullError`, or while a first attempt's global-permit acquire was still pending, could still emit a spurious `failure` event afterward — violating "exactly one of success/failure/cancelled per ticket" (#77).

@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import type { AppError } from "../core/errors.js";
 import { CancelledError } from "../core/errors.js";
+import { emitIsolated } from "../core/listeners.js";
 import type { Result } from "../core/types.js";
 
 export type TicketStatus =
@@ -121,9 +122,9 @@ export class Ticket<T> {
 		this._cancelled = true;
 		this._abortController.abort();
 		const result: Result<T> = { success: false, error: new CancelledError() };
-		this.emitter.emit("update", { type: "cancelled" } as TicketUpdate);
-		this.emitter.emit("done", result);
-		this.emitter.emit("error", result.error);
+		emitIsolated(this.emitter, "update", { type: "cancelled" } as TicketUpdate);
+		emitIsolated(this.emitter, "done", result);
+		emitIsolated(this.emitter, "error", result.error);
 		this._resolve(result);
 	}
 
@@ -191,13 +192,13 @@ export class Ticket<T> {
 	// biome-ignore lint/correctness/noUnusedPrivateClassMembers: reached via bracket notation from createTicket(); Biome cannot see that access.
 	private markQueued(): void {
 		if (!this.applyTransition({ state: "queued" })) return;
-		this.emitter.emit("update", { type: "queued" } as TicketUpdate);
+		emitIsolated(this.emitter, "update", { type: "queued" } as TicketUpdate);
 	}
 
 	// biome-ignore lint/correctness/noUnusedPrivateClassMembers: reached via bracket notation from createTicket(); Biome cannot see that access.
 	private markRetrying(attempt: number, delayMs: number): void {
 		if (!this.applyTransition({ state: "retrying", attempt })) return;
-		this.emitter.emit("update", {
+		emitIsolated(this.emitter, "update", {
 			type: "retrying",
 			attempt,
 			delayMs,
@@ -207,10 +208,10 @@ export class Ticket<T> {
 	// biome-ignore lint/correctness/noUnusedPrivateClassMembers: reached via bracket notation from createTicket(); Biome cannot see that access.
 	private markDone(result: Result<T>): void {
 		if (!this.applyTransition({ state: "done", result })) return;
-		this.emitter.emit("update", { type: "done", result } as TicketUpdate);
-		this.emitter.emit("done", result);
+		emitIsolated(this.emitter, "update", { type: "done", result } as TicketUpdate);
+		emitIsolated(this.emitter, "done", result);
 		if (result.success === false) {
-			this.emitter.emit("error", result.error);
+			emitIsolated(this.emitter, "error", result.error);
 		}
 		this._resolve(result);
 	}

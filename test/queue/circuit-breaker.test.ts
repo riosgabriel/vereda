@@ -15,10 +15,6 @@ describe("CircuitBreaker", () => {
 		expect(cb.canRequest()).toBe(true);
 	});
 
-	// NOTE: this test exercises the consecutive-failure trip condition, which is
-	// the single TODO(human) left in evaluateTripCondition() (currently `return
-	// false`, so the breaker never trips). It is expected to FAIL until that
-	// method is implemented.
 	it("trips from closed to open after failureThreshold consecutive failures", () => {
 		const cb = new CircuitBreaker("test", { enabled: true, failureThreshold: 3 });
 
@@ -33,9 +29,6 @@ describe("CircuitBreaker", () => {
 		expect(cb.canRequest()).toBe(false);
 	});
 
-	// NOTE: like the consecutive-failure test above, these exercise the
-	// window-mode branch of evaluateTripCondition() and are expected to FAIL
-	// (or, for the "stays closed" case, pass trivially) until it's implemented.
 	describe("rolling-window mode", () => {
 		it("does not trip before minimumRequests is reached, even at 100% failure rate", () => {
 			const cb = new CircuitBreaker("test", {
@@ -199,10 +192,10 @@ describe("CircuitBreakerRegistry", () => {
 			{ payments: { circuitBreaker: { failureThreshold: 2 } } },
 		);
 		const payments = registry.get("payments");
-		// Partition override (2) should apply instead of the global (10). Reads
-		// the merged config directly (like the equivalent BulkheadRegistry test)
-		// rather than driving canRequest()/recordFailure(), which depend on the
-		// still-stubbed evaluateTripCondition().
-		expect((payments as unknown as { config: { failureThreshold: number } }).config.failureThreshold).toBe(2);
+		// Partition override (2) should apply instead of the global (10).
+		payments.recordFailure(new NetworkError("boom"));
+		expect(payments.canRequest()).toBe(true);
+		payments.recordFailure(new NetworkError("boom"));
+		expect(payments.canRequest()).toBe(false);
 	});
 });

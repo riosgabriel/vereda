@@ -111,7 +111,8 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 			return;
 		}
 
-		if (!circuitBreaker.canRequest()) {
+		const permit = circuitBreaker.tryAcquire();
+		if (!permit) {
 			onCleanup?.();
 			const error = new CircuitOpenError(partition);
 			onFailure?.(error, totalAttempts, totalQueuedMs);
@@ -119,128 +120,36 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 			return;
 		}
 
-		// Consult the default policy + retryWhen for every retry iteration.
-		// The first attempt was already vetted at queue time (before the bulkhead),
-		// but each retry within the bulkhead must pass the same gate so that
-		// a user-provided retryWhen correctly limits retries to N+1 attempts total.
-		const ctx: RetryPolicyContext = {
-			method: requestOptions.method ?? "GET",
-			headers: requestOptions.headers,
-			idempotent: retryConfig.idempotent,
-		};
-		if (!shouldRetry(lastError, attempt, ctx, retryConfig.retryWhen)) {
-			onCleanup?.();
-			onFailure?.(lastError, totalAttempts, totalQueuedMs);
-			controller.markDone({ success: false, error: lastError } as never);
-			return;
-		}
-
-		// All retries get backoff. Every retry is gated by the policy check above.
-		const delayMs = resolveRetryDelay(lastError, backoffFn, attempt, backoffCap);
-		onRetry?.(attempt, delayMs, lastError);
-		controller.markRetrying(attempt, delayMs);
-
+		// Every exit from this iteration settles the permit: an outcome below,
+		// or release() for the veto/cancel/deadline/queue-full paths (B1).
 		try {
-			await sleep(delayMs, ticket.signal);
-		} catch {
-			// The deadline timer aborts the ticket signal. Distinguish deadline from
-			// user cancellation: deadline only aborts the signal (abortSignal()),
-			// while user cancellation sets _cancelled = true via cancel().
-			onCleanup?.();
-			if (!ticket.isCancelled && isBoundedMs(timeoutConfig.totalMs)) {
-				const error = new DeadlineExceededError(url, timeoutConfig.totalMs);
-				onFailure?.(error, totalAttempts, totalQueuedMs);
-				controller.markDone({
-					success: false,
-					error,
-				} as never);
-			} else {
-				onCancelled?.(totalAttempts, totalQueuedMs);
-				controller.markDone({
-					success: false,
-					error: new CancelledError(),
-				} as never);
-			}
-			return;
-		}
-
-		if (ticket.isCancelled) {
-			onCleanup?.();
-			onCancelled?.(totalAttempts, totalQueuedMs);
-			controller.markDone({
-				success: false,
-				error: new CancelledError(),
-			} as never);
-			return;
-		}
-
-		totalAttempts++;
-
-		// Per-attempt bulkhead scheduling: each retry acquires its own slot,
-		// releases it after execution, so other tickets aren't blocked (#5, D4).
-		// The global semaphore is acquired after the partition slot (D4).
-		let result: Awaited<ReturnType<typeof executeRequest>>;
-		try {
-			result = await bulkhead.run(
-				() =>
-					executeRequest(
-						{
-							url,
-							options: requestOptions,
-							timeoutConfig,
-							retryConfig,
-							signal: ticket.signal,
-							attempt: attempt + 1,
-							ticketId: ticket.id,
-							partition: bulkhead.name,
-							fetch: customFetch,
-						},
-						middleware,
-					),
-				semaphore,
-				(queuedMs) => {
-					totalQueuedMs += queuedMs;
-				},
-			);
-		} catch (err) {
-			if (err instanceof QueueFullError) {
-				// Queue is at capacity — bulkhead.run() rejected before task()
-				// ever ran, so this iteration's optimistic totalAttempts++ above
-				// must be backed out; it reports attempts actually dispatched.
-				const attemptsMade = totalAttempts - 1;
+			// Consult the default policy + retryWhen for every retry iteration.
+			// The first attempt was already vetted at queue time (before the bulkhead),
+			// but each retry within the bulkhead must pass the same gate so that
+			// a user-provided retryWhen correctly limits retries to N+1 attempts total.
+			const ctx: RetryPolicyContext = {
+				method: requestOptions.method ?? "GET",
+				headers: requestOptions.headers,
+				idempotent: retryConfig.idempotent,
+			};
+			if (!shouldRetry(lastError, attempt, ctx, retryConfig.retryWhen)) {
 				onCleanup?.();
-				if (ticket.isCancelled) {
-					// cancel() may have resolved the ticket directly (ticket.ts),
-					// bypassing markDone, while this bulkhead/semaphore acquisition
-					// was still pending. Match every other cancellation checkpoint
-					// in this loop: notify via onCancelled, not onFailure, so the
-					// lifecycle-event stream agrees with the ticket's actual outcome.
-					onCancelled?.(attemptsMade, totalQueuedMs);
-				} else {
-					// Emit failure here (not in the client's outer .catch) because
-					// totalQueuedMs — the wait accumulated by retries that already
-					// ran — only exists in this closure; the outer catch only has
-					// the first attempt's queuedMs.
-					onFailure?.(err, attemptsMade, totalQueuedMs);
-				}
-				controller.markDone({ success: false, error: err } as never);
-				throw err;
-			}
-			throw err;
-		}
-
-		switch (result.kind) {
-			case "success": {
-				circuitBreaker.recordSuccess();
-				onCleanup?.();
-				if (result.result.success) {
-					onSuccess?.(result.result.raw.status, totalAttempts, totalQueuedMs);
-				}
-				controller.markDone(result.result);
+				onFailure?.(lastError, totalAttempts, totalQueuedMs);
+				controller.markDone({ success: false, error: lastError } as never);
 				return;
 			}
 
-			case "cancelled":
+			// All retries get backoff. Every retry is gated by the policy check above.
+			const delayMs = resolveRetryDelay(lastError, backoffFn, attempt, backoffCap);
+			onRetry?.(attempt, delayMs, lastError);
+			controller.markRetrying(attempt, delayMs);
+
+			try {
+				await sleep(delayMs, ticket.signal);
+			} catch {
+				// The deadline timer aborts the ticket signal. Distinguish deadline from
+				// user cancellation: deadline only aborts the signal (abortSignal()),
+				// while user cancellation sets _cancelled = true via cancel().
 				onCleanup?.();
 				if (!ticket.isCancelled && isBoundedMs(timeoutConfig.totalMs)) {
 					const error = new DeadlineExceededError(url, timeoutConfig.totalMs);
@@ -257,16 +166,114 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 					} as never);
 				}
 				return;
+			}
 
-			case "timeout":
-				lastError = new TimeoutError(url, timeoutConfig.attemptMs ?? NO_TIMEOUT_CONFIGURED);
-				circuitBreaker.recordFailure(lastError);
-				break;
+			if (ticket.isCancelled) {
+				onCleanup?.();
+				onCancelled?.(totalAttempts, totalQueuedMs);
+				controller.markDone({
+					success: false,
+					error: new CancelledError(),
+				} as never);
+				return;
+			}
 
-			case "error":
-				lastError = result.error;
-				circuitBreaker.recordFailure(lastError);
-				break;
+			totalAttempts++;
+
+			// Per-attempt bulkhead scheduling: each retry acquires its own slot,
+			// releases it after execution, so other tickets aren't blocked (#5, D4).
+			// The global semaphore is acquired after the partition slot (D4).
+			let result: Awaited<ReturnType<typeof executeRequest>>;
+			try {
+				result = await bulkhead.run(
+					() =>
+						executeRequest(
+							{
+								url,
+								options: requestOptions,
+								timeoutConfig,
+								retryConfig,
+								signal: ticket.signal,
+								attempt: attempt + 1,
+								ticketId: ticket.id,
+								partition: bulkhead.name,
+								fetch: customFetch,
+							},
+							middleware,
+						),
+					semaphore,
+					(queuedMs) => {
+						totalQueuedMs += queuedMs;
+					},
+				);
+			} catch (err) {
+				if (err instanceof QueueFullError) {
+					// Queue is at capacity — bulkhead.run() rejected before task()
+					// ever ran, so this iteration's optimistic totalAttempts++ above
+					// must be backed out; it reports attempts actually dispatched.
+					const attemptsMade = totalAttempts - 1;
+					onCleanup?.();
+					if (ticket.isCancelled) {
+						// cancel() may have resolved the ticket directly (ticket.ts),
+						// bypassing markDone, while this bulkhead/semaphore acquisition
+						// was still pending. Match every other cancellation checkpoint
+						// in this loop: notify via onCancelled, not onFailure, so the
+						// lifecycle-event stream agrees with the ticket's actual outcome.
+						onCancelled?.(attemptsMade, totalQueuedMs);
+					} else {
+						// Emit failure here (not in the client's outer .catch) because
+						// totalQueuedMs — the wait accumulated by retries that already
+						// ran — only exists in this closure; the outer catch only has
+						// the first attempt's queuedMs.
+						onFailure?.(err, attemptsMade, totalQueuedMs);
+					}
+					controller.markDone({ success: false, error: err } as never);
+					throw err;
+				}
+				throw err;
+			}
+
+			switch (result.kind) {
+				case "success": {
+					permit.success();
+					onCleanup?.();
+					if (result.result.success) {
+						onSuccess?.(result.result.raw.status, totalAttempts, totalQueuedMs);
+					}
+					controller.markDone(result.result);
+					return;
+				}
+
+				case "cancelled":
+					onCleanup?.();
+					if (!ticket.isCancelled && isBoundedMs(timeoutConfig.totalMs)) {
+						const error = new DeadlineExceededError(url, timeoutConfig.totalMs);
+						onFailure?.(error, totalAttempts, totalQueuedMs);
+						controller.markDone({
+							success: false,
+							error,
+						} as never);
+					} else {
+						onCancelled?.(totalAttempts, totalQueuedMs);
+						controller.markDone({
+							success: false,
+							error: new CancelledError(),
+						} as never);
+					}
+					return;
+
+				case "timeout":
+					lastError = new TimeoutError(url, timeoutConfig.attemptMs ?? NO_TIMEOUT_CONFIGURED);
+					permit.failure(lastError);
+					break;
+
+				case "error":
+					lastError = result.error;
+					permit.failure(lastError);
+					break;
+			}
+		} finally {
+			permit.release();
 		}
 	}
 
