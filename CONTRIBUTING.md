@@ -18,13 +18,17 @@ dependency tree CI does. Requires Node 20+ (enforced via `engines` in
 package.json); the library itself is runtime-agnostic and CI tests it under
 both Node and Bun.
 
-`npx husky` is a one-time step that wires up the pre-commit hook in
-`.husky/`. It used to run automatically via the `prepare` script, but
-`prepare` also ran `tsc` on every install (needed when the package was
-installed straight from GitHub) — now that the package publishes a
-prebuilt `dist/` to npm, `prepare` would force every consumer to compile
-the library on install, so it's gone. Run `npx husky` once after cloning
-to get the local git hook; nothing else in this section depends on it.
+`bun install` also builds `dist/`: the `prepare` script runs `tsc`. That
+script is load-bearing for consumers, not just for you. Vereda isn't
+published to npm, so people install it straight from GitHub, where
+`dist/` doesn't exist (it's gitignored) and `prepare` builds it on their
+machine. Don't remove it or make it depend on anything outside
+`devDependencies`, and keep it to `tsc`. In particular, don't chain
+`husky` onto it: it would run in every consumer's install too.
+
+`npx husky` is a separate one-time step that wires up the pre-commit hook
+in `.husky/`. Run it once after cloning; nothing else in this section
+depends on it.
 
 ## Commands
 

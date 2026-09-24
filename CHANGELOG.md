@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `redactUrl` is exported from `vereda`, for redacting URLs in your own logging the same way the client does. `requestLogger()` accepts `redactQuery` (default `true`).
 - `Semaphore.acquire()` and `Bulkhead.run()` accept an `AbortSignal`: a waiter whose signal aborts leaves the queue.
 
+### Distribution
+
+- Vereda is distributed from GitHub, not npm, for now: install a release tag such as `github:riosgabriel/vereda#v1.0.0` (see the README's Install section). The `prepare` script (`tsc`) is back, so a git install builds `dist/`. The release workflow no longer publishes to npm unless the repo variable `NPM_PUBLISH` is set to `true`; a tag push creates only the GitHub Release.
+
 ### Changed (breaking)
 
 - `ClientConfig.timeout.attemptMs` is now required. Every other default in the library fails safe when omitted; an omitted per-attempt timeout previously meant "unbounded." Pass `Infinity` explicitly to opt out of a cap. Partition- and request-level `timeout` remain optional and inherit the client-level default (#60).
@@ -44,8 +48,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.0] - 2026-09-07
 
-Vereda's first release published to npm. Before this, there was no published
-package: the project (then named `relay`) was consumed by pointing a
+Vereda's first stable release. It was never published to npm or tagged; see
+`[Unreleased]` for how the package is distributed. Before this, there was no
+stable release: the project (then named `relay`) was consumed by pointing a
 dependency straight at a GitHub ref, where a `prepare` script compiled
 `dist/` on install and there were no semver guarantees. The entries below
 summarize the real, user-visible changes accumulated across that pre-1.0
@@ -133,7 +138,8 @@ of this project before today.
   `prepare` was load-bearing for that. As of 1.0.0 the package ships a
   prebuilt `dist/` on npm, so nothing compiles on install; the local
   git-hook setup for contributors moved to a one-time `npx husky` (see
-  CONTRIBUTING.md).
+  CONTRIBUTING.md). *(Restored after 1.0.0, since the package is distributed
+  from GitHub rather than npm; see `[Unreleased]`.)*
 - Top-level `main` / `types` fields, superseded by the `exports` map (`.`,
   `./middleware`, `./zod`), which has been the actual entry-point source of
   truth since before 1.0.0.

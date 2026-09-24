@@ -117,8 +117,13 @@ jobs:
             echo "RELEASE_NOTES_EOF"
           } >> "$GITHUB_OUTPUT"
 
+      # Vereda is distributed from GitHub for now (consumers install
+      # `github:riosgabriel/vereda#vX.Y.Z`; the `prepare` script builds dist/).
+      # npm publishing stays wired up but off until the repo variable
+      # NPM_PUBLISH is set to "true" — so pushing a tag creates only the
+      # GitHub Release, and can never publish to npm by accident.
       - name: Publish to npm
-        if: steps.mode.outputs.dry_run == 'false'
+        if: steps.mode.outputs.dry_run == 'false' && vars.NPM_PUBLISH == 'true'
         run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -126,7 +131,11 @@ jobs:
       - name: Would publish to npm (dry run)
         if: steps.mode.outputs.dry_run == 'true'
         run: |
-          echo "DRY RUN: would run 'npm publish --provenance --access public'"
+          if [ "${{ vars.NPM_PUBLISH }}" = "true" ]; then
+            echo "DRY RUN: would run 'npm publish --provenance --access public'"
+          else
+            echo "DRY RUN: npm publish is disabled (repo variable NPM_PUBLISH != 'true'); a real run creates only the GitHub Release"
+          fi
           echo "DRY RUN: package ${{ steps.version.outputs.tag }} (version ${{ steps.version.outputs.version }})"
           npm pack --dry-run
 

@@ -167,11 +167,25 @@ With zero configuration:
 | First-attempt concurrency | Unbounded — the initial attempt bypasses the bulkhead unless `partition.limitFirstAttempts` is set |
 | Circuit breaker | Disabled — opt in with `circuitBreaker: { enabled: true }` |
 
-## Quick start
+## Install
 
-```bash
-npm install vereda
-```
+Vereda isn't published to npm yet. Install a release tag straight from GitHub. The package's `prepare` script compiles `dist/` during install, so your package manager has to be allowed to fetch git dependencies and run that one build step:
+
+| Package manager | One-time setup in your project | Install |
+| --- | --- | --- |
+| **npm 12+** | `.npmrc`: `allow-git=root` (npm 12 blocks git dependencies by default) | `npm install github:riosgabriel/vereda#v1.0.0` |
+| **pnpm 11+** | `pnpm-workspace.yaml`:<br>`allowBuilds:`<br>`  "vereda@git+https://github.com/riosgabriel/vereda.git": true` | `pnpm add github:riosgabriel/vereda#v1.0.0` |
+| **Bun** | `package.json`: `"trustedDependencies": ["vereda"]` | `bun add github:riosgabriel/vereda#v1.0.0` |
+| **npm ≤ 11** | none | `npm install github:riosgabriel/vereda#v1.0.0` |
+
+A few notes:
+
+- Always pin a tag (`#v1.0.0`). A branch or bare repo URL gives you whatever is on `main`.
+- pnpm before 11.11 wants the exact commit in the `allowBuilds` key. The install error prints the key to copy.
+- Bun has an open issue ([oven-sh/bun#10297](https://github.com/oven-sh/bun/issues/10297)) where a git dependency's `prepare` can run before that dependency's devDependencies are installed, so `tsc` may be missing. If the install fails with `tsc: command not found`, add `typescript` as a devDependency of your own project.
+- If `node_modules/vereda/dist/` is missing after install, the build step was skipped. Check the setup column above.
+
+## Quick start
 
 ```typescript
 import { HttpClient } from "vereda";
@@ -189,7 +203,7 @@ if (result.success) {
 }
 ```
 
-That's it. Vereda handles retries, backoff, timeouts, and isolation for you. The package ships a prebuilt `dist/` — installing never compiles anything.
+That's it. Vereda handles retries, backoff, timeouts, and isolation for you.
 
 ## Features
 

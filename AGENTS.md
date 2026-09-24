@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Vereda: resilient HTTP client for Node.js (queuing, retries, bulkhead isolation) built on global `fetch`. ESM-only, Node 20+, zero runtime dependencies. Published to npm with a prebuilt `dist/` (no install-time compile step); run `npx husky` once after cloning to wire up the local pre-commit hook.
+Vereda: resilient HTTP client for Node.js (queuing, retries, bulkhead isolation) built on global `fetch`. ESM-only, Node 20+, zero runtime dependencies. Distributed from GitHub, not npm: consumers install a git tag, and the `prepare` script compiles `dist/` on install. Run `npx husky` once after cloning to wire up the local pre-commit hook.
 
 ## Commands
 
@@ -36,7 +36,7 @@ logger in `src/middleware/index.ts`. Both sites carry `biome-ignore` comments ex
 - **Zod boundary**: zod is an optional peer dependency. Only `src/adapters/zod.ts` may import it; `src/core/` must stay zod-free.
 - **`typescript` is pinned to `^6.0.0`, not the current major.** TypeScript 7 removed the classic `require("typescript")` compiler-API surface (only `version`/`versionMajorMinor` remain), which breaks TypeDoc and likely other tooling that introspects the AST. The `src/` code itself already typechecks clean under 7 — CI's `typecheck-next` job tracks that on every push, `continue-on-error`, uninvolved in the `ci` gate — so bump the pin once the doc-tooling ecosystem catches up, not before.
 - **`dist/` is a gitignored** build artifact — never edit `dist/`.
-- **`bun.lock` is the only lockfile.** Install with `bun install`; CI uses `bun install --frozen-lockfile`. Do not run `npm install` — it ignores `bun.lock` and writes a `package-lock.json` (now gitignored). There is no `prepare` script — installing does not build `dist/` or set up git hooks; run `npm run build` and `npx husky` yourself (see CONTRIBUTING.md).
+- **`bun.lock` is the only lockfile.** Install with `bun install`; CI uses `bun install --frozen-lockfile`. Do not run `npm install` — it ignores `bun.lock` and writes a `package-lock.json` (now gitignored). `prepare` runs `tsc` (so installing builds `dist/`) and nothing else. It is load-bearing: vereda is **not on npm**, and consumers install it from GitHub (`github:riosgabriel/vereda#vX.Y.Z`), where `prepare` is what builds the gitignored `dist/`. Keep it `tsc`-only (no `husky`, which would run in consumers' installs). Git hooks are a separate one-time `npx husky` (see CONTRIBUTING.md).
 - **Two test runtimes.** CI runs the suite under Node 20/22/24 *and* under Bun. `bun run --bun test` reproduces the Bun leg — without `--bun`, bun respects the vitest shebang and silently runs under Node. Runtime-conditional expectations (currently only the TRACE row in `test/core/retry-matrix.test.ts`) key off a `Bun` global check; CI sets `EXPECTED_RUNTIME` on both legs so a leg that silently changes runtime fails instead of passing.
 - README prose can drift (e.g. it claims N tests; suite has a different count). Trust code, config, and test output over README claims.
 - **Skills live only under `.claude/skills/`.** OpenCode natively falls back to reading `.claude/skills/<name>/SKILL.md` when no `.opencode/skills/` copy exists, so don't duplicate a skill file into `.opencode/skills/` to make it visible there — that just creates a second copy to keep in sync. One file, one location.
