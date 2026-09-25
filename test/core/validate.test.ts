@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ConfigurationError } from "../../src/core/errors.js";
 import type { ClientConfig } from "../../src/core/types.js";
-import { validateConfig, validateRequestBody } from "../../src/core/validate.js";
+import { validateConfig, validateRequestBody, validateRequestOptions } from "../../src/core/validate.js";
 
 describe("validateConfig", () => {
 	it("accepts a minimal config with only timeout set", () => {
@@ -132,5 +132,46 @@ describe("validateConfig", () => {
 
 	it("rejects a stream-like body via duck-typing", () => {
 		expect(() => validateRequestBody({ getReader: () => ({}) } as unknown as BodyInit)).toThrow(ConfigurationError);
+	});
+});
+
+describe("validateRequestOptions", () => {
+	it("accepts empty options (both timeout and retry omitted)", () => {
+		expect(() => validateRequestOptions({})).not.toThrow();
+	});
+
+	it("accepts timeout entirely omitted", () => {
+		expect(() => validateRequestOptions({ retry: { maxRetries: 2 } })).not.toThrow();
+	});
+
+	it("rejects request timeout.attemptMs <= 0", () => {
+		expect(() => validateRequestOptions({ timeout: { attemptMs: -5 } })).toThrow(ConfigurationError);
+		expect(() => validateRequestOptions({ timeout: { attemptMs: -5 } })).toThrow(
+			/request\.timeout\.attemptMs must be positive/,
+		);
+	});
+
+	it("accepts request timeout.attemptMs: Infinity as an explicit opt-out", () => {
+		expect(() => validateRequestOptions({ timeout: { attemptMs: Infinity } })).not.toThrow();
+	});
+
+	it("rejects request retry.maxRetries < 0", () => {
+		expect(() => validateRequestOptions({ retry: { maxRetries: -1 } })).toThrow(ConfigurationError);
+		expect(() => validateRequestOptions({ retry: { maxRetries: -1 } })).toThrow(
+			/request\.retry\.maxRetries must be non-negative/,
+		);
+	});
+
+	it("rejects an invalid request retry.backoff field", () => {
+		expect(() => validateRequestOptions({ retry: { backoff: { baseDelayMs: -1 } } })).toThrow(ConfigurationError);
+		expect(() => validateRequestOptions({ retry: { backoff: { baseDelayMs: -1 } } })).toThrow(
+			/request\.retry\.backoff\.baseDelayMs must be non-negative/,
+		);
+	});
+
+	it("rejects invalid request retry.retryOnStatus codes", () => {
+		expect(() => validateRequestOptions({ retry: { retryOnStatus: [200] } })).toThrow(
+			/request\.retry\.retryOnStatus must contain only integer HTTP error status codes/,
+		);
 	});
 });

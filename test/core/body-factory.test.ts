@@ -169,3 +169,130 @@ describe("replayable bodies", () => {
 		expect(captured).toEqual(["hello", "hello"]);
 	}, 10_000);
 });
+
+describe("request-level timeout/retry option validation", () => {
+	let server: TestServer;
+
+	beforeAll(async () => {
+		server = await createTestServer();
+	});
+
+	afterAll(async () => {
+		await server.close();
+	});
+
+	it("rejects request timeout.attemptMs: -5 with ConfigurationError, no network hit, one failure event, no TimeoutNegativeWarning", async () => {
+		let hits = 0;
+		server.setHandler((_req, res) => {
+			hits++;
+			res.writeHead(200);
+			res.end("{}");
+		});
+
+		const client = HttpClient.create({ timeout: { attemptMs: 5_000 } });
+		const failures: unknown[] = [];
+		client.on("failure", (e) => failures.push(e));
+
+		const warningNames: string[] = [];
+		const onWarning = (w: Error) => warningNames.push(w.name);
+		process.on("warning", onWarning);
+		try {
+			const result = await client.get(`${server.url}/bad-timeout`, { timeout: { attemptMs: -5 } }).toPromise();
+
+			expect(hits).toBe(0);
+			expect(result.success).toBe(false);
+			if (!result.success) {
+				expect(result.error).toBeInstanceOf(ConfigurationError);
+				expect(result.error.kind).toBe("configuration");
+				expect((result.error as ConfigurationError).key).toBe("request.timeout.attemptMs must be positive");
+			}
+			expect(failures).toHaveLength(1);
+
+			// Give any async process warning a tick to land before asserting its absence.
+			await new Promise((r) => setImmediate(r));
+			expect(warningNames).not.toContain("TimeoutNegativeWarning");
+		} finally {
+			process.off("warning", onWarning);
+		}
+	});
+
+	it("rejects request retry.maxRetries: -1 with ConfigurationError, no network hit, one failure event", async () => {
+		let hits = 0;
+		server.setHandler((_req, res) => {
+			hits++;
+			res.writeHead(200);
+			res.end("{}");
+		});
+
+		const client = HttpClient.create({ timeout: { attemptMs: 5_000 } });
+		const failures: unknown[] = [];
+		client.on("failure", (e) => failures.push(e));
+
+		const result = await client.get(`${server.url}/bad-retry`, { retry: { maxRetries: -1 } }).toPromise();
+
+		expect(hits).toBe(0);
+		expect(result.success).toBe(false);
+		if (!result.success) {
+			expect(result.error).toBeInstanceOf(ConfigurationError);
+			expect(result.error.kind).toBe("configuration");
+			expect((result.error as ConfigurationError).key).toBe("request.retry.maxRetries must be non-negative");
+		}
+		expect(failures).toHaveLength(1);
+	});
+
+	it("rejects an invalid request retry.backoff field with ConfigurationError, no network hit, one failure event", async () => {
+		let hits = 0;
+		server.setHandler((_req, res) => {
+			hits++;
+			res.writeHead(200);
+			res.end("{}");
+		});
+
+		const client = HttpClient.create({ timeout: { attemptMs: 5_000 } });
+		const failures: unknown[] = [];
+		client.on("failure", (e) => failures.push(e));
+
+		const result = await client
+			.get(`${server.url}/bad-backoff`, { retry: { backoff: { baseDelayMs: -1 } } })
+			.toPromise();
+
+		expect(hits).toBe(0);
+		expect(result.success).toBe(false);
+		if (!result.success) {
+			expect(result.error).toBeInstanceOf(ConfigurationError);
+			expect(result.error.kind).toBe("configuration");
+			expect((result.error as ConfigurationError).key).toBe("request.retry.backoff.baseDelayMs must be non-negative");
+		}
+		expect(failures).toHaveLength(1);
+	});
+
+	it("accepts request timeout.attemptMs: Infinity as an explicit opt-out — request actually proceeds", async () => {
+		let hits = 0;
+		server.setHandler((_req, res) => {
+			hits++;
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ ok: true }));
+		});
+
+		const client = HttpClient.create({ timeout: { attemptMs: 5_000 } });
+		const result = await client.get(`${server.url}/no-cap`, { timeout: { attemptMs: Infinity } }).toPromise();
+
+		expect(hits).toBe(1);
+		expect(result.success).toBe(true);
+	});
+
+	it("accepts a request with timeout omitted — inherits the client default", async () => {
+		let hits = 0;
+		server.setHandler((_req, res) => {
+			hits++;
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ ok: true }));
+		});
+
+		const client = HttpClient.create({ timeout: { attemptMs: 5_000 } });
+		const result = await client.get(`${server.url}/inherits-default`).toPromise();
+
+		expect(hits).toBe(1);
+		expect(result.success).toBe(true);
+	});
+});
