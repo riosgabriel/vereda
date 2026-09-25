@@ -48,6 +48,7 @@ describe("executeRequest timeout/abort precedence", () => {
 		const result = await executeRequest(
 			{
 				url,
+				displayUrl: url,
 				options: {} as RequestOptions<unknown>,
 				timeoutConfig,
 				retryConfig,
@@ -83,6 +84,7 @@ describe("executeRequest timeout/abort precedence", () => {
 		const result = await executeRequest(
 			{
 				url,
+				displayUrl: url,
 				options: {
 					signal: externalController.signal,
 				} as RequestOptions<unknown>,
@@ -114,6 +116,7 @@ describe("executeRequest timeout/abort precedence", () => {
 		const result = await executeRequest(
 			{
 				url,
+				displayUrl: url,
 				options: {
 					signal: externalController.signal,
 				} as RequestOptions<unknown>,

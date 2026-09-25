@@ -330,6 +330,7 @@ export class HttpClient {
 						timeoutConfig,
 						retryConfig,
 						deadlineAt,
+						displayUrl,
 						signal: ticket.signal,
 						attempt: 0,
 						ticketId: ticket.id,

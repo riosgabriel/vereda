@@ -36,7 +36,7 @@ if (result.success) {
 }
 ```
 
-A dropped connection, a timeout, or a `503` on that request is retried up to three times with jittered exponential backoff before your code sees an error. Reading `result.raw` afterwards is bounded too: the body read has to finish within the same `attemptMs` (counted from when the attempt started) and `totalMs` limits, or the read rejects with an abort error (a `DOMException` named `"TimeoutError"`, not Vereda's `TimeoutError` class).
+A dropped connection, a timeout, or a `503` on that request is retried up to three times with jittered exponential backoff before your code sees an error. Reading `result.raw` afterwards is bounded too: the body read has to finish within the same `attemptMs` (counted from when the attempt started) and `totalMs` limits, or the read rejects with Vereda's own `TimeoutError` (attempt bound) or `DeadlineExceededError` (`totalMs` bound).
 
 ## Why Vereda?
 
@@ -407,6 +407,8 @@ Errors are a closed hierarchy under `RequestError`, and `AppError` is the union 
 | `MaxRetriesExceededError` | `"max_retries"` | Retries ran out while the failure was still transient (terminal) | `attempts`, `lastError` |
 
 Only `network`, `timeout`, and `retryable_status` are retried by default — see [What gets retried](#what-gets-retried) above. Everything else is terminal: it resolves the ticket on the first attempt that produces it.
+
+`TimeoutError` and `DeadlineExceededError` can also arrive outside a `Result`: as the rejection of a body read performed later, on `result.raw` or `HttpError.response` (see the hero example above) — not only as `result.error`.
 
 ```typescript
 const result = await ticket.toPromise();
