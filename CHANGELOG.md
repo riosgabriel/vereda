@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `redactUrl` is exported from `vereda`, for redacting URLs in your own logging the same way the client does. `requestLogger()` accepts `redactQuery` (default `true`).
 - `Semaphore.acquire()` and `Bulkhead.run()` accept an `AbortSignal`: a waiter whose signal aborts leaves the queue.
+- `vereda.retries` and `vereda.duration_ms` are tagged with `partition`, so retry volume and latency can be broken down per host. The `retry`, `success`, `failure` and `cancelled` lifecycle events carry `partition` too, like `request` already did. On `failure` it is `undefined` only when the URL couldn't be resolved, and `duration_ms` omits the tag in that case.
 
 ### Changed (breaking)
 
