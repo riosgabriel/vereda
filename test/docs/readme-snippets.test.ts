@@ -6,30 +6,33 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 /**
- * Typechecks every fenced `typescript`/`ts` code block in README.md against
- * the real library types, so a snippet that drifts from the actual API
+ * Typechecks every fenced `typescript`/`ts` code block in the user-facing docs
+ * against the real library types, so a snippet that drifts from the actual API
  * surface fails CI instead of silently rotting.
  */
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
-const readmePath = fileURLToPath(new URL("../../README.md", import.meta.url));
-const README = readFileSync(readmePath, "utf8");
+
+/** Repo-relative Markdown files whose code blocks are checked. */
+const DOCS = ["README.md", "docs/operations.md"];
 
 interface CodeBlock {
+	/** Repo-relative path of the Markdown file the block came from. */
+	doc: string;
 	/** 1-based README line of the opening ``` fence. */
 	fenceLine: number;
 	/** Block source, exactly as it appears between the fences. */
 	source: string;
 }
 
-function extractCodeBlocks(markdown: string): CodeBlock[] {
+function extractCodeBlocks(doc: string, markdown: string): CodeBlock[] {
 	const blocks: CodeBlock[] = [];
 	const fenceRe = /```(typescript|ts)\r?\n([\s\S]*?)```/g;
 	let match: RegExpExecArray | null;
 	// biome-ignore lint/suspicious/noAssignInExpressions: standard regex exec loop
 	while ((match = fenceRe.exec(markdown))) {
 		const fenceLine = markdown.slice(0, match.index).split("\n").length;
-		blocks.push({ fenceLine, source: match[2] });
+		blocks.push({ doc, fenceLine, source: match[2] });
 	}
 	return blocks;
 }
@@ -70,6 +73,7 @@ function buildPreamble(source: string): string {
 }
 
 interface GeneratedFile {
+	doc: string;
 	fileName: string;
 	filePath: string;
 	fenceLine: number;
@@ -89,11 +93,12 @@ function generateFile(block: CodeBlock, dir: string): GeneratedFile {
 	lines.push(...block.source.split("\n"));
 	lines.push("", "export {};", "");
 
-	const fileName = `block-L${block.fenceLine}.ts`;
+	const fileName = `${block.doc.replace(/[^A-Za-z0-9]+/g, "-")}-L${block.fenceLine}.ts`;
 	const filePath = path.join(dir, fileName);
 	writeFileSync(filePath, lines.join("\n"), "utf8");
 
 	return {
+		doc: block.doc,
 		fileName,
 		filePath,
 		fenceLine: block.fenceLine,
@@ -145,10 +150,17 @@ function parseDiagnostics(output: string): Array<{ file: string; line: number; c
 	return diagnostics;
 }
 
-describe("README TypeScript snippets", () => {
+const docSources = DOCS.map((doc) => ({ doc, markdown: readFileSync(path.join(repoRoot, doc), "utf8") }));
+
+describe("Documentation TypeScript snippets", () => {
 	it("typecheck against the real library types", () => {
-		const blocks = extractCodeBlocks(README);
-		expect(blocks.length).toBeGreaterThan(0);
+		const blocks = docSources.flatMap(({ doc, markdown }) => extractCodeBlocks(doc, markdown));
+		for (const { doc } of docSources) {
+			expect(
+				blocks.some((b) => b.doc === doc),
+				`no typescript blocks found in ${doc}`,
+			).toBe(true);
+		}
 
 		const dir = mkdtempSync(path.join(tmpdir(), "vereda-readme-snippets-"));
 		try {
@@ -185,12 +197,12 @@ describe("README TypeScript snippets", () => {
 				if (!file) {
 					return `${d.file}(${d.line},${d.col}): ${d.message}`;
 				}
-				const readmeLine = file.contentStartLine + (d.line - file.fileContentStartLine);
-				return `README.md:${readmeLine} (block starting at README.md:${file.fenceLine}, ${file.fileName}:${d.line}:${d.col}): ${d.message}`;
+				const docLine = file.contentStartLine + (d.line - file.fileContentStartLine);
+				return `${file.doc}:${docLine} (block starting at ${file.doc}:${file.fenceLine}, ${file.fileName}:${d.line}:${d.col}): ${d.message}`;
 			});
 
 			throw new Error(
-				`README TypeScript snippet(s) failed to typecheck:\n${messages.join("\n")}\n\nFull tsc output:\n${output}`,
+				`Documentation TypeScript snippet(s) failed to typecheck:\n${messages.join("\n")}\n\nFull tsc output:\n${output}`,
 			);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
@@ -200,8 +212,10 @@ describe("README TypeScript snippets", () => {
 	it("has no JavaScript-flavored fences that would dodge the typecheck", () => {
 		// Only `typescript`/`ts` fences are checked above, so retagging a block
 		// `js` would silently exempt it. Examples are TypeScript; keep them so.
-		const dodging = [...README.matchAll(/^```(js|javascript|jsx|tsx|mjs|cjs)\s*$/gm)].map(
-			(m) => `README.md:${README.slice(0, m.index).split("\n").length} (\`\`\`${m[1]})`,
+		const dodging = docSources.flatMap(({ doc, markdown }) =>
+			[...markdown.matchAll(/^```(js|javascript|jsx|tsx|mjs|cjs)\s*$/gm)].map(
+				(m) => `${doc}:${markdown.slice(0, m.index).split("\n").length} (\`\`\`${m[1]})`,
+			),
 		);
 		expect(dodging).toEqual([]);
 	});
