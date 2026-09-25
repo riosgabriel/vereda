@@ -84,7 +84,7 @@ npm install vereda
 ```
 
 ```typescript
-import { HttpClient, HttpError, MaxRetriesExceededError, json } from "vereda";
+import { HttpClient, json } from "vereda";
 
 type User = { id: number; name: string };
 
@@ -97,16 +97,21 @@ const result = await api.get("/users/42", { parse: json<User>() }).toPromise();
 
 if (result.success) {
   result.data.name; // typed: string
-} else if (result.error instanceof HttpError) {
-  console.warn(result.error.statusCode); // non-retryable status, e.g. 404
-} else if (result.error instanceof MaxRetriesExceededError) {
-  console.error(result.error.lastError); // transient failures outlasted every retry
 } else {
-  console.error(result.error.kind, result.error.message);
+  switch (result.error.kind) {
+    case "http": // non-retryable status, e.g. 404
+      console.warn(result.error.statusCode);
+      break;
+    case "max_retries": // transient failures outlasted every retry
+      console.error(result.error.lastError);
+      break;
+    default:
+      console.error(result.error.message);
+  }
 }
 ```
 
-`toPromise()` never rejects: every outcome is a `Result`, and every failure is one of a closed set of error classes ([Error handling](#error-handling)). `json<T>()` casts without checking; pass a real validator, or use the [Zod adapter](#zod-adapter-optional), when you need the shape enforced.
+`toPromise()` never rejects: every outcome is a `Result`, and every failure is one of a closed set of error classes, discriminated by `kind` ([Error handling](#error-handling)). `json<T>()` casts without checking; pass a real validator, or use the [Zod adapter](#zod-adapter-optional), when you need the shape enforced.
 
 **`timeout.attemptMs` is the one required setting.** Most HTTP clients wait forever by default, which is how one hung dependency takes a service down. Vereda makes you choose a number, or pass `Infinity` to opt out on purpose. Everything else has a default:
 
@@ -380,7 +385,7 @@ if (result.success) {
 
 ### Error handling
 
-Errors are a closed hierarchy under `RequestError`, and `AppError` is the union of all of them. Every class carries a readonly `kind` string, handy for logs and metrics tags; narrow with `instanceof` to reach a class's own fields:
+Errors are a closed hierarchy under `RequestError`, and `AppError` is the union of all of them. Every class carries a readonly, literal-typed `kind`, so switching on it narrows to that class and its fields (`instanceof` works too):
 
 | Error | `kind` | Meaning | Notable fields |
 | --- | --- | --- | --- |
@@ -399,22 +404,25 @@ Errors are a closed hierarchy under `RequestError`, and `AppError` is the union 
 Only `network`, `timeout`, and `retryable_status` are retried by default — see [What gets retried](#what-gets-retried) above. Everything else is terminal: it resolves the ticket on the first attempt that produces it.
 
 ```typescript
-import { CircuitOpenError, HttpError, MaxRetriesExceededError } from "vereda";
-
 const result = await ticket.toPromise();
 if (!result.success) {
-  const { error } = result;
-  if (error instanceof MaxRetriesExceededError) {
-    error.lastError; // the final attempt's error
-  } else if (error instanceof HttpError) {
-    error.statusCode; // and error.response
-  } else if (error instanceof CircuitOpenError) {
-    error.partition; // the host that is failing fast
-  } else {
-    console.error(error.kind, error.message);
+  switch (result.error.kind) {
+    case "max_retries":
+      result.error.lastError; // MaxRetriesExceededError: the final attempt's error
+      break;
+    case "http":
+      result.error.statusCode; // HttpError: also .response
+      break;
+    case "circuit_open":
+      result.error.partition; // CircuitOpenError: the host that is failing fast
+      break;
+    default:
+      console.error(result.error.message);
   }
 }
 ```
+
+Because the set is closed, a `switch` with a `const unreachable: never = result.error` default fails to compile if a case is missing.
 
 ### Cancellation
 
