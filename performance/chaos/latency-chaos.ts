@@ -6,7 +6,18 @@ import { type BenchmarkResult, printResults, TestServer } from "../src/utils.ts"
  * Tests how Vereda handles sudden latency increases
  */
 async function latencyChaos() {
-	const server = new TestServer({ baseLatencyMs: 10, jitterMs: 5 });
+	const server = new TestServer({
+		baseLatencyMs: 10,
+		jitterMs: 5,
+		// 20% of requests get a 500-2000ms spike before the normal response.
+		intercept: async () => {
+			if (Math.random() < 0.2) {
+				const spikeLatency = 500 + Math.random() * 1500;
+				await new Promise((r) => setTimeout(r, spikeLatency));
+			}
+			return false;
+		},
+	});
 	await server.start();
 
 	try {
@@ -25,19 +36,6 @@ async function latencyChaos() {
 		const errors: Record<string, number> = {};
 		let successful = 0;
 		let failed = 0;
-
-		// Simulate latency spikes during the test
-		const _spikeActive = false;
-		const _originalHandler = server.server?.listeners("request")[0];
-
-		server.server?.on("request", async (_req, _res) => {
-			// Randomly inject latency spikes
-			if (Math.random() < 0.2) {
-				// 20% chance of spike
-				const spikeLatency = 500 + Math.random() * 1500; // 500-2000ms
-				await new Promise((r) => setTimeout(r, spikeLatency));
-			}
-		});
 
 		const startTime = performance.now();
 		const promises: Promise<void>[] = [];

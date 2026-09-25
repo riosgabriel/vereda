@@ -19,10 +19,13 @@ async function thunderingHerdScenario() {
 			retry: { maxRetries: 2 },
 			timeout: { attemptMs: 5000 },
 			concurrency: 20, // Limit concurrent requests
+			// Both queues absorb the whole 200-request burst (200 minus each
+			// level's concurrency), so nothing is shed.
+			maxQueueSize: 180,
 			partitions: {
 				[server.baseUrl.replace("http://", "")]: {
 					concurrency: 10,
-					maxQueueSize: 100,
+					maxQueueSize: 190,
 				},
 			},
 		});

@@ -1,3 +1,4 @@
+import type { IncomingMessage, ServerResponse } from "node:http";
 import type { HttpClient } from "vereda";
 
 export interface BenchmarkResult {
@@ -26,6 +27,13 @@ export interface BenchmarkOptions {
 	warmupRequests?: number;
 }
 
+/**
+ * Runs before TestServer's default handler on every request. Await inside it
+ * to delay the request; answer `res` and resolve `true` to skip the default
+ * handler entirely.
+ */
+export type RequestInterceptor = (req: IncomingMessage, res: ServerResponse) => Promise<boolean>;
+
 export class TestServer {
 	private server: import("http").Server | null = null;
 	private port: number | null = null;
@@ -38,6 +46,7 @@ export class TestServer {
 			failRate?: number;
 			timeoutRate?: number;
 			statusCodes?: number[];
+			intercept?: RequestInterceptor;
 		} = {},
 	) {}
 
@@ -45,7 +54,10 @@ export class TestServer {
 		const http = await import("node:http");
 
 		return new Promise((resolve) => {
-			this.server = http.createServer(async (_req, res) => {
+			this.server = http.createServer(async (req, res) => {
+				const handled: Promise<boolean> = this.options.intercept?.(req, res) ?? Promise.resolve(false);
+				if (await handled) return;
+
 				const latency = (this.options.baseLatencyMs ?? 10) + Math.random() * (this.options.jitterMs ?? 5);
 
 				await new Promise((r) => setTimeout(r, latency));

@@ -281,10 +281,14 @@ const benchmarks: Record<string, BenchmarkFn> = {
 				retry: { maxRetries: 2 },
 				timeout: { attemptMs: 5000 },
 				concurrency: 20,
+				// Global and partition queues are both sized to absorb the whole burst
+				// (200 minus each level's concurrency), so the thresholds measure
+				// queueing latency, not load shedding. Bulkhead Isolation covers shedding.
+				maxQueueSize: 180,
 				partitions: {
 					[server.baseUrl.replace("http://", "")]: {
 						concurrency: 10,
-						maxQueueSize: 100,
+						maxQueueSize: 190,
 					},
 				},
 			});
