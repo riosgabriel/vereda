@@ -55,6 +55,17 @@ under Node, so it will not reproduce a Bun-only failure.
 
 Tests are self-contained: integration tests spin up `node:http` servers on ephemeral localhost ports. No network, services, or env vars needed. Keep timing-sensitive tests fast — the suite uses tiny backoff delays (e.g. `baseDelayMs: 10`, `jitter: false`).
 
+## API reference site
+
+`npm run docs` generates the TypeDoc reference into `docs-site/`. On every push to `main`, `.github/workflows/docs.yml` builds it and deploys it to [GitHub Pages](https://riosgabriel.github.io/vereda/).
+
+The repo's Pages source (Settings → Pages → Build and deployment) must stay set to **GitHub Actions**. If it's set to "Deploy from a branch" (`main` `/docs`), Pages serves the hand-written `docs/` folder, which has no `index.html`, and the site 404s even though the workflow passes. To check the setting and fix it:
+
+```bash
+gh api repos/riosgabriel/vereda/pages -q .build_type          # expect: workflow
+gh api -X PUT repos/riosgabriel/vereda/pages -f build_type=workflow
+```
+
 ## Before you open a PR
 
 - Follow the existing patterns in the codebase.
