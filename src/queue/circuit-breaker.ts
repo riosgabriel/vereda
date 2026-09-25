@@ -209,8 +209,10 @@ export class CircuitBreaker {
 						freeTrialSlot();
 						return;
 					}
+					// Classify once here and record the already-classified failure
+					// directly — `recordFailure()` would consult isFailure a second time.
 					if (this.isFailure(error)) {
-						this.recordFailure(error);
+						this.recordClassifiedFailure();
 					} else {
 						this.recordNeutral();
 						freeTrialSlot();
@@ -242,8 +244,14 @@ export class CircuitBreaker {
 	 *  is not classified as a failure. */
 	recordFailure(error: AppError): void {
 		if (!this.config.enabled) return;
-
 		if (!this.isFailure(error)) return;
+		this.recordClassifiedFailure();
+	}
+
+	/** Record a failure the caller has already classified via `isFailure`, so a
+	 *  user-supplied classifier runs exactly once per outcome. No-op when disabled. */
+	private recordClassifiedFailure(): void {
+		if (!this.config.enabled) return;
 
 		if (this.state === "half-open") {
 			this.halfOpenInFlight = Math.max(0, this.halfOpenInFlight - 1);
