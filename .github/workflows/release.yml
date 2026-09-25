@@ -19,8 +19,10 @@ jobs:
     name: release
     runs-on: ubuntu-latest
     # contents: write to create the GitHub Release; id-token: write for npm
-    # provenance (OIDC-based attestation, separate from the registry auth
-    # token below).
+    # trusted publishing — npm exchanges the job's OIDC token for a
+    # short-lived publish credential (no NPM_TOKEN secret) and attaches a
+    # provenance attestation automatically. The trusted publisher (this repo
+    # + this workflow file) is configured on npmjs.com; see CONTRIBUTING.md.
     permissions:
       contents: write
       id-token: write
@@ -49,8 +51,16 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: 20
+          # Trusted publishing needs npm >= 11.5.1; Node 20's bundled npm 10
+          # can't do the OIDC exchange. (The Node 20 support floor is still
+          # covered by CI's test matrix — this only picks the publishing npm.)
+          node-version: 24
           registry-url: "https://registry.npmjs.org"
+
+      - name: Ensure npm supports trusted publishing
+        run: |
+          npm install -g npm@^11.5.1
+          npm --version
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -117,11 +127,20 @@ jobs:
             echo "RELEASE_NOTES_EOF"
           } >> "$GITHUB_OUTPUT"
 
+      # Skips a version that's already on the registry, so re-running a
+      # release (or pushing the tag for a version first published by hand —
+      # how the very first release has to be bootstrapped, since a trusted
+      # publisher can only be configured for a package that already exists)
+      # still creates the GitHub Release instead of failing here.
       - name: Publish to npm
         if: steps.mode.outputs.dry_run == 'false'
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if npm view "vereda@$VERSION" version >/dev/null 2>&1; then
+            echo "vereda@$VERSION is already on npm; skipping publish"
+          else
+            npm publish --provenance --access public
+          fi
 
       - name: Would publish to npm (dry run)
         if: steps.mode.outputs.dry_run == 'true'

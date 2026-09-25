@@ -100,3 +100,25 @@ run it, read the diff carefully.
 - `ticket.toPromise()` never rejects — failures are a `Result` union with a closed `RequestError` hierarchy.
 
 See [AGENTS.md](./AGENTS.md) for more gotchas.
+
+## Releasing (maintainers)
+
+Releases publish to npm from `.github/workflows/release.yml` using **npm trusted publishing**: GitHub Actions authenticates with a short-lived OIDC token, so no npm token is stored in the repo, and every version gets a provenance attestation automatically.
+
+### Every release
+
+1. On a branch: bump `version` in `package.json`, and in `CHANGELOG.md` turn `## [Unreleased]` into `## [X.Y.Z] - YYYY-MM-DD`. The workflow uses that section as the GitHub Release notes and fails if it's missing.
+2. Merge to `main`.
+3. Optional: run the **Release** workflow manually with `dry_run: true` to see the notes and the `npm pack` file list.
+4. Tag the merge commit and push it: `git tag vX.Y.Z && git push origin vX.Y.Z`. The tag must match `package.json`, or the workflow fails. The workflow typechecks, tests, builds, runs publint and attw, publishes to npm, then creates the GitHub Release.
+
+Re-running a release is safe: the publish step skips a version that's already on npm and continues to the GitHub Release.
+
+### One-time bootstrap (first publish only)
+
+A trusted publisher can only be configured for a package that already exists on npm, so the first version is published by hand:
+
+1. Check out the release tag in a clean clone (so no stray local `dist/` files get packed), then `bun install`.
+2. `npm login` (use an npm account with 2FA), then `npm publish --access public`. `prepublishOnly` builds and runs the tests first.
+3. On npmjs.com, go to the package's **Settings → Trusted publishing** and add GitHub Actions with owner `riosgabriel`, repository `vereda`, and workflow `release.yml`.
+4. Push the tag. The workflow sees the version is already published, skips that step, and creates the GitHub Release. Every later release goes through the normal steps above.

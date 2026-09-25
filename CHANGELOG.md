@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The package's source maps (`.js.map`, `.d.ts.map`) pointed to `src/` files that weren't published, so debuggers and editors' "Go to definition" landed on missing files. The package now includes `src/` (and `CHANGELOG.md`).
 - **With `baseUrl` set, retries never reached the server.** Every retry fetched the caller's bare relative path (e.g. `/users`) instead of `baseUrl` + path, failed on the client with a `NetworkError`, and burned the full retry budget.
 - A partition-level `timeout.totalMs` was ignored unless the partition was named explicitly with `options.partition`, so it never applied to the default host-derived partitions.
 - A first attempt cut off by `timeout.totalMs` emitted a `cancelled` lifecycle event while the ticket resolved with `DeadlineExceededError`. It now emits `failure`, as the retry path already did.
