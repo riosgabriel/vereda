@@ -168,6 +168,8 @@ checkout service
 
 Every request is assigned to a partition by host, and each partition has its own retry queue and its own breaker. Payments failing costs you payment requests. It doesn't cost you the concurrency that inventory and shipping need, and the `totalMs` deadline means no checkout waits longer than 15 seconds.
 
+[`examples/checkout/`](examples/checkout/) is this scenario as a runnable app: stub upstreams on localhost, a small checkout server, and a driver that asserts the retry, circuit-breaker, and isolation behavior described here (with smaller timings so it runs fast). Clone the repo and run `npm run example:checkout`.
+
 ## How it works
 
 ```
