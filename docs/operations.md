@@ -6,10 +6,10 @@ This guide is for running Vereda in production: sizing its knobs, reading its ru
 
 Vereda has two independent concurrency limits:
 
-- **Global (`concurrency`, default `50`)** — a semaphore shared across every partition. It bounds total in-flight *retry* executions against your process, regardless of how many hosts you talk to.
+- **Global (`concurrency`, default `50`)** — a semaphore shared across every partition. It bounds total in-flight executions (first attempts and retries alike) against your process, regardless of how many hosts you talk to. Up to `maxQueueSize` (default `100`) more may wait for a permit; beyond that a request resolves with `QueueFullError` (`partition: "global"`).
 - **Per-partition (`partitions[name].concurrency`, default `5`)** — how many retries may run at once for a single partition (host). `partitions[name].maxQueueSize` (default `100`) bounds how many more retries may wait behind that limit before a request is rejected with `QueueFullError`.
 
-Both limits apply **only to retries**. The first attempt for every request fires immediately, outside every bulkhead — this is deliberate (see [Design philosophy](../README.md#design-philosophy) in the README): a struggling downstream should throttle its own retry traffic, not new work.
+The per-partition limit applies **only to retries**: the first attempt for every request skips the partition bulkhead — this is deliberate (see [Design philosophy](../README.md#design-philosophy) in the README): a struggling downstream should throttle its own retry traffic, not new work. The global limit applies to every attempt, so a host that fails *slowly* can hold global permits and delay or reject requests to healthy hosts under enough load; keep `attemptMs` short for such hosts, or set `limitFirstAttempts`.
 
 Ballpark sizing:
 
@@ -22,7 +22,7 @@ When a partition fills up, `client.partitions()` (below) is how you observe it b
 
 ## `attemptMs` vs. `totalMs`
 
-Two different timeouts, both optional and both `undefined` (disabled) by default:
+Two different timeouts. `attemptMs` is required on the client-level `timeout` (pass `Infinity` to opt out explicitly); `totalMs` is optional and disabled by default:
 
 - **`timeout.attemptMs`** — a per-attempt deadline. Each individual attempt (the first one and every retry) is aborted if it runs longer than this, and the result folds into the normal retry loop as a `TimeoutError` (retried like any other transient failure).
 - **`timeout.totalMs`** — a whole-ticket deadline, starting when `request()`/`get()`/etc. is called. It covers time spent queued, sleeping in backoff, and executing — everywhere. On expiry the ticket resolves with `DeadlineExceededError`, a terminal error; no further retries happen even if attempts remain.
@@ -49,8 +49,8 @@ Implement `MetricsSink` (`counter`, `histogram`, `gauge` — all synchronous, no
 | Series | Type | Tags | Meaning |
 | --- | --- | --- | --- |
 | `METRICS.REQUESTS` (`vereda.requests`) | counter | `partition`, `method` | One per request initiated |
-| `METRICS.RETRIES` (`vereda.retries`) | counter | `partition`, `kind` | One per retry attempt, tagged by the error `kind` that triggered it |
-| `METRICS.DURATION` (`vereda.duration_ms`) | histogram | `partition`, `kind`, `status` | Total ticket duration at settlement |
+| `METRICS.RETRIES` (`vereda.retries`) | counter | `kind` | One per retry attempt, tagged by the error `kind` that triggered it |
+| `METRICS.DURATION` (`vereda.duration_ms`) | histogram | `kind` (`success`, `cancelled`, or the error `kind`) | Total ticket duration at settlement |
 | `METRICS.QUEUE_DEPTH` (`vereda.queue_depth`) | gauge | `partition` | Current per-partition queue size — same retries-only caveat as `partitions()` above: a partition only shows queued first attempts if `limitFirstAttempts` is enabled for it |
 | `METRICS.GLOBAL_QUEUE_DEPTH` (`vereda.global_queue_depth`) | gauge | — | Callers currently waiting for a permit under the global concurrency cap (D1) — the signal that you're throttled by `concurrency`/`ClientConfig.concurrency` rather than downstream latency |
 | `METRICS.IN_FLIGHT` (`vereda.in_flight`) | gauge | — | Current in-flight executions across all partitions |
