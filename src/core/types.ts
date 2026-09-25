@@ -244,9 +244,15 @@ export interface RequestOptions<T = unknown> {
 	timeout?: TimeoutConfig;
 	/** Signal to cancel the request externally */
 	signal?: AbortSignal;
-	/** Request URL - available for middleware to read/rewrite */
-	url?: string;
 }
+
+/** Request options with `parse` set: the ticket resolves with `data: T`. */
+export type ParsedRequestOptions<T> = Omit<RequestOptions<T>, "parse"> & { parse: ParseFn<T> };
+
+/** Request options without `parse`: the body is left unread on `raw` and
+ *  `data` is `undefined`. `parse: undefined` is accepted so options can be
+ *  built conditionally. */
+export type UnparsedRequestOptions = Omit<RequestOptions, "parse"> & { parse?: undefined };
 
 // ---------------------------------------------------------------------------
 // Client config
