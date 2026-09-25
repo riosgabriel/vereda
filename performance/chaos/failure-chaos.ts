@@ -6,7 +6,22 @@ import { type BenchmarkResult, printResults, TestServer } from "../src/utils.ts"
  * Tests how Vereda handles complete service unavailability
  */
 async function failureChaos() {
-	const server = new TestServer({ baseLatencyMs: 10, jitterMs: 5 });
+	// Starts down and is toggled by the outage interval below. The whole run
+	// takes well under a second when the service is healthy, so an outage that
+	// begins later would never be hit.
+	let isOutage = true;
+	const server = new TestServer({
+		baseLatencyMs: 10,
+		jitterMs: 5,
+		// 503 is retryable by default. No Retry-After, so the client's own
+		// backoff config below decides how it waits out the outage.
+		intercept: async (_req, res) => {
+			if (!isOutage) return false;
+			res.statusCode = 503;
+			res.end("Service Unavailable");
+			return true;
+		},
+	});
 	await server.start();
 
 	try {
@@ -33,20 +48,13 @@ async function failureChaos() {
 		let successful = 0;
 		let failed = 0;
 
-		// Simulate outage periods
-		let isOutage = false;
+		// Simulate outage periods. 1s outages fit inside the retry budget above
+		// (5 retries, 200ms base backoff), so most requests should ride them out.
+		console.log("Service status: 🔴 OUTAGE");
 		const outageInterval = setInterval(() => {
 			isOutage = !isOutage;
 			console.log(`Service status: ${isOutage ? "🔴 OUTAGE" : "🟢 OPERATIONAL"}`);
-		}, 3000); // Toggle every 3 seconds
-
-		server.server?.on("request", async (_req, res) => {
-			if (isOutage) {
-				res.statusCode = 503;
-				res.end("Service Unavailable");
-				return;
-			}
-		});
+		}, 1000);
 
 		const startTime = performance.now();
 		const promises: Promise<void>[] = [];
