@@ -159,8 +159,32 @@ describe("CircuitPermit — never-sent outcomes are ignored (body factory throw)
 		// The spy is wired up: a real error does reach it (and trips the circuit).
 		const real = new NetworkError("boom");
 		next!.failure(real);
+		expect(isFailure).toHaveBeenCalledTimes(1);
 		expect(isFailure).toHaveBeenCalledWith(real);
-		expect(isFailure).not.toHaveBeenCalledWith(expect.objectContaining({ kind: "configuration" }));
+		expect(cb.tryAcquire()).toBeNull();
+	});
+
+	it("isFailure runs exactly once per reported outcome — closed, half-open, and not-a-failure", () => {
+		let verdict = true;
+		const isFailure = vi.fn(() => verdict);
+		const cb = new CircuitBreaker("test", { enabled: true, failureThreshold: 2, resetTimeoutMs: RESET_MS, isFailure });
+
+		cb.tryAcquire()!.failure(new NetworkError("boom")); // closed, counted
+		expect(isFailure).toHaveBeenCalledTimes(1);
+
+		verdict = false;
+		cb.tryAcquire()!.failure(http404()); // not a failure
+		expect(isFailure).toHaveBeenCalledTimes(2);
+
+		verdict = true;
+		cb.tryAcquire()!.failure(new NetworkError("boom")); // 1 (404 reset the run)
+		cb.tryAcquire()!.failure(new NetworkError("boom")); // 2 -> opens
+		expect(isFailure).toHaveBeenCalledTimes(4);
+		expect(cb.tryAcquire()).toBeNull();
+
+		vi.advanceTimersByTime(RESET_MS);
+		cb.tryAcquire()!.failure(new NetworkError("boom")); // half-open trial -> reopens
+		expect(isFailure).toHaveBeenCalledTimes(5);
 		expect(cb.tryAcquire()).toBeNull();
 	});
 
