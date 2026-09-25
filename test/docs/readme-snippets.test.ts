@@ -51,8 +51,11 @@ const AMBIENT_DECLARATIONS: Record<string, string> = {
 
 function declaresOrImports(source: string, name: string): boolean {
 	const declared = new RegExp(`\\b(?:const|let|var|type|interface|function|class)\\s+${name}\\b`);
-	const imported = new RegExp(`\\bimport\\b[^;\\n]*\\b${name}\\b[^;\\n]*;`);
-	return declared.test(source) || imported.test(source);
+	// Destructuring: `const { ticket } = …` / `const [client] = …`.
+	const destructured = new RegExp(`\\b(?:const|let|var)\\s*[{[][^}\\]]*\\b${name}\\b[^}\\]]*[}\\]]`);
+	// Imports may span lines (`import {\\n  AppError,\\n} from "vereda";`).
+	const imported = new RegExp(`\\bimport\\b[^;]*\\b${name}\\b[^;]*\\bfrom\\b[^;]*;`);
+	return declared.test(source) || destructured.test(source) || imported.test(source);
 }
 
 function buildPreamble(source: string): string {
@@ -169,6 +172,9 @@ describe("README TypeScript snippets", () => {
 			if (result.status === 0) {
 				return;
 			}
+			if (result.error) {
+				throw new Error(`Could not run ${tscBin} (dependencies installed?): ${result.error.message}`);
+			}
 
 			const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
 			const diagnostics = parseDiagnostics(output);
@@ -190,4 +196,13 @@ describe("README TypeScript snippets", () => {
 			rmSync(dir, { recursive: true, force: true });
 		}
 	}, 60_000);
+
+	it("has no JavaScript-flavored fences that would dodge the typecheck", () => {
+		// Only `typescript`/`ts` fences are checked above, so retagging a block
+		// `js` would silently exempt it. Examples are TypeScript; keep them so.
+		const dodging = [...README.matchAll(/^```(js|javascript|jsx|tsx|mjs|cjs)\s*$/gm)].map(
+			(m) => `README.md:${README.slice(0, m.index).split("\n").length} (\`\`\`${m[1]})`,
+		);
+		expect(dodging).toEqual([]);
+	});
 });

@@ -65,10 +65,10 @@ Even once that loop is correct, it has no limit on how many retries pile onto a 
 
 | When… | Vereda… |
 | --- | --- |
-| A request fails transiently (connection reset, timeout, `429`, `5xx`) | retries it with exponential backoff and full jitter, honoring `Retry-After` |
+| A request fails transiently (connection reset, timeout, `429`, `500`, `502`–`504`) | retries it with exponential backoff and full jitter, honoring `Retry-After` |
 | A retry could duplicate a side effect | retries only idempotent methods unless you opt in or send an `Idempotency-Key` |
 | A request hangs | aborts each attempt at `timeout.attemptMs`; an optional `timeout.totalMs` caps the whole request |
-| One slow host would soak up your retries | caps retry concurrency and queue size per host, so traffic to other hosts is unaffected |
+| One failing host would soak up your retries | caps retry concurrency and queue size per host, so one host's retries can't crowd out another's |
 | A host is down, not just slow | an opt-in circuit breaker fails fast with `CircuitOpenError` until it recovers |
 | The response isn't the shape you expected | validates it with your `parse` function (or Zod); a failed parse is never retried |
 | The caller no longer needs the answer | cancels via the ticket or your `AbortSignal`; a cancelled request is never retried |
@@ -120,15 +120,14 @@ if (result.success) {
 | Retries | 3 retries after the first attempt (4 total executions) |
 | Backoff | Exponential: 200ms base, 30s cap, full jitter |
 | Retry-on status codes | `[408, 425, 429, 500, 502, 503, 504]` |
-| Retried methods | Idempotent only: `GET`, `HEAD`, `OPTIONS`, `PUT`, `DELETE`, `TRACE` |
 | Per-partition concurrency | 5 retries in flight per host |
 | Per-partition queue size | 100 waiting retries per host |
 | Global concurrency | 50 in-flight executions across all partitions |
-| First-attempt concurrency | Unbounded — the initial attempt bypasses the bulkhead unless `partition.limitFirstAttempts` is set |
+| Global queue size | 100 waiting executions; beyond that a request resolves with `QueueFullError` (`partition: "global"`) |
+| First attempts | Skip the per-partition bulkhead (unless `partition.limitFirstAttempts` is set), but still take a global permit |
 | Total deadline | None — set `timeout.totalMs` to cap the whole request |
 | Circuit breaker | Disabled — opt in with `circuitBreaker: { enabled: true }` |
 
-The package ships a prebuilt `dist/`, so installing never compiles anything.
 
 ## Example: one failing dependency
 
@@ -162,13 +161,15 @@ checkout service
   │      after 5 straight failures: circuit opens, calls fail instantly with CircuitOpenError
   │      after 30s: one trial request; success closes the circuit
   │
-  ├──► inventory.example.com   own partition, own limits: unaffected
-  └──► shipping.example.com    own partition, own limits: unaffected
+  ├──► inventory.example.com   own partition: its retries aren't queued behind payments'
+  └──► shipping.example.com    own partition: same
 ```
 
-Every request is assigned to a partition by host, and each partition has its own retry queue and its own breaker. Payments failing costs you payment requests. It doesn't cost you the concurrency that inventory and shipping need, and the `totalMs` deadline means no single call waits longer than 15 seconds, retries included.
+Every request is assigned to a partition by host, and each partition has its own retry queue and its own breaker. Payments' retries are capped at 2 in flight, and once its breaker opens, payment calls stop reaching the network at all. The `totalMs` deadline means no single call waits longer than 15 seconds, retries included.
 
-[`examples/checkout/`](examples/checkout/) is this scenario as a runnable app: stub upstreams on localhost, a small checkout server, and a driver that asserts the retry, circuit-breaker, and isolation behavior described here (with smaller timings so it runs fast). Clone the repo and run `npm run example:checkout`.
+One limit is shared: every attempt, first attempts included, takes a permit from the client-wide `concurrency` cap (default 50, with 100 waiting). A host that fails *slowly* holds those permits while it hangs, so under enough load it can delay or reject requests to healthy hosts. Keep `attemptMs` short for dependencies that tend to hang, and set `limitFirstAttempts: true` on a partition to put its fresh traffic behind its own bulkhead too.
+
+[`examples/checkout/`](examples/checkout/) is this scenario as a runnable app: stub upstreams on localhost, a small checkout server, and a driver that asserts the retries and the breaker tripping while inventory and shipping keep succeeding (sequential traffic and smaller numbers, so it runs fast; it doesn't exercise the queue limits). Clone the repo and run `npm run example:checkout`.
 
 ## How it works
 
@@ -186,7 +187,7 @@ client.get(url)
                                              └── attempts exhausted ──> MaxRetriesExceededError
 ```
 
-The first attempt fires immediately, outside the bulkhead. Only requests that need another attempt go through their partition's queue, so retry traffic never starves fresh requests. When the circuit breaker is enabled, it is checked before the first attempt and again before every retry.
+The first attempt skips the partition bulkhead. Only requests that need another attempt go through their partition's queue, so a host's retry backlog waits in its own queue instead of in front of fresh requests. Every attempt that runs, first or retry, still takes a permit from the global `concurrency` cap, so the two do share that limit. When the circuit breaker is enabled, it is checked before the first attempt and again before every retry.
 
 ## Features
 
@@ -206,7 +207,7 @@ By default, a failed attempt is retried only when the error is transient **and**
 | Any other HTTP status (e.g. `404`) | `http` | No |
 | Response failed `parse` | `validation` | Never |
 | Cancelled | `cancelled` | Never |
-| Partition queue full | `queue_full` | Never |
+| Partition or global queue full | `queue_full` | Never |
 | Circuit open | `circuit_open` | Never |
 | Invalid configuration | `configuration` | Never |
 
@@ -247,7 +248,7 @@ const client = HttpClient.create({
 });
 ```
 
-`retryWhen` is consulted after every failed attempt, including the first one. It runs after the default policy and can only veto a retry, never force one. Return `false` to surface the error immediately:
+`retryWhen` is consulted once after every failed attempt that could still be retried, including the first one. It runs after the default policy and can only veto a retry, never force one. Return `false` to surface the error immediately:
 
 ```typescript
 import { HttpClient, NetworkError } from "vereda";
@@ -282,7 +283,7 @@ client.get("/reports/slow", { timeout: { attemptMs: 15_000 } });
 ```
 
 - `attemptMs` — a hard per-attempt timeout. The attempt is aborted with a `TimeoutError`, which is retryable. Required on the client-level `timeout` config — pass `Infinity` to explicitly opt out of a cap. Partition- and request-level `timeout` stay optional and inherit the client default.
-- `totalMs` — a deadline for the whole ticket, across every attempt and backoff delay. On expiry the ticket is cancelled and resolves with a `DeadlineExceededError`, which is terminal. Omit it (or pass `Infinity`) for no deadline.
+- `totalMs` — a deadline for the whole ticket, across every attempt and backoff delay. On expiry the in-flight attempt is aborted and the ticket resolves with a `DeadlineExceededError` (a `failure` event, not `cancelled`), which is terminal. Omit it (or pass `Infinity`) for no deadline.
 
 The [operations guide](docs/operations.md) covers how to choose the two together.
 
@@ -290,14 +291,14 @@ The [operations guide](docs/operations.md) covers how to choose the two together
 
 Every request is assigned to a partition, keyed by host (hostname:port) by default — `http://api.example.com:8080` and `http://api.example.com:9090` land in separate partitions. Each partition owns a concurrency limit plus a waiting queue. A slow or failing host fills its own queue without touching traffic to other hosts.
 
-The concurrency limit and queue govern only **retry traffic** — the initial attempt always fires immediately and is never throttled by the bulkhead (unless `limitFirstAttempts` is set on the partition).
+The partition's concurrency limit and queue govern only **retry traffic** — the initial attempt skips them (unless `limitFirstAttempts` is set on the partition). It still counts against the client-wide `concurrency` cap.
 
 ```typescript
 import { HttpClient } from "vereda";
 
 const client = HttpClient.create({
   timeout: { attemptMs: 5_000 },
-  concurrency: 10,
+  concurrency: 10, // client-wide cap across all partitions, first attempts included
   partitions: {
     "api.external.com": { concurrency: 2, maxQueueSize: 10 },
     "api.internal.com": { concurrency: 20 },
@@ -398,7 +399,7 @@ Errors are a closed hierarchy under `RequestError`, and `AppError` is the union 
 | `DeadlineExceededError` | `"deadline"` | Ticket exceeded `timeout.totalMs` (terminal — not retried) | `url`, `totalMs` |
 | `ValidationError` | `"validation"` | Response body failed `parse` or isn't valid JSON (terminal — never retried) | `issues`, `cause` |
 | `CancelledError` | `"cancelled"` | Ticket cancelled or signal aborted (terminal) | — |
-| `QueueFullError` | `"queue_full"` | Partition's queue was full when a retry tried to enqueue (terminal) | `partition`, `queueSize`, `maxQueueSize` |
+| `QueueFullError` | `"queue_full"` | A partition's retry queue, or the global queue (`partition: "global"`), was full (terminal) | `partition`, `queueSize`, `maxQueueSize` |
 | `CircuitOpenError` | `"circuit_open"` | Partition's circuit breaker is open; no attempt was made (terminal) | `partition` |
 | `ConfigurationError` | `"configuration"` | Invalid client/request config, or a body factory that threw (terminal) | `key` |
 | `MaxRetriesExceededError` | `"max_retries"` | All retries exhausted (terminal) | `attempts`, `lastError` |
@@ -446,31 +447,6 @@ To shut a client down, `client.close()` cancels everything in flight; `client.cl
 ### Tickets
 
 Every request method returns a **Ticket** synchronously — a handle to a request that may take several attempts. Most code only calls `toPromise()`. When you need to watch a request progress through its retries, or stop it partway, the ticket is also what you subscribe to and cancel.
-
-```
-                  ┌─────────────┐
-                  │   pending   │
-                  └──────┬──────┘
-                         │ first attempt (outside the bulkhead)
-              ┌──────────┴──────────┐
-              │ success             │ failure / busy status
-              ▼                     ▼
-        ┌───────────┐        ┌─────────────┐
-        │   done    │        │   queued    │
-        └───────────┘        └──────┬──────┘
-                                    │ backoff
-                                    ▼
-                             ┌─────────────┐
-                             │  retrying   │
-                             └──────┬──────┘
-                                    │ attempt
-                          ┌─────────┴─────────┐
-                          ▼                   ▼
-                      success              exhausted
-                          │                   │
-                          ▼                   ▼
-                       done          MaxRetriesExceededError
-```
 
 ```typescript
 const ticket = client.get("/api/data");
@@ -547,9 +523,9 @@ client.on("circuitClose", ({ partition }) => {});
 
 ## Design philosophy
 
-**Fresh traffic comes first.** Retries should never starve new work. The first attempt skips the bulkhead — it exists to throttle *retry* pressure onto struggling hosts, which is where thundering herds come from.
+**Fresh traffic comes first.** The first attempt skips the partition bulkhead, which exists to throttle *retry* pressure onto struggling hosts — that's where thundering herds come from.
 
-**Backpressure beats unbounded queues.** When a partition is full, fail explicitly rather than consuming infinite memory.
+**Backpressure beats unbounded queues.** When a queue is full, fail explicitly rather than consuming infinite memory.
 
 **Cancellation is final.** A cancelled request never enters the retry loop, regardless of timeout or retry configuration.
 
@@ -568,21 +544,6 @@ Vereda follows [Semantic Versioning](https://semver.org/) from `1.0.0` onward: b
 
 **Node support:** the currently supported line is whatever `engines.node` in `package.json` declares (`>=20` today); CI runs the full suite against Node 20, 22, and 24 on every change, so those three are the versions actually verified. The floor moves only in a major release.
 
-## Development
-
-```bash
-git clone https://github.com/riosgabriel/vereda.git
-cd vereda
-bun install       # bun.lock is the only lockfile
-npm test          # vitest run
-bun run --bun test # same suite under the Bun runtime (as CI does)
-npm run typecheck
-npm run build
-bun run check     # Biome lint + format (the CI gate)
-```
-
-Tests are self-contained: integration tests spin up `node:http` servers on ephemeral localhost ports. No network, services, or env vars needed.
-
 ## Contributing
 
 New to Vereda? Two on-ramps:
@@ -590,7 +551,7 @@ New to Vereda? Two on-ramps:
 - **Self-guided** — read [ONBOARDING.md](ONBOARDING.md), a tour that follows one request through the library.
 - **Interactive** — run the **`guide-me`** skill in your coding harness (Claude Code, OpenCode, etc.). It's bundled in the repo and walks you through the internals interactively.
 
-When you're ready, read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, commands, and the behavioral invariants your change must preserve.
+When you're ready, read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, commands, and the behavioral invariants your change must preserve. Tests are self-contained: no network, services, or env vars needed.
 
 ## Why the name?
 

@@ -73,7 +73,7 @@ Request flow: `client.get()` returns a `Ticket` synchronously → first attempt 
 
 - Self-contained: integration tests spin up `node:http` servers on `127.0.0.1` ephemeral ports. No network, services, or env vars needed.
 - `testTimeout` is 15s (`vitest.config.ts`); retry/backoff tests use tiny delays (`baseDelayMs: 10`, `jitter: false`) — keep new timing-sensitive tests similarly fast.
-- `test/docs/readme-snippets.test.ts` typechecks every fenced `typescript`/`ts` block in README.md against the real library types (via a standalone `tsc` run per suite invocation) — a snippet must be a complete, standalone statement (imports included), since it's compiled as its own module. A handful of ambient names (`client`, `ticket`, `AppError`, `User`, `order`) are declared for it automatically when a block references but doesn't itself declare them.
+- `test/docs/readme-snippets.test.ts` typechecks every fenced `typescript`/`ts` block in README.md against the real library types (via a standalone `tsc` run per suite invocation) — a snippet must be a complete, standalone statement (imports included), since it's compiled as its own module. A handful of ambient names (`client`, `ticket`, `AppError`, `User`, `order`) are declared for it automatically when a block references but doesn't itself declare them. Code fences must be tagged `typescript`/`ts` (a `js`/`tsx` fence fails the test rather than dodging it). `test/docs/defaults-table.test.ts` pins the Quick start defaults table to the `DEFAULT_*` constants — change a default, update that table.
 
 ## Onboarding contributors (for LLMs)
 
