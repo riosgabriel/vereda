@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as z from "zod";
 import { withZod } from "../../src/adapters/zod.js";
-import { HttpClient } from "../../src/core/client.js";
+import { HttpClient, json } from "../../src/core/client.js";
 import {
 	CancelledError,
 	ConfigurationError,
@@ -15,6 +15,7 @@ import {
 	TimeoutError,
 	ValidationError,
 } from "../../src/core/errors.js";
+import type { LifecycleEventMap } from "../../src/core/types.js";
 
 interface TestServer {
 	url: string;
@@ -118,6 +119,109 @@ describe("HttpClient integration", () => {
 		expect(updateTypes).toContain("retrying");
 		expect(updateTypes).toContain("done");
 	}, 10_000);
+
+	it("503 then non-retryable 404 (maxRetries 1) resolves the raw HttpError, not MaxRetriesExceededError", async () => {
+		const iso = await createTestServer();
+		try {
+			let requestCount = 0;
+			iso.setHandler((_req, res) => {
+				requestCount++;
+				if (requestCount === 1) {
+					res.writeHead(503);
+					res.end("busy");
+				} else {
+					res.writeHead(404);
+					res.end("not found");
+				}
+			});
+
+			const isoClient = HttpClient.create({
+				timeout: { attemptMs: 5_000 },
+				retry: { maxRetries: 1, retryOnStatus: [503], backoff: { baseDelayMs: 10, jitter: false } },
+			});
+			const failures: LifecycleEventMap["failure"][] = [];
+			isoClient.on("failure", (e) => failures.push(e));
+
+			const result = await isoClient.get(`${iso.url}/flaky`).toPromise();
+
+			expect(requestCount).toBe(2);
+			expect(result.success).toBe(false);
+			if (!result.success) {
+				expect(result.error).toBeInstanceOf(HttpError);
+				expect(result.error).not.toBeInstanceOf(MaxRetriesExceededError);
+				expect((result.error as HttpError).statusCode).toBe(404);
+			}
+			// The failure event carries the same (unwrapped) error and the right
+			// attempt count — the final, non-retryable attempt is still counted.
+			expect(failures).toHaveLength(1);
+			expect(failures[0]?.error).toBeInstanceOf(HttpError);
+			expect(failures[0]?.attempts).toBe(2);
+		} finally {
+			await iso.close();
+		}
+	});
+
+	it("503 then an unparsable body on the final attempt resolves the raw ValidationError, not MaxRetriesExceededError", async () => {
+		const iso = await createTestServer();
+		try {
+			let requestCount = 0;
+			iso.setHandler((_req, res) => {
+				requestCount++;
+				if (requestCount === 1) {
+					res.writeHead(503);
+					res.end("busy");
+				} else {
+					res.writeHead(200, { "Content-Type": "application/json" });
+					res.end("not valid json");
+				}
+			});
+
+			const isoClient = HttpClient.create({
+				timeout: { attemptMs: 5_000 },
+				retry: { maxRetries: 1, retryOnStatus: [503], backoff: { baseDelayMs: 10, jitter: false } },
+			});
+
+			const result = await isoClient.get(`${iso.url}/flaky`, { parse: json() }).toPromise();
+
+			expect(requestCount).toBe(2);
+			expect(result.success).toBe(false);
+			if (!result.success) {
+				expect(result.error).toBeInstanceOf(ValidationError);
+				expect(result.error).not.toBeInstanceOf(MaxRetriesExceededError);
+			}
+		} finally {
+			await iso.close();
+		}
+	});
+
+	it("503 then 503 on the final attempt still resolves MaxRetriesExceededError", async () => {
+		const iso = await createTestServer();
+		try {
+			let requestCount = 0;
+			iso.setHandler((_req, res) => {
+				requestCount++;
+				res.writeHead(503);
+				res.end("busy");
+			});
+
+			const isoClient = HttpClient.create({
+				timeout: { attemptMs: 5_000 },
+				retry: { maxRetries: 1, retryOnStatus: [503], backoff: { baseDelayMs: 10, jitter: false } },
+			});
+
+			const result = await isoClient.get(`${iso.url}/flaky`).toPromise();
+
+			expect(requestCount).toBe(2);
+			expect(result.success).toBe(false);
+			if (!result.success) {
+				expect(result.error).toBeInstanceOf(MaxRetriesExceededError);
+				expect((result.error as MaxRetriesExceededError).attempts).toBe(2);
+				expect((result.error as MaxRetriesExceededError).lastError).toBeInstanceOf(RetryableStatusError);
+			}
+		} finally {
+			await iso.close();
+		}
+	});
 
 	it("queues and retries on timeout, eventually fails", async () => {
 		const hangingRequests: ServerResponse[] = [];
