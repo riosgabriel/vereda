@@ -148,6 +148,22 @@ describe("CircuitPermit — never-sent outcomes are ignored (body factory throw)
 		expect(cb.tryAcquire()).toBeNull();
 	});
 
+	it("a never-sent error is not passed to a user-supplied isFailure", () => {
+		const isFailure = vi.fn(() => true);
+		const cb = new CircuitBreaker("test", { enabled: true, failureThreshold: 1, isFailure });
+		cb.tryAcquire()!.failure(neverSent());
+		expect(isFailure).not.toHaveBeenCalled();
+		// With failureThreshold: 1, a recorded failure would have opened it.
+		const next = cb.tryAcquire();
+		expect(next).not.toBeNull();
+		// The spy is wired up: a real error does reach it (and trips the circuit).
+		const real = new NetworkError("boom");
+		next!.failure(real);
+		expect(isFailure).toHaveBeenCalledWith(real);
+		expect(isFailure).not.toHaveBeenCalledWith(expect.objectContaining({ kind: "configuration" }));
+		expect(cb.tryAcquire()).toBeNull();
+	});
+
 	it("half-open: a never-sent outcome frees the trial slot without closing or reopening", () => {
 		const cb = halfOpenBreaker();
 		const trial = cb.tryAcquire()!;
