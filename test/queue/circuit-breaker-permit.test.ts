@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HttpClient } from "../../src/core/client.js";
-import { HttpError, NetworkError } from "../../src/core/errors.js";
+import { CircuitOpenError, ConfigurationError, HttpError, NetworkError } from "../../src/core/errors.js";
 import { CircuitBreaker } from "../../src/queue/circuit-breaker.js";
 
 const RESET_MS = 1_000;
@@ -21,6 +21,12 @@ function halfOpenBreaker(halfOpenMaxAttempts = 1): CircuitBreaker {
 
 function http404(): HttpError {
 	return new HttpError("HTTP 404 Not Found", 404, new Response(null, { status: 404 }));
+}
+
+/** A never-sent outcome: the body factory threw before any request left the
+ *  process (executor.ts). The breaker must ignore it entirely. */
+function neverSent(): ConfigurationError {
+	return new ConfigurationError("body factory threw: boom");
 }
 
 describe("CircuitPermit — half-open trial slots are never leaked (B1)", () => {
@@ -123,6 +129,96 @@ describe("CircuitPermit — half-open trial slots are never leaked (B1)", () => 
 	});
 });
 
+describe("CircuitPermit — never-sent outcomes are ignored (body factory throw)", () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it("closed: a never-sent error between two real failures does not break the consecutive-failure run", () => {
+		const cb = new CircuitBreaker("test", { enabled: true, failureThreshold: 3 });
+		cb.tryAcquire()!.failure(new NetworkError("boom")); // 1
+		cb.tryAcquire()!.failure(neverSent()); // ignored — still 1
+		expect(cb.tryAcquire()).not.toBeNull();
+		cb.tryAcquire()!.failure(new NetworkError("boom")); // 2
+		expect(cb.tryAcquire()).not.toBeNull();
+		cb.tryAcquire()!.failure(new NetworkError("boom")); // 3 -> opens
+		expect(cb.tryAcquire()).toBeNull();
+	});
+
+	it("half-open: a never-sent outcome frees the trial slot without closing or reopening", () => {
+		const cb = halfOpenBreaker();
+		const trial = cb.tryAcquire()!;
+		expect(cb.tryAcquire()).toBeNull(); // trial slot taken
+		trial.failure(neverSent());
+		// A fresh trial slot is available again — still half-open, not closed
+		// (closing would admit unlimited concurrent callers) and not reopened
+		// (canRequest() would return false while open).
+		const retrial = cb.tryAcquire();
+		expect(retrial).not.toBeNull();
+		expect(cb.tryAcquire()).toBeNull(); // only one trial slot at a time
+	});
+
+	it("half-open: after a never-sent outcome, a real failure still reopens the circuit", () => {
+		const events: string[] = [];
+		const cb = new CircuitBreaker(
+			"test",
+			{ enabled: true, failureThreshold: 1, resetTimeoutMs: RESET_MS },
+			(_p, state) => events.push(state),
+		);
+		cb.tryAcquire()!.failure(new NetworkError("boom")); // opens
+		vi.advanceTimersByTime(RESET_MS);
+		cb.tryAcquire()!.failure(neverSent()); // ignored, trial slot freed
+		cb.tryAcquire()!.failure(new NetworkError("boom")); // the real trial
+		expect(events).toEqual(["open", "open"]);
+		expect(cb.canRequest()).toBe(false);
+	});
+
+	it("half-open: after a never-sent outcome, a real success still closes the circuit", () => {
+		const events: string[] = [];
+		const cb = new CircuitBreaker(
+			"test",
+			{ enabled: true, failureThreshold: 1, resetTimeoutMs: RESET_MS },
+			(_p, state) => events.push(state),
+		);
+		cb.tryAcquire()!.failure(new NetworkError("boom")); // opens
+		vi.advanceTimersByTime(RESET_MS);
+		const a = cb.tryAcquire()!; // first trial
+		expect(cb.tryAcquire()).toBeNull(); // trial slot taken
+		a.failure(neverSent()); // ignored, trial slot freed
+		// Still half-open (a single trial slot), not closed (unlimited admits).
+		expect(events).toEqual(["open"]);
+		const b = cb.tryAcquire()!; // a fresh trial, reusing the freed slot
+		b.success(); // the real trial
+		expect(events).toEqual(["open", "closed"]);
+		expect(cb.tryAcquire()).not.toBeNull();
+		expect(cb.tryAcquire()).not.toBeNull(); // closed: no single trial slot
+	});
+
+	it("rolling window: a never-sent error does not count toward minimumRequests or the success count", () => {
+		const cb = new CircuitBreaker("test", {
+			enabled: true,
+			window: { sizeMs: 10_000, failureRatePercent: 50, minimumRequests: 3 },
+		});
+		cb.tryAcquire()!.failure(new NetworkError("boom")); // total=1, failures=1
+		cb.tryAcquire()!.failure(neverSent()); // ignored — must not raise total to 2
+		cb.tryAcquire()!.failure(new NetworkError("boom")); // total=2, failures=2 (not 3)
+		// Only 2 real requests recorded — below minimumRequests (3) — must stay
+		// closed even though both real requests failed.
+		expect(cb.tryAcquire()).not.toBeNull();
+	});
+
+	it("a 404 still counts as a success (regression guard)", () => {
+		const cb = new CircuitBreaker("test", { enabled: true, failureThreshold: 2 });
+		cb.tryAcquire()!.failure(new NetworkError("boom")); // 1
+		cb.tryAcquire()!.failure(http404()); // resets the run
+		cb.tryAcquire()!.failure(new NetworkError("boom")); // 1, not 3
+		expect(cb.tryAcquire()).not.toBeNull();
+	});
+});
+
 describe("CircuitBreaker through HttpClient (B1)", () => {
 	const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -180,5 +276,41 @@ describe("CircuitBreaker through HttpClient (B1)", () => {
 
 		const r = await client.get("http://svc/").toPromise();
 		expect(r.success).toBe(true);
+	});
+
+	it("a throwing body factory between two real failures does not delay tripping the circuit", async () => {
+		let fetchCalls = 0;
+		const fetch: typeof globalThis.fetch = async () => {
+			fetchCalls++;
+			return new Response(null, { status: 503 });
+		};
+		const client = HttpClient.create({
+			timeout: { attemptMs: 1_000 },
+			retry: { maxRetries: 0 },
+			fetch,
+			circuitBreaker: { enabled: true, failureThreshold: 3, resetTimeoutMs: 1_000 },
+		});
+		const throwingBody = () => {
+			throw new Error("factory broken");
+		};
+
+		const r1 = await client.post("http://svc/", "a").toPromise(); // real failure 1
+		expect(r1.success === false && r1.error.kind).toBe("retryable_status");
+		const r2 = await client.post("http://svc/", "b").toPromise(); // real failure 2
+		expect(r2.success === false && r2.error.kind).toBe("retryable_status");
+		const r3 = await client.post("http://svc/", throwingBody).toPromise(); // never sent
+		expect(r3.success === false && r3.error.kind).toBe("configuration");
+		expect(fetchCalls).toBe(2); // the throwing factory never reached fetch
+
+		// On main, the never-sent outcome above resets the consecutive-failure
+		// run, so this 3rd real failure would only bring the count to 1 and the
+		// circuit would stay closed.
+		const r4 = await client.post("http://svc/", "c").toPromise(); // real failure 3 -> opens
+		expect(r4.success === false && r4.error.kind).toBe("retryable_status");
+		expect(fetchCalls).toBe(3);
+
+		const r5 = await client.post("http://svc/", "d").toPromise();
+		expect(r5.success === false && r5.error).toBeInstanceOf(CircuitOpenError);
+		expect(fetchCalls).toBe(3); // rejected before reaching fetch
 	});
 });

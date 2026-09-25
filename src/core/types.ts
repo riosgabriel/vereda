@@ -125,7 +125,10 @@ export interface CircuitBreakerConfig {
 	/** concurrent trial requests allowed while half-open.
 	 *  @default {@link DEFAULT_HALF_OPEN_MAX_ATTEMPTS} */
 	halfOpenMaxAttempts?: number;
-	/** Override default failure classification (network/timeout/retryable_status). */
+	/** Override default failure classification (network/timeout/retryable_status).
+	 *  Not consulted for an error that shows the attempt never reached the host
+	 *  (e.g. a body factory that threw before the request was dispatched) —
+	 *  those are always ignored, since there is no host-health signal to classify. */
 	isFailure?: (error: AppError) => boolean;
 }
 
