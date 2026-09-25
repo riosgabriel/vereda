@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed (breaking)
 
 - `ClientConfig.timeout.attemptMs` is now required. Every other default in the library fails safe when omitted; an omitted per-attempt timeout previously meant "unbounded." Pass `Infinity` explicitly to opt out of a cap. Partition- and request-level `timeout` remain optional and inherit the client-level default (#60).
+- Each error class now types `kind` as its literal (`HttpError["kind"]` is `"http"`, not `string`), so `switch (error.kind)` on an `AppError` narrows to the matching class and can be checked for exhaustiveness. A bare `RequestError` is no longer assignable to `AppError`, and comparing `kind` against a string outside the closed set is now a type error. At runtime, an unexpected `RequestError` that isn't one of the library's classes is wrapped in a `NetworkError` (original as `cause`) instead of passing through.
 
 ### Changed
 

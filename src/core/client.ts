@@ -12,9 +12,9 @@ import {
 	CircuitOpenError,
 	ConfigurationError,
 	DeadlineExceededError,
+	isAppError,
 	NetworkError,
 	NO_TIMEOUT_CONFIGURED,
-	RequestError,
 	TimeoutError,
 } from "./errors.js";
 import { emitIsolated, reportCallbackError } from "./listeners.js";
@@ -201,10 +201,9 @@ export class HttpClient {
 			// pending, which settles the ticket via its own "cancelled" event
 			// before this rejection arrives; emitting "failure" too would violate
 			// "exactly one of success/failure/cancelled per ticket".
-			const error =
-				err instanceof RequestError
-					? err
-					: new NetworkError(err instanceof Error ? err.message : "Unexpected error", { cause: err });
+			const error = isAppError(err)
+				? err
+				: new NetworkError(err instanceof Error ? err.message : "Unexpected error", { cause: err });
 			if (!ticket.isSettled) {
 				const durationMs = Date.now() - startTime;
 				this.emit("failure", {
@@ -651,10 +650,9 @@ export class HttpClient {
 			// genuinely unexpected throw (ticket still not "done") needs this
 			// catch to emit failure itself, falling back to initialQueuedMs
 			// since no attempt-loop total exists for an error this early.
-			const error =
-				err instanceof RequestError
-					? err
-					: new NetworkError(err instanceof Error ? err.message : "Queue error", { cause: err });
+			const error = isAppError(err)
+				? err
+				: new NetworkError(err instanceof Error ? err.message : "Queue error", { cause: err });
 			if (!ticket.isSettled) {
 				this.emit("failure", {
 					ticketId: ticket.id,

@@ -1,10 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import {
 	type AppError,
 	CancelledError,
+	CircuitOpenError,
 	ConfigurationError,
 	DeadlineExceededError,
 	HttpError,
+	isAppError,
 	MaxRetriesExceededError,
 	NetworkError,
 	QueueFullError,
@@ -115,5 +117,53 @@ describe("Error classes", () => {
 		expect(err.url).toBe("https://example.com");
 		expect(err.totalMs).toBe(5000);
 		expect(err.message).toContain("exceeded total deadline of 5000ms");
+	});
+
+	it("narrows AppError to its class by switching on kind", () => {
+		const describeError = (error: AppError): string => {
+			switch (error.kind) {
+				case "network":
+				case "cancelled":
+					return error.message;
+				case "http":
+				case "retryable_status":
+					expectTypeOf(error).toEqualTypeOf<HttpError | RetryableStatusError>();
+					return String(error.statusCode);
+				case "timeout":
+					return String(error.timeoutMs);
+				case "deadline":
+					return String(error.totalMs);
+				case "validation":
+					expectTypeOf(error).toEqualTypeOf<ValidationError>();
+					return error.message;
+				case "queue_full":
+					return error.partition;
+				case "circuit_open":
+					expectTypeOf(error).toEqualTypeOf<CircuitOpenError>();
+					return error.partition;
+				case "configuration":
+					return error.key;
+				case "max_retries":
+					return describeError(error.lastError);
+				default: {
+					const unreachable: never = error;
+					return unreachable;
+				}
+			}
+		};
+
+		expect(describeError(new HttpError("not found", 404, new Response()))).toBe("404");
+		expect(describeError(new CircuitOpenError("api"))).toBe("api");
+		expect(describeError(new MaxRetriesExceededError(4, new TimeoutError("http://x", 500)))).toBe("500");
+	});
+
+	it("isAppError accepts the library's classes (and their subclasses) and nothing else", () => {
+		class NotFoundError extends HttpError {}
+		expect(isAppError(new HttpError("not found", 404, new Response()))).toBe(true);
+		expect(isAppError(new NotFoundError("not found", 404, new Response()))).toBe(true);
+		expect(isAppError(new CircuitOpenError("api"))).toBe(true);
+		expect(isAppError(new RequestError("custom", "boom"))).toBe(false);
+		expect(isAppError(new Error("boom"))).toBe(false);
+		expect(isAppError({ kind: "http", message: "boom" })).toBe(false);
 	});
 });
