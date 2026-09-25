@@ -43,8 +43,10 @@ export interface CheckoutApp {
 export function createCheckoutApp(deps: CheckoutDeps): Promise<CheckoutApp> {
 	const client = HttpClient.create({
 		// Generous for a demo talking to localhost stubs that answer instantly;
-		// a production client would tune this per dependency.
-		timeout: { attemptMs: 2_000 },
+		// a production client would tune this per dependency. totalMs caps each
+		// request, retries included — it must exceed attempts × attemptMs
+		// (default 3 retries = 4 × 2s here) or it would cut off a legitimate retry.
+		timeout: { attemptMs: 2_000, totalMs: 10_000 },
 		partitions: {
 			[deps.paymentsHost]: {
 				// Small on purpose — this is the partition we want to watch fill
