@@ -1,5 +1,14 @@
 import type { AppError } from "../core/errors.js";
-import { ConfigurationError, HttpError, NetworkError, RetryableStatusError, ValidationError } from "../core/errors.js";
+import {
+	ConfigurationError,
+	DeadlineExceededError,
+	HttpError,
+	NetworkError,
+	NO_TIMEOUT_CONFIGURED,
+	RetryableStatusError,
+	TimeoutError,
+	ValidationError,
+} from "../core/errors.js";
 import type { RequestOptions, Result, RetryConfig, TimeoutConfig } from "../core/types.js";
 import { DEFAULT_RETRY_ON_STATUS, isBoundedMs } from "../core/types.js";
 import { isReadableStream } from "../core/validate.js";
@@ -21,6 +30,11 @@ export interface ExecuteRequest {
 	 *  to the caller unread (see `handedOff` in `executeRequest`) — never to
 	 *  reclassify an in-attempt timeout. */
 	deadlineAt?: number;
+	/** `url` as it may appear in errors/logs (query- and userinfo-redacted
+	 *  unless disabled) — used to build the `TimeoutError`/`DeadlineExceededError`
+	 *  that bounds a handed-off Response's body-read window, so that error is
+	 *  redacted the same as every other error the client builds. */
+	displayUrl: string;
 	/** Custom fetch function. Falls back to globalThis.fetch. */
 	fetch?: typeof globalThis.fetch;
 }
@@ -234,13 +248,29 @@ export async function executeRequest(req: ExecuteRequest, middleware: Middleware
 		// same as any other abort observed after fetch() has resolved. No
 		// ticket state changes here: the ticket already resolved.
 		if (handedOff) {
-			const attemptDeadline = isBoundedMs(timeoutMs) ? attemptStart + timeoutMs : Number.POSITIVE_INFINITY;
+			const attemptTimeoutMs = isBoundedMs(timeoutMs) ? timeoutMs : undefined;
+			const attemptDeadline =
+				attemptTimeoutMs !== undefined ? attemptStart + attemptTimeoutMs : Number.POSITIVE_INFINITY;
 			const totalDeadline = req.deadlineAt ?? Number.POSITIVE_INFINITY;
 			const boundAt = Math.min(attemptDeadline, totalDeadline);
 			if (Number.isFinite(boundAt)) {
 				const delay = Math.max(0, boundAt - Date.now());
+				// Name the abort reason after whichever bound fired — ties go to the
+				// attempt bound, since it's also the only bound when totalMs isn't
+				// configured — using Vereda's own error classes instead of a bare
+				// DOMException. That way a caller's `raw.json()`/`error.response.text()`
+				// rejects with something `instanceof TimeoutError`/`DeadlineExceededError`,
+				// `.kind`-narrowable, and redacted the same as every other error the
+				// client builds. The final branch is defensive only: `boundAt` being
+				// finite guarantees one of the two bounds above is actually configured.
+				const reason =
+					attemptTimeoutMs !== undefined && attemptDeadline <= totalDeadline
+						? new TimeoutError(req.displayUrl, attemptTimeoutMs)
+						: isBoundedMs(req.timeoutConfig.totalMs)
+							? new DeadlineExceededError(req.displayUrl, req.timeoutConfig.totalMs)
+							: new TimeoutError(req.displayUrl, attemptTimeoutMs ?? NO_TIMEOUT_CONFIGURED);
 				const bodyReadTimer = setTimeout(() => {
-					timeoutController.abort(new DOMException("response body read exceeded timeout", "TimeoutError"));
+					timeoutController.abort(reason);
 				}, delay);
 				bodyReadTimer.unref();
 			}
