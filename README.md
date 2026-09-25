@@ -333,7 +333,7 @@ const client = HttpClient.create({
 });
 ```
 
-The breaker is checked before the first attempt and again before every retry — while open, requests to that partition fail with `CircuitOpenError` instead of sending the attempt that was due. After `resetTimeoutMs`, one trial request is let through (`halfOpenMaxAttempts`); success closes the circuit, another failure reopens it. Only `network`, `timeout`, and `retryable_status` errors count as failures (override with `isFailure`). Any other response, such as a 404 or a body that fails `parse`, shows the host is up and counts as a success.
+The breaker is checked before the first attempt and again before every retry — while open, requests to that partition fail with `CircuitOpenError` instead of sending the attempt that was due. After `resetTimeoutMs`, one trial request is let through (`halfOpenMaxAttempts`); success closes the circuit, another failure reopens it. Only `network`, `timeout`, and `retryable_status` errors count as failures (override with `isFailure`). Any other response, such as a 404 or a body that fails `parse`, shows the host is up and counts as a success. An attempt that never reached the host at all — a body factory that threw, for instance — is ignored instead: it carries no information about the host's health, so it can't reset a failing streak or close a half-open trial.
 
 Trip on a rolling failure rate instead of consecutive failures:
 

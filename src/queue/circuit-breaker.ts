@@ -11,6 +11,15 @@ import { RETRIABLE_KINDS } from "./policy.js";
 
 type CircuitState = "closed" | "open" | "half-open";
 
+/** Error kinds that mean the attempt never left the process — no request was
+ *  ever dispatched, so the host's health is untouched. Currently only a body
+ *  factory (`RequestOptions.body` as a function) that threw before `fetch`
+ *  was called (`src/queue/executor.ts`). A raw-`ReadableStream` body is
+ *  rejected even earlier, before the breaker is asked for a permit at all
+ *  (`client.ts` validates it ahead of `tryAcquire()`), so it never reaches
+ *  this classification in the first place. */
+const NEVER_SENT_KINDS: ReadonlySet<AppError["kind"]> = new Set(["configuration"]);
+
 // ---------------------------------------------------------------------------
 // Rolling window — fixed-size time buckets for the failure-percentage mode
 // ---------------------------------------------------------------------------
@@ -90,7 +99,10 @@ export interface CircuitPermit {
 	/** The attempt succeeded. */
 	success(): void;
 	/** The attempt failed with `error`. Errors the breaker doesn't classify as
-	 *  failures (e.g. a 404) count as successes — the host answered. */
+	 *  failures (e.g. a 404) count as successes — the host answered. An error
+	 *  that shows the attempt never reached the host (e.g. a body factory that
+	 *  threw) is ignored instead — same effect as calling `release()` — since
+	 *  it carries no information about the host's health. */
 	failure(error: AppError): void;
 	/** The permit was not used to reach the server (cancelled, vetoed, queue
 	 *  full…). Frees a half-open trial slot without recording an outcome. */
@@ -191,6 +203,12 @@ export class CircuitBreaker {
 			failure: (error) =>
 				settle(() => {
 					if (!mayRecord()) return;
+					// Never-sent outcomes are ignored outright — not even isFailure is
+					// consulted, since there is no host-health signal to classify.
+					if (NEVER_SENT_KINDS.has(error.kind)) {
+						freeTrialSlot();
+						return;
+					}
 					if (this.isFailure(error)) {
 						this.recordFailure(error);
 					} else {
@@ -246,6 +264,9 @@ export class CircuitBreaker {
 		}
 	}
 
+	/** Not consulted for a `NEVER_SENT_KINDS` error (`tryAcquire()` short-circuits
+	 *  before calling this) — such an error never reached the host, so there is
+	 *  nothing for a caller-supplied classifier to legitimately weigh in on. */
 	private isFailure(error: AppError): boolean {
 		return this.config.isFailure ? this.config.isFailure(error) : RETRIABLE_KINDS.has(error.kind);
 	}

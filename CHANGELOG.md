@@ -47,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A `QueueFullError` from a saturated global semaphore during a retry reported one more `attempts` than actually ran (the rejected call never dispatched the request), and dropped whatever time that same attempt had already spent waiting in its own partition's queue before hitting the global cap (#77).
 - A user-supplied `retryWhen` was consulted twice for the first failed attempt — once client-side before queuing, once again at the top of the retry loop — so it saw attempt `0` twice and could veto or count it redundantly. `retryWhen` is now called exactly once per failed attempt that could still be retried.
 - With `maxRetries: 0`, `retryWhen` was still consulted once for the first (and only) attempt's failure, even though no retry was possible. It's now never called — the failed attempt resolves with its own error, unwrapped, as before.
+- The circuit breaker counted an attempt that never reached the host (a body factory that threw before the request was dispatched) as a success — it reset the consecutive-failure count, counted as a non-failure in the rolling window, and could close a half-open trial, all without the host ever being contacted. Such an outcome is now ignored entirely: no change to the failure count, the rolling window, or open/closed state, and in half-open it frees the trial slot without deciding it.
 
 ## [1.0.0] - 2026-09-07
 
