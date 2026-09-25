@@ -31,6 +31,8 @@ Use `attemptMs` to bound a single slow call (protects you from a hung connection
 
 A reasonable starting point: set `attemptMs` to your p99 expected latency for a healthy call, and `totalMs` to the longest you're willing to make the caller wait end-to-end (factoring in `maxRetries` × backoff).
 
+Both deadlines also bound reading the body of a Response Vereda hands back unread — a success without `parse`, or an `HttpError`'s `.response` — capped at whichever is sooner, measured from that attempt's start: the remaining `attemptMs`, or the ticket's `totalMs`. This matches the bound a `parse`d body already gets for free (it's read inside the attempt); without it, a server that sends headers then stalls the body would let `raw.json()` or `error.response.text()` hang past both deadlines. If you need to stream or read a body later than that — long-lived downloads, deferred processing — set `timeout: { attemptMs: Infinity }` for that request (and no `totalMs`), or bring your own `AbortSignal` via `options.signal` instead.
+
 ## Reading `partitions()`
 
 ```typescript

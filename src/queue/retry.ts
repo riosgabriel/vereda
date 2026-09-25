@@ -33,6 +33,12 @@ export interface RetryJobOptions {
 	requestOptions: RequestOptions<unknown>;
 	timeoutConfig: TimeoutConfig;
 	retryConfig: RetryConfig;
+	/** Absolute `Date.now()` timestamp of the ticket's whole-ticket deadline
+	 *  (`startTime + timeoutConfig.totalMs`), or undefined when `totalMs`
+	 *  isn't bounded. Forwarded to `executeRequest` so a handed-off Response
+	 *  body (unread success or `HttpError`) is bounded by it — see
+	 *  `ExecuteRequest.deadlineAt`. */
+	deadlineAt?: number;
 	ticket: Ticket<unknown>;
 	controller: TicketController<unknown>;
 	middleware: MiddlewareFn[];
@@ -76,6 +82,7 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 		requestOptions,
 		timeoutConfig,
 		retryConfig,
+		deadlineAt,
 		ticket,
 		controller,
 		middleware,
@@ -208,6 +215,7 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 								options: requestOptions,
 								timeoutConfig,
 								retryConfig,
+								deadlineAt,
 								signal: ticket.signal,
 								attempt: attempt + 1,
 								ticketId: ticket.id,

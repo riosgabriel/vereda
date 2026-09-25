@@ -15,6 +15,12 @@ export interface ExecuteRequest {
 	attempt: number;
 	ticketId: string;
 	partition: string;
+	/** Absolute `Date.now()` timestamp of the ticket's whole-ticket deadline
+	 *  (`startTime + timeout.totalMs`), or undefined when `totalMs` isn't
+	 *  bounded. Used only to bound the read window of a Response handed back
+	 *  to the caller unread (see `handedOff` in `executeRequest`) — never to
+	 *  reclassify an in-attempt timeout. */
+	deadlineAt?: number;
 	/** Custom fetch function. Falls back to globalThis.fetch. */
 	fetch?: typeof globalThis.fetch;
 }
@@ -32,10 +38,19 @@ export type ExecuteResult =
  */
 export async function executeRequest(req: ExecuteRequest, middleware: MiddlewareFn[]): Promise<ExecuteResult> {
 	const { url, options, timeoutConfig, retryConfig, signal } = req;
+	const attemptStart = Date.now();
 
 	if (signal.aborted || options.signal?.aborted) {
 		return { kind: "cancelled" };
 	}
+
+	// Set once this attempt hands the caller a live, unread Response body (the
+	// success-without-parse and HttpError returns below). An unconsumed body
+	// handed off this way gets bounded in `finally` instead of having its
+	// timer cleared, so `raw.json()`/`error.response.text()` read later can't
+	// hang forever (the parse path already reads the body inside the attempt,
+	// and the RetryableStatusError path already cancels it).
+	let handedOff = false;
 
 	// Resolve a replayable body factory fresh for this attempt so every attempt
 	// gets its own materialized body. Do not mutate the caller's options.
@@ -71,11 +86,13 @@ export async function executeRequest(req: ExecuteRequest, middleware: Middleware
 	// over ~24.8 days to 1ms, so passing Infinity straight to setTimeout would
 	// fire the timer almost immediately instead of never.
 	const hasAttemptTimeout = isBoundedMs(timeoutMs);
-	const timeoutController = hasAttemptTimeout ? new AbortController() : undefined;
-	if (timeoutController) sources.push(timeoutController.signal);
+	// Always created (not just when attemptMs is bounded): a handed-off
+	// Response's body read may still need bounding by `deadlineAt` alone in
+	// `finally` below, even when this attempt itself has no attemptMs cap.
+	const timeoutController = new AbortController();
+	sources.push(timeoutController.signal);
 	const attemptSignal = AbortSignal.any(sources);
-	const timeoutId =
-		timeoutController && hasAttemptTimeout ? setTimeout(() => timeoutController.abort(), timeoutMs) : undefined;
+	const timeoutId = hasAttemptTimeout ? setTimeout(() => timeoutController.abort(), timeoutMs) : undefined;
 
 	// A fresh Headers instance per attempt: middleware (e.g. defaultHeaders)
 	// mutates ctx.headers in place, and that must never leak into the next
@@ -97,7 +114,7 @@ export async function executeRequest(req: ExecuteRequest, middleware: Middleware
 		// The timeout may fire after fetch resolves but before this check runs;
 		// the timed-out attempt is not trustworthy, so it still surfaces as a
 		// timeout (cancellation is checked first in the catch path below).
-		if (timeoutController?.signal.aborted) {
+		if (timeoutController.signal.aborted) {
 			return { kind: "timeout" };
 		}
 
@@ -118,8 +135,10 @@ export async function executeRequest(req: ExecuteRequest, middleware: Middleware
 			};
 		}
 
-		// Non-2xx responses are non-retryable errors
+		// Non-2xx responses are non-retryable errors. The body is handed back
+		// unread on `error.response` — bound its read window in `finally`.
 		if (!response.ok) {
+			handedOff = true;
 			return {
 				kind: "error",
 				error: new HttpError(`HTTP ${response.status} ${response.statusText}`, response.status, response),
@@ -136,7 +155,7 @@ export async function executeRequest(req: ExecuteRequest, middleware: Middleware
 				// Check timeout first — if our timer fired during response.json(),
 				// that is the cause regardless of whether the external signal also
 				// aborted (cancellation vs timeout precedence).
-				if (timeoutController?.signal.aborted) {
+				if (timeoutController.signal.aborted) {
 					return { kind: "timeout" };
 				}
 				if (signal.aborted || options.signal?.aborted) {
@@ -175,7 +194,9 @@ export async function executeRequest(req: ExecuteRequest, middleware: Middleware
 			}
 		}
 
-		// No parse fn — return raw response
+		// No parse fn — return raw response, unread. Bound its read window in
+		// `finally` instead of clearing the attempt timer.
+		handedOff = true;
 		return {
 			kind: "success",
 			result: { success: true, data: undefined, raw: response },
@@ -199,9 +220,31 @@ export async function executeRequest(req: ExecuteRequest, middleware: Middleware
 			error: new NetworkError(err instanceof Error ? err.message : "Network error", { cause: err }),
 		};
 	} finally {
-		// Clear the timeout once the attempt is complete — body has been read
-		// (or the attempt failed), so the abort controller can be released.
+		// Clear the in-attempt timer either way — it did its job (bounding the
+		// attempt) or the attempt failed on its own. Body has been read (or the
+		// attempt failed), so the abort controller can be released.
 		if (timeoutId !== undefined) clearTimeout(timeoutId);
+
+		// A handed-off Response (unread body on a success-without-parse or
+		// HttpError result) gets the same bound its body would have had under
+		// `parse`: arm a fresh timer capped at whichever is sooner, this
+		// attempt's remaining attemptMs or the ticket's totalMs deadline. It
+		// fires only if the caller actually reads the body later — aborting
+		// `attemptSignal` (already wired into fetch) makes that read reject,
+		// same as any other abort observed after fetch() has resolved. No
+		// ticket state changes here: the ticket already resolved.
+		if (handedOff) {
+			const attemptDeadline = isBoundedMs(timeoutMs) ? attemptStart + timeoutMs : Number.POSITIVE_INFINITY;
+			const totalDeadline = req.deadlineAt ?? Number.POSITIVE_INFINITY;
+			const boundAt = Math.min(attemptDeadline, totalDeadline);
+			if (Number.isFinite(boundAt)) {
+				const delay = Math.max(0, boundAt - Date.now());
+				const bodyReadTimer = setTimeout(() => {
+					timeoutController.abort(new DOMException("response body read exceeded timeout", "TimeoutError"));
+				}, delay);
+				bodyReadTimer.unref();
+			}
+		}
 	}
 }
 
