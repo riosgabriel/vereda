@@ -2,7 +2,20 @@
 	"extends": "../tsconfig.json",
 	"compilerOptions": {
 		"noEmit": true,
-		"rootDir": "."
+		"rootDir": "..",
+		// Resolve `import { HttpClient } from "vereda"` straight to the source,
+		// the same way examples/tsconfig.json does. tsx reads this at runtime
+		// (it picks up the tsconfig.json in the working directory), so the
+		// benchmarks always measure the current src/ with no build step. It
+		// replaces a `"vereda": "file:.."` dependency: bun copied the whole
+		// parent directory — this folder included — into node_modules/vereda,
+		// recursively, and the copy froze whatever dist/ existed at install time.
+		"paths": {
+			"vereda": ["../src/core/index.ts"],
+			"vereda/middleware": ["../src/middleware/index.ts"],
+			"vereda/zod": ["../src/adapters/zod.ts"]
+		}
 	},
-	"include": ["**/*.ts"]
+	"include": ["**/*.ts"],
+	"exclude": ["node_modules"]
 }
