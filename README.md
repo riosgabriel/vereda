@@ -36,7 +36,7 @@ if (result.success) {
 }
 ```
 
-A dropped connection, a timeout, or a `503` on that request is retried up to three times with jittered exponential backoff before your code sees an error.
+A dropped connection, a timeout, or a `503` on that request is retried up to three times with jittered exponential backoff before your code sees an error. Reading `result.raw` afterwards is bounded too: the body read has to finish within the same `attemptMs` (counted from when the attempt started) and `totalMs` limits, or it rejects with a `TimeoutError`.
 
 ## Why Vereda?
 
