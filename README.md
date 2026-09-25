@@ -130,6 +130,8 @@ The package ships a prebuilt `dist/`, so installing never compiles anything.
 A checkout service calls three hosts. The payment provider starts returning `503`.
 
 ```typescript
+import { HttpClient } from "vereda";
+
 const client = HttpClient.create({
   timeout: { attemptMs: 3_000, totalMs: 15_000 },
   partitions: {
@@ -206,6 +208,8 @@ Idempotent means `GET`, `HEAD`, `OPTIONS`, `PUT`, `DELETE`, or `TRACE`. Non-idem
 `maxRetries: 0` disables retries entirely — a failed request resolves with its own error, unwrapped. When all attempts are exhausted, the ticket resolves with a `MaxRetriesExceededError` carrying the attempt count and the last underlying error.
 
 ```typescript
+import { HttpClient } from "vereda";
+
 const client = HttpClient.create({
   timeout: { attemptMs: 5_000 },
   retry: {
@@ -225,24 +229,32 @@ The default backoff is `200ms * 2^attempt`, capped at 30s, with full jitter appl
 You can also supply a custom backoff function:
 
 ```typescript
-retry: {
-  maxRetries: 3,
-  backoff: (attempt) => Math.min(100 * 2 ** attempt, 10000),
-}
+import { HttpClient } from "vereda";
+
+const client = HttpClient.create({
+  timeout: { attemptMs: 5_000 },
+  retry: {
+    maxRetries: 3,
+    backoff: (attempt) => Math.min(100 * 2 ** attempt, 10000),
+  },
+});
 ```
 
 `retryWhen` is consulted after every failed attempt, including the first one. It runs after the default policy and can only veto a retry, never force one. Return `false` to surface the error immediately:
 
 ```typescript
-import { NetworkError } from "vereda";
+import { HttpClient, NetworkError } from "vereda";
 
-retry: {
-  maxRetries: 5,
-  retryWhen: (error, attempt) => {
-    if (error instanceof NetworkError) return false;
-    return true;
+const client = HttpClient.create({
+  timeout: { attemptMs: 5_000 },
+  retry: {
+    maxRetries: 5,
+    retryWhen: (error, attempt) => {
+      if (error instanceof NetworkError) return false;
+      return true;
+    },
   },
-}
+});
 ```
 
 A request `body` may also be supplied as a factory (`() => BodyInit`); the factory is invoked fresh on every attempt so the payload can be replayed across retries. This is required when the body is a `ReadableStream` — passing a bare stream is a `ConfigurationError`. When a stream body is used, `duplex: "half"` is set on the fetch call automatically.
@@ -250,6 +262,8 @@ A request `body` may also be supplied as a factory (`() => BodyInit`); the facto
 ### Timeouts
 
 ```typescript
+import { HttpClient } from "vereda";
+
 const client = HttpClient.create({
   timeout: {
     attemptMs: 5_000,
@@ -272,6 +286,8 @@ Every request is assigned to a partition, keyed by host (hostname:port) by defau
 The concurrency limit and queue govern only **retry traffic** — the initial attempt always fires immediately and is never throttled by the bulkhead (unless `limitFirstAttempts` is set on the partition).
 
 ```typescript
+import { HttpClient } from "vereda";
+
 const client = HttpClient.create({
   timeout: { attemptMs: 5_000 },
   concurrency: 10,
@@ -295,6 +311,8 @@ When a partition's queue is full, the ticket resolves with a `QueueFullError`. T
 Opt-in, per-partition. Once a host is clearly failing, stop sending it requests instead of retrying into it. Disabled by default; enable it for every partition at the client level, or for specific hosts under `partitions`.
 
 ```typescript
+import { HttpClient } from "vereda";
+
 const client = HttpClient.create({
   timeout: { attemptMs: 5_000 },
   circuitBreaker: {
@@ -310,10 +328,15 @@ The breaker is checked before the first attempt and again before every retry —
 Trip on a rolling failure rate instead of consecutive failures:
 
 ```typescript
-circuitBreaker: {
-  enabled: true,
-  window: { sizeMs: 60_000, minimumRequests: 20, failureRatePercent: 50 },
-}
+import { HttpClient } from "vereda";
+
+const client = HttpClient.create({
+  timeout: { attemptMs: 5_000 },
+  circuitBreaker: {
+    enabled: true,
+    window: { sizeMs: 60_000, minimumRequests: 20, failureRatePercent: 50 },
+  },
+});
 ```
 
 ### Typed results
