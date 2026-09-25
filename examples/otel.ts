@@ -1,4 +1,4 @@
-import { HttpClient, type MetricsSink, type MetricTags } from "../src/core/index.js";
+import { HttpClient, type MetricsSink, type MetricTags } from "vereda";
 
 // ---------------------------------------------------------------------------
 // Example: wiring vereda metrics into OpenTelemetry
@@ -10,7 +10,7 @@ import { HttpClient, type MetricsSink, type MetricTags } from "../src/core/index
  * Usage:
  *   import { metrics } from "@opentelemetry/api"
  *   const sink = createOtelMetricsSink(metrics)
- *   const client = HttpClient.create({ metrics: sink })
+ *   const client = HttpClient.create({ timeout: { attemptMs: 5_000 }, metrics: sink })
  */
 export function createOtelMetricsSink(otelMeter?: {
 	createCounter: (
