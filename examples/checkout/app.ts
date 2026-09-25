@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
-import { HttpClient, type Result } from "vereda";
+import { HttpClient, type MetricsSink, type Result } from "vereda";
 
 // ---------------------------------------------------------------------------
 // The checkout app
@@ -20,6 +20,9 @@ export interface CheckoutDeps {
 	 *  land in, needed here only to scope the payments partition's config. */
 	paymentsHost: string;
 	shippingUrl: string;
+	/** Where the client reports its metrics (requests, retries, latency,
+	 *  breaker trips — each tagged with the partition it belongs to). */
+	metrics?: MetricsSink;
 }
 
 /** The raw, un-serialized outcome of one checkout — kept in memory (never
@@ -47,6 +50,7 @@ export function createCheckoutApp(deps: CheckoutDeps): Promise<CheckoutApp> {
 		// request, retries included — it must exceed attempts × attemptMs
 		// (default 3 retries = 4 × 2s here) or it would cut off a legitimate retry.
 		timeout: { attemptMs: 2_000, totalMs: 10_000 },
+		metrics: deps.metrics,
 		partitions: {
 			[deps.paymentsHost]: {
 				// Small on purpose — this is the partition we want to watch fill

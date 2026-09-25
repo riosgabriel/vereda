@@ -1,5 +1,6 @@
 import { CircuitOpenError, MaxRetriesExceededError } from "vereda";
 import { createCheckoutApp } from "./app.js";
+import { createInMemoryMetrics, formatMetricsTable } from "./metrics.js";
 import { startInventoryStub, startPaymentsStub, startShippingStub } from "./stubs.js";
 
 // ---------------------------------------------------------------------------
@@ -35,17 +36,21 @@ async function main(): Promise<number> {
 		startShippingStub(),
 	]);
 
+	const metrics = createInMemoryMetrics();
 	const app = await createCheckoutApp({
 		inventoryUrl: inventory.url,
 		paymentsUrl: payments.url,
 		paymentsHost: payments.host,
 		shippingUrl: shipping.url,
+		metrics,
 	});
 
 	let retryCount = 0;
-	app.client.on("retry", ({ url, attempt, delayMs, error }) => {
+	app.client.on("retry", ({ partition, attempt, delayMs, error }) => {
 		retryCount++;
-		console.log(`  [retry] ${url} attempt=${attempt} delayMs=${delayMs} error=${error.constructor.name}`);
+		console.log(
+			`  [retry] partition=${partition} attempt=${attempt} delayMs=${delayMs} error=${error.constructor.name}`,
+		);
 	});
 
 	let circuitOpenPartition: string | undefined;
@@ -79,6 +84,20 @@ async function main(): Promise<number> {
 				`shipping=${outcome.shipping.ok ? `OK(${outcome.shipping.status})` : `FAIL(${outcome.shipping.error})`}`,
 		);
 	}
+	console.log();
+
+	// ---------------------------------------------------------------------
+	// The same story, as your dashboards would see it: every metric is
+	// tagged with its partition, so one bad dependency stands out on its own.
+	// ---------------------------------------------------------------------
+
+	console.log(
+		formatMetricsTable(metrics, {
+			[inventory.host]: "inventory",
+			[payments.host]: "payments",
+			[shipping.host]: "shipping",
+		}),
+	);
 	console.log();
 
 	// ---------------------------------------------------------------------
@@ -132,6 +151,35 @@ async function main(): Promise<number> {
 	// never reach the stub. Two pre-trip checkouts each make 2 attempts
 	// (initial + 1 retry) against the live stub — 4 hits — and nothing after.
 	assert(payments.hits() === 4, `expected exactly 4 requests to reach the payments stub, got ${payments.hits()}`);
+
+	// And the metrics tell the same story, attributed to the right dependency:
+	// every request counted, but retries and breaker trips only on payments.
+	const stats = (host: string) => metrics.byPartition.get(host);
+	for (const [name, host] of [
+		["inventory", inventory.host],
+		["payments", payments.host],
+		["shipping", shipping.host],
+	] as const) {
+		assert(
+			stats(host)?.requests === CHECKOUTS,
+			`expected ${CHECKOUTS} requests metered for ${name}, got ${stats(host)?.requests}`,
+		);
+		assert(stats(host)?.durationsMs.length === CHECKOUTS, `expected ${CHECKOUTS} durations metered for ${name}`);
+	}
+	assert(
+		stats(payments.host)?.retries === retryCount,
+		`expected the payments partition's retry metric to match the ${retryCount} retry events`,
+	);
+	assert(
+		stats(payments.host)?.circuitOpen === 1,
+		"expected exactly one circuit_open metric, on the payments partition",
+	);
+	for (const host of [inventory.host, shipping.host]) {
+		assert(
+			stats(host)?.retries === 0 && stats(host)?.circuitOpen === 0,
+			`expected no retries or breaker trips metered for ${host}`,
+		);
+	}
 
 	console.log(failures.length === 0 ? "All claims verified." : `${failures.length} claim(s) failed:`);
 	for (const failure of failures) {
