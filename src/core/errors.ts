@@ -30,12 +30,15 @@ export class RequestError extends Error {
 }
 
 export class NetworkError extends RequestError {
+	declare readonly kind: "network";
+
 	constructor(message: string, options?: { cause?: unknown }) {
 		super("network", message, options?.cause);
 	}
 }
 
 export class HttpError extends RequestError {
+	declare readonly kind: "http";
 	public readonly statusCode: number;
 	public readonly response: Response;
 
@@ -47,6 +50,7 @@ export class HttpError extends RequestError {
 }
 
 export class RetryableStatusError extends RequestError {
+	declare readonly kind: "retryable_status";
 	public readonly statusCode: number;
 	public readonly response: Response;
 	public readonly retryAfterMs?: number;
@@ -68,6 +72,7 @@ export class RetryableStatusError extends RequestError {
 export const NO_TIMEOUT_CONFIGURED = 0;
 
 export class TimeoutError extends RequestError {
+	declare readonly kind: "timeout";
 	public readonly timeoutMs: number;
 	public readonly url: string;
 
@@ -83,6 +88,7 @@ export class TimeoutError extends RequestError {
 }
 
 export class DeadlineExceededError extends RequestError {
+	declare readonly kind: "deadline";
 	public readonly url: string;
 	public readonly totalMs: number;
 
@@ -94,6 +100,7 @@ export class DeadlineExceededError extends RequestError {
 }
 
 export class ValidationError extends RequestError {
+	declare readonly kind: "validation";
 	public readonly issues: unknown[];
 
 	constructor(message: string, issues: unknown[], cause?: unknown) {
@@ -103,12 +110,15 @@ export class ValidationError extends RequestError {
 }
 
 export class CancelledError extends RequestError {
+	declare readonly kind: "cancelled";
+
 	constructor(message = "Request was cancelled") {
 		super("cancelled", message);
 	}
 }
 
 export class QueueFullError extends RequestError {
+	declare readonly kind: "queue_full";
 	public readonly partition: string;
 	public readonly queueSize: number;
 	public readonly maxQueueSize: number;
@@ -122,6 +132,7 @@ export class QueueFullError extends RequestError {
 }
 
 export class ConfigurationError extends RequestError {
+	declare readonly kind: "configuration";
 	public readonly key: string;
 
 	constructor(key: string) {
@@ -131,6 +142,7 @@ export class ConfigurationError extends RequestError {
 }
 
 export class MaxRetriesExceededError extends RequestError {
+	declare readonly kind: "max_retries";
 	public readonly attempts: number;
 	public readonly lastError: AppError;
 
@@ -146,6 +158,7 @@ export class MaxRetriesExceededError extends RequestError {
 }
 
 export class CircuitOpenError extends RequestError {
+	declare readonly kind: "circuit_open";
 	public readonly partition: string;
 
 	constructor(partition: string) {
@@ -153,3 +166,29 @@ export class CircuitOpenError extends RequestError {
 		this.partition = partition;
 	}
 }
+
+/**
+ * Narrows an unknown throw to one of this library's own error classes, so
+ * internal catch sites can preserve a pre-typed failure (e.g. a
+ * `QueueFullError` from the bulkhead) and wrap anything else.
+ */
+export function isAppError(err: unknown): err is AppError {
+	// instanceof, not a `kind` lookup: a subclass of one of these still carries
+	// its fields (e.g. statusCode), whereas a bare RequestError with a matching
+	// kind string would not.
+	return APP_ERROR_CLASSES.some((cls) => err instanceof cls);
+}
+
+const APP_ERROR_CLASSES = [
+	NetworkError,
+	HttpError,
+	RetryableStatusError,
+	TimeoutError,
+	DeadlineExceededError,
+	ValidationError,
+	CancelledError,
+	QueueFullError,
+	ConfigurationError,
+	MaxRetriesExceededError,
+	CircuitOpenError,
+] as const;
