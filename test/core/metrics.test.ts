@@ -166,7 +166,7 @@ describe("Metrics sink (6.2)", () => {
 
 		const durations = sink.histograms.filter((h) => h.name === METRICS.DURATION);
 		expect(durations).toHaveLength(1);
-		expect(durations[0].tags).toEqual({ kind: "network" });
+		expect(durations[0].tags).toEqual({ kind: "configuration" });
 		expect(failurePartitions).toEqual([undefined]);
 
 		await client.close();

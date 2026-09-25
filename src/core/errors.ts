@@ -135,8 +135,8 @@ export class ConfigurationError extends RequestError {
 	declare readonly kind: "configuration";
 	public readonly key: string;
 
-	constructor(key: string) {
-		super("configuration", `Invalid configuration: ${key}`);
+	constructor(key: string, options?: { cause?: unknown }) {
+		super("configuration", `Invalid configuration: ${key}`, options?.cause);
 		this.key = key;
 	}
 }

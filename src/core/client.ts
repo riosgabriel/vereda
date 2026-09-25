@@ -244,16 +244,21 @@ export class HttpClient {
 		startTime: number,
 	): Promise<void> {
 		// Resolve URL and partition inside the async path so relative URLs
-		// without a baseUrl surface as ticket errors instead of throwing.
+		// without a baseUrl surface as a ticket ConfigurationError instead of
+		// throwing. It's a caller mistake, not a network fault, so it is never
+		// retried.
 		let fullUrl: string;
 		let partitionName: string;
 		try {
 			fullUrl = this.resolveUrl(url);
 			partitionName = options.partition ?? new URL(fullUrl).host;
 		} catch (err) {
-			const error = new NetworkError(err instanceof Error ? err.message : "Invalid URL", {
-				cause: err,
-			});
+			const error = new ConfigurationError(
+				this.config.baseUrl
+					? `url ${this.logUrl(url)} cannot be resolved against baseUrl`
+					: `url ${this.logUrl(url)} must be absolute when no baseUrl is set`,
+				{ cause: err },
+			);
 			const durationMs = Date.now() - startTime;
 			this.emit("failure", {
 				ticketId: ticket.id,

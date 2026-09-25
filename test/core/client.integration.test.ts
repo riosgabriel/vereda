@@ -657,7 +657,8 @@ describe("HttpClient integration", () => {
 
 		expect(result.success).toBe(false);
 		if (!result.success) {
-			expect(result.error).toBeInstanceOf(NetworkError);
+			expect(result.error).toBeInstanceOf(ConfigurationError);
+			expect(result.error.message).toMatch(/must be absolute when no baseUrl is set/);
 		}
 		// Should not throw — the error is on the ticket, not in the call
 	});
