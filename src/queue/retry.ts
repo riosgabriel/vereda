@@ -22,7 +22,7 @@ import type { Ticket, TicketController } from "../ticket/ticket.js";
 import type { Bulkhead } from "./bulkhead.js";
 import type { CircuitBreaker } from "./circuit-breaker.js";
 import { executeRequest, type MiddlewareFn } from "./executor.js";
-import { type RetryPolicyContext, shouldRetry } from "./policy.js";
+import { defaultRetryPolicy, type RetryPolicyContext, shouldRetry } from "./policy.js";
 import type { Semaphore } from "./semaphore.js";
 
 export interface RetryJobOptions {
@@ -312,6 +312,23 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 	// All retries exhausted — total attempts = 1 (first) + maxRetries (loop)
 	totalAttempts = 1 + maxRetries;
 	onCleanup?.();
+
+	// The final attempt's own error was never run through the gate above —
+	// the loop only checks the *previous* error at the top of each iteration,
+	// and there is no next iteration for this one. If it wouldn't have been
+	// retried anyway (e.g. a non-retryable HttpError, or a ValidationError
+	// from a failed parse), it's terminal on its own merits: surface it raw,
+	// same as a mid-loop veto, instead of wrapping it in
+	// MaxRetriesExceededError. Only genuinely transient exhaustion — the
+	// final error was itself retryable, retries just ran out — gets wrapped.
+	// This intentionally checks the default policy only, not retryWhen:
+	// retryWhen is never consulted for an attempt that has no retries left.
+	if (!defaultRetryPolicy(lastError, maxRetries, ctx)) {
+		onFailure?.(lastError, totalAttempts, totalQueuedMs);
+		controller.markDone({ success: false, error: lastError } as never);
+		return;
+	}
+
 	const exhaustedError = new MaxRetriesExceededError(totalAttempts, lastError);
 	onFailure?.(exhaustedError, totalAttempts, totalQueuedMs);
 	controller.markDone({
