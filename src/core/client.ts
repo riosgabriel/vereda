@@ -33,7 +33,7 @@ import type {
 	TimeoutConfig,
 } from "./types.js";
 import { DEFAULT_GLOBAL_CONCURRENCY, DEFAULT_GLOBAL_QUEUE_SIZE, DEFAULT_MAX_RETRIES, isBoundedMs } from "./types.js";
-import { validateConfig, validateRequestBody } from "./validate.js";
+import { validateConfig, validateRequestBody, validateRequestOptions } from "./validate.js";
 
 /** Pairs an in-flight ticket with its cleanup function so that
  *  resources (signal listeners, deadline timers) are released synchronously
@@ -259,6 +259,28 @@ export class HttpClient {
 		// ReadableStream) surfaces as a ticket ConfigurationError, not a throw.
 		try {
 			validateRequestBody(options.body);
+		} catch (err) {
+			const error = err as ConfigurationError;
+			const durationMs = Date.now() - startTime;
+			this.emit("failure", {
+				ticketId: ticket.id,
+				url: this.logUrl(url),
+				attempts: 1,
+				durationMs,
+				queuedMs: 0,
+				error,
+			});
+			controller.markDone({ success: false, error } as never);
+			cleanup();
+			return;
+		}
+
+		// Validate the request's own timeout/retry options before merging them
+		// onto partition/client defaults, so an invalid raw value (e.g.
+		// `timeout: { attemptMs: -5 }`) surfaces as a ticket ConfigurationError,
+		// not a silent broken timer or a throw.
+		try {
+			validateRequestOptions(options);
 		} catch (err) {
 			const error = err as ConfigurationError;
 			const durationMs = Date.now() - startTime;

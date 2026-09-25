@@ -1,5 +1,5 @@
 import { ConfigurationError } from "./errors.js";
-import type { ClientConfig, PartitionConfig, RetryConfig, TimeoutConfig } from "./types.js";
+import type { ClientConfig, PartitionConfig, RequestOptions, RetryConfig, TimeoutConfig } from "./types.js";
 
 /** Realm-safe ReadableStream detection — instanceof fails across realms
  *  (vm contexts, other copies of node:stream/web). No non-stream BodyInit
@@ -31,6 +31,19 @@ export function validateConfig(config: ClientConfig): void {
 	validateTimeoutConfig(config.timeout, "timeout");
 	validateRetryConfig(config.retry, "retry");
 	validatePartitions(config.partitions);
+}
+
+/** Validates a single request's own `timeout`/`retry` options — the raw
+ *  values passed to `client.get()`/`.post()`/etc., before they're merged onto
+ *  partition/client defaults. Reuses the same rules as `validateConfig`, so
+ *  an invalid request-level value (e.g. `timeout: { attemptMs: -5 }`) is
+ *  rejected the same way an invalid client config is, just surfaced as a
+ *  ticket `ConfigurationError` instead of a throw from `create()`. Omitted
+ *  fields stay valid (inherit the client/partition default), and `Infinity`
+ *  stays a legal explicit `attemptMs`/`totalMs`. */
+export function validateRequestOptions(options: Pick<RequestOptions, "timeout" | "retry">): void {
+	validateTimeoutConfig(options.timeout, "request.timeout");
+	validateRetryConfig(options.retry, "request.retry");
 }
 
 function validateTimeoutConfig(timeout: TimeoutConfig | undefined, prefix: string): void {
