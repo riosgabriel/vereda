@@ -1,7 +1,7 @@
 import { CircuitOpenError, MaxRetriesExceededError } from "vereda";
-import { createCheckoutApp } from "./app.js";
-import { createInMemoryMetrics, formatMetricsTable } from "./metrics.js";
-import { startInventoryStub, startPaymentsStub, startShippingStub } from "./stubs.js";
+import { createCheckoutApp } from "./app.ts";
+import { createInMemoryMetrics, formatMetricsTable } from "./metrics.ts";
+import { startInventoryStub, startPaymentsStub, startShippingStub } from "./stubs.ts";
 
 // ---------------------------------------------------------------------------
 // One failing dependency

@@ -30,7 +30,7 @@ logger in `src/middleware/index.ts`. Both sites carry `biome-ignore` comments ex
 
 ## Gotchas
 
-- **NodeNext ESM**: every relative import in `src/` and `test/` must use the `.js` extension even when importing `.ts` files (`from "./client.js"`).
+- **NodeNext ESM**: every relative import must use the real `.ts` extension (`from "./client.ts"`). `allowImportingTsExtensions` permits it and `rewriteRelativeImportExtensions` rewrites it to `.js` in `dist/*.js`. Emitted `.d.ts` files keep `.ts`, which TypeScript resolves to the sibling `.d.ts` — `attw` confirms consumers are unaffected. Standalone tsconfigs that pull in `src/` (e.g. the one written by `test/docs/readme-snippets.test.ts`) need `allowImportingTsExtensions` too.
 - **Everything outside `src/` is typechecked separately**: `tsconfig.json` drives the `dist/` build, so it covers `src/` only — tests must not ship in `dist/`, and neither must examples. `npm run typecheck` therefore runs three legs: `tsconfig.json` (src), `tsconfig.test.json` (src + test + `vitest.config.ts`), and `examples/tsconfig.json`. Adding a top-level directory of `.ts` files without adding a leg means nothing typechecks it.
 - **Editors need a `tsconfig.json` they can find**: they look only for the nearest file with that exact name, never `tsconfig.test.json`. A file outside every project lands in an inferred one with no `types: ["node"]`, which shows up as `node:` imports failing to resolve. `test/tsconfig.json` exists solely to point editors at the right project; `examples/tsconfig.json` doubles as the CI leg.
 - **Zod boundary**: zod is an optional peer dependency. Only `src/adapters/zod.ts` may import it; `src/core/` must stay zod-free.

@@ -1,8 +1,8 @@
 import { EventEmitter } from "node:events";
-import type { AppError } from "../core/errors.js";
-import { CancelledError } from "../core/errors.js";
-import { emitIsolated } from "../core/listeners.js";
-import type { Result } from "../core/types.js";
+import type { AppError } from "../core/errors.ts";
+import { CancelledError } from "../core/errors.ts";
+import { emitIsolated } from "../core/listeners.ts";
+import type { Result } from "../core/types.ts";
 
 export type TicketStatus =
 	| { state: "pending" }

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { defaultHeaders, requestLogger } from "../../src/middleware/index.js";
-import type { NextFn, RequestContext } from "../../src/queue/executor.js";
+import { defaultHeaders, requestLogger } from "../../src/middleware/index.ts";
+import type { NextFn, RequestContext } from "../../src/queue/executor.ts";
 
 function ctx(overrides: Partial<RequestContext> = {}): RequestContext {
 	return {

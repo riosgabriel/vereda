@@ -1,7 +1,7 @@
 import * as http from "node:http";
 import { describe, expect, it } from "vitest";
-import { HttpClient } from "../../src/core/client.js";
-import { Bulkhead } from "../../src/queue/bulkhead.js";
+import { HttpClient } from "../../src/core/client.ts";
+import { Bulkhead } from "../../src/queue/bulkhead.ts";
 
 function createServer(
 	handler: (req: http.IncomingMessage, res: http.ServerResponse) => void,

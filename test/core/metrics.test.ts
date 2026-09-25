@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { HttpClient } from "../../src/core/client.js";
-import { METRICS, type MetricsSink, type MetricTags } from "../../src/core/metrics.js";
+import { HttpClient } from "../../src/core/client.ts";
+import { METRICS, type MetricsSink, type MetricTags } from "../../src/core/metrics.ts";
 
 interface TestServer {
 	url: string;

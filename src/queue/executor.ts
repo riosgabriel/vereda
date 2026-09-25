@@ -1,4 +1,4 @@
-import type { AppError } from "../core/errors.js";
+import type { AppError } from "../core/errors.ts";
 import {
 	ConfigurationError,
 	DeadlineExceededError,
@@ -8,10 +8,10 @@ import {
 	RetryableStatusError,
 	TimeoutError,
 	ValidationError,
-} from "../core/errors.js";
-import type { RequestOptions, Result, RetryConfig, TimeoutConfig } from "../core/types.js";
-import { DEFAULT_RETRY_ON_STATUS, isBoundedMs } from "../core/types.js";
-import { isReadableStream } from "../core/validate.js";
+} from "../core/errors.ts";
+import type { RequestOptions, Result, RetryConfig, TimeoutConfig } from "../core/types.ts";
+import { DEFAULT_RETRY_ON_STATUS, isBoundedMs } from "../core/types.ts";
+import { isReadableStream } from "../core/validate.ts";
 
 export interface ExecuteRequest {
 	url: string;

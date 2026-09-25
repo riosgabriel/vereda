@@ -1,5 +1,5 @@
-import { CancelledError, QueueFullError } from "../core/errors.js";
-import { DEFAULT_GLOBAL_QUEUE_SIZE } from "../core/types.js";
+import { CancelledError, QueueFullError } from "../core/errors.ts";
+import { DEFAULT_GLOBAL_QUEUE_SIZE } from "../core/types.ts";
 
 /**
  * A counting semaphore that limits total concurrent executions across all

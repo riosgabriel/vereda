@@ -1,7 +1,7 @@
 import { createServer, type Server, type ServerResponse } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { RequestOptions, RetryConfig, TimeoutConfig } from "../../src/core/types.js";
-import { executeRequest } from "../../src/queue/executor.js";
+import type { RequestOptions, RetryConfig, TimeoutConfig } from "../../src/core/types.ts";
+import { executeRequest } from "../../src/queue/executor.ts";
 
 /**
  * Pins the timeout-vs-external-abort precedence in executeRequest.

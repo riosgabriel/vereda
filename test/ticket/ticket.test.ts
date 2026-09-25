@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { CancelledError, NetworkError } from "../../src/core/errors.js";
-import { createTicket } from "../../src/ticket/ticket.js";
+import { CancelledError, NetworkError } from "../../src/core/errors.ts";
+import { createTicket } from "../../src/ticket/ticket.ts";
 
 describe("Ticket", () => {
 	it("starts in pending state", () => {

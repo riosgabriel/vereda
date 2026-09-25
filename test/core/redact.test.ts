@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { HttpClient } from "../../src/core/client.js";
-import { redactUrl } from "../../src/core/redact.js";
+import { HttpClient } from "../../src/core/client.ts";
+import { redactUrl } from "../../src/core/redact.ts";
 
 interface TestServer {
 	url: string;

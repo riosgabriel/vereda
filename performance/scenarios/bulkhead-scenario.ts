@@ -1,5 +1,5 @@
 import { HttpClient } from "vereda";
-import { TestServer } from "../src/utils.js";
+import { TestServer } from "../src/utils.ts";
 
 /**
  * Scenario: Bulkhead isolation test

@@ -1,12 +1,12 @@
 import { EventEmitter } from "node:events";
-import { BulkheadRegistry, type BulkheadSnapshot, DEFAULT_PARTITION_TTL_MS } from "../queue/bulkhead.js";
-import { type CircuitBreaker, CircuitBreakerRegistry } from "../queue/circuit-breaker.js";
-import { executeRequest, type MiddlewareFn } from "../queue/executor.js";
-import { type RetryPolicyContext, shouldRetry } from "../queue/policy.js";
-import { runRetryLoop } from "../queue/retry.js";
-import { Semaphore } from "../queue/semaphore.js";
-import { createTicket, type Ticket, type TicketController } from "../ticket/ticket.js";
-import type { AppError } from "./errors.js";
+import { BulkheadRegistry, type BulkheadSnapshot, DEFAULT_PARTITION_TTL_MS } from "../queue/bulkhead.ts";
+import { type CircuitBreaker, CircuitBreakerRegistry } from "../queue/circuit-breaker.ts";
+import { executeRequest, type MiddlewareFn } from "../queue/executor.ts";
+import { type RetryPolicyContext, shouldRetry } from "../queue/policy.ts";
+import { runRetryLoop } from "../queue/retry.ts";
+import { Semaphore } from "../queue/semaphore.ts";
+import { createTicket, type Ticket, type TicketController } from "../ticket/ticket.ts";
+import type { AppError } from "./errors.ts";
 import {
 	CancelledError,
 	CircuitOpenError,
@@ -16,11 +16,11 @@ import {
 	NetworkError,
 	NO_TIMEOUT_CONFIGURED,
 	TimeoutError,
-} from "./errors.js";
-import { emitIsolated, reportCallbackError } from "./listeners.js";
-import { METRICS, type MetricsSink } from "./metrics.js";
-import { nanoid } from "./nanoid.js";
-import { redactUrl } from "./redact.js";
+} from "./errors.ts";
+import { emitIsolated, reportCallbackError } from "./listeners.ts";
+import { METRICS, type MetricsSink } from "./metrics.ts";
+import { nanoid } from "./nanoid.ts";
+import { redactUrl } from "./redact.ts";
 import type {
 	ClientConfig,
 	CloseOptions,
@@ -31,9 +31,9 @@ import type {
 	RequestOptions,
 	RetryConfig,
 	TimeoutConfig,
-} from "./types.js";
-import { DEFAULT_GLOBAL_CONCURRENCY, DEFAULT_GLOBAL_QUEUE_SIZE, DEFAULT_MAX_RETRIES, isBoundedMs } from "./types.js";
-import { validateConfig, validateRequestBody, validateRequestOptions } from "./validate.js";
+} from "./types.ts";
+import { DEFAULT_GLOBAL_CONCURRENCY, DEFAULT_GLOBAL_QUEUE_SIZE, DEFAULT_MAX_RETRIES, isBoundedMs } from "./types.ts";
+import { validateConfig, validateRequestBody, validateRequestOptions } from "./validate.ts";
 
 /** Pairs an in-flight ticket with its cleanup function so that
  *  resources (signal listeners, deadline timers) are released synchronously

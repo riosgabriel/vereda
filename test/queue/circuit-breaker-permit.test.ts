@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { HttpClient } from "../../src/core/client.js";
-import { CircuitOpenError, ConfigurationError, HttpError, NetworkError } from "../../src/core/errors.js";
-import { CircuitBreaker } from "../../src/queue/circuit-breaker.js";
+import { HttpClient } from "../../src/core/client.ts";
+import { CircuitOpenError, ConfigurationError, HttpError, NetworkError } from "../../src/core/errors.ts";
+import { CircuitBreaker } from "../../src/queue/circuit-breaker.ts";
 
 const RESET_MS = 1_000;
 

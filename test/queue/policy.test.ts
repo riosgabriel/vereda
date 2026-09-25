@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { HttpClient } from "../../src/core/client.js";
+import { HttpClient } from "../../src/core/client.ts";
 import {
 	type AppError,
 	CancelledError,
@@ -12,8 +12,8 @@ import {
 	RetryableStatusError,
 	TimeoutError,
 	ValidationError,
-} from "../../src/core/errors.js";
-import { defaultRetryPolicy, shouldRetry } from "../../src/queue/policy.js";
+} from "../../src/core/errors.ts";
+import { defaultRetryPolicy, shouldRetry } from "../../src/queue/policy.ts";
 
 interface TestServer {
 	url: string;

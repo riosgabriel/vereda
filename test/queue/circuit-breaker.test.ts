@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { NetworkError } from "../../src/core/errors.js";
-import { CircuitBreaker, CircuitBreakerRegistry } from "../../src/queue/circuit-breaker.js";
+import { NetworkError } from "../../src/core/errors.ts";
+import { CircuitBreaker, CircuitBreakerRegistry } from "../../src/queue/circuit-breaker.ts";
 
 describe("CircuitBreaker", () => {
 	it("is always inert when disabled", () => {

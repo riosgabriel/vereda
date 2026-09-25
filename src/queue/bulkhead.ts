@@ -1,6 +1,6 @@
-import { CancelledError, QueueFullError } from "../core/errors.js";
-import { DEFAULT_CONCURRENCY, DEFAULT_MAX_QUEUE_SIZE, type PartitionConfig } from "../core/types.js";
-import type { Semaphore } from "./semaphore.js";
+import { CancelledError, QueueFullError } from "../core/errors.ts";
+import { DEFAULT_CONCURRENCY, DEFAULT_MAX_QUEUE_SIZE, type PartitionConfig } from "../core/types.ts";
+import type { Semaphore } from "./semaphore.ts";
 
 /** Default TTL (ms) before an idle partition registry entry (bulkhead or
  *  circuit breaker) is swept from its registry. Shared by both registries

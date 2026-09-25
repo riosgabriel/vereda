@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { HttpClient } from "../../src/core/client.js";
-import { parseRetryAfter } from "../../src/queue/executor.js";
+import { HttpClient } from "../../src/core/client.ts";
+import { parseRetryAfter } from "../../src/queue/executor.ts";
 
 describe("parseRetryAfter", () => {
 	it("parses integer seconds into ms", () => {

@@ -1,5 +1,5 @@
 import { HttpClient } from "vereda";
-import { printResults, runBenchmark, TestServer } from "../src/utils.js";
+import { printResults, runBenchmark, TestServer } from "../src/utils.ts";
 
 /**
  * Stress test: Push the system beyond normal capacity to find breaking points

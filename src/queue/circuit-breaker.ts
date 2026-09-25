@@ -1,13 +1,13 @@
-import type { AppError } from "../core/errors.js";
+import type { AppError } from "../core/errors.ts";
 import {
 	type CircuitBreakerConfig,
 	DEFAULT_FAILURE_THRESHOLD,
 	DEFAULT_HALF_OPEN_MAX_ATTEMPTS,
 	DEFAULT_RESET_TIMEOUT_MS,
 	type PartitionConfig,
-} from "../core/types.js";
-import { DEFAULT_PARTITION_TTL_MS } from "./bulkhead.js";
-import { RETRIABLE_KINDS } from "./policy.js";
+} from "../core/types.ts";
+import { DEFAULT_PARTITION_TTL_MS } from "./bulkhead.ts";
+import { RETRIABLE_KINDS } from "./policy.ts";
 
 type CircuitState = "closed" | "open" | "half-open";
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildBackoffFn } from "../../src/core/backoff.js";
+import { buildBackoffFn } from "../../src/core/backoff.ts";
 
 describe("buildBackoffFn", () => {
 	it("returns a custom function as-is", () => {

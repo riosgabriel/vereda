@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Relative imports in the source now use `.ts` extensions (`rewriteRelativeImportExtensions` turns them into `.js` in the build). The published JavaScript is unchanged; emitted `.d.ts` files reference `./x.ts`, which TypeScript resolves to `./x.d.ts`.
+
 ### Added
 
 - Per-partition circuit breaker (opt-in via `circuitBreaker: { enabled: true }`), mirroring the bulkhead registry: trips on consecutive failures (default) or a rolling failure-rate window, then half-opens after `resetTimeoutMs` to trial recovery. Rejects immediately with the new `CircuitOpenError` — no attempt is made while open (#60).

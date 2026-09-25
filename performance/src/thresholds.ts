@@ -1,4 +1,4 @@
-import type { BenchmarkResult } from "./utils.js";
+import type { BenchmarkResult } from "./utils.ts";
 
 export interface Thresholds {
 	maxAvgLatencyMs?: number;

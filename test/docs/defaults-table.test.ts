@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_BASE_DELAY_MS, DEFAULT_JITTER, DEFAULT_MAX_DELAY_MS } from "../../src/core/backoff.js";
+import { DEFAULT_BASE_DELAY_MS, DEFAULT_JITTER, DEFAULT_MAX_DELAY_MS } from "../../src/core/backoff.ts";
 import {
 	DEFAULT_CONCURRENCY,
 	DEFAULT_GLOBAL_CONCURRENCY,
@@ -8,7 +8,7 @@ import {
 	DEFAULT_MAX_QUEUE_SIZE,
 	DEFAULT_MAX_RETRIES,
 	DEFAULT_RETRY_ON_STATUS,
-} from "../../src/core/types.js";
+} from "../../src/core/types.ts";
 
 const README = readFileSync(new URL("../../README.md", import.meta.url), "utf8");
 

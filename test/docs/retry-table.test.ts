@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_RETRY_ON_STATUS } from "../../src/core/types.js";
+import { DEFAULT_RETRY_ON_STATUS } from "../../src/core/types.ts";
 
 const README = readFileSync(new URL("../../README.md", import.meta.url), "utf8");
 
