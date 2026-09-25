@@ -27,9 +27,6 @@
 	"engines": {
 		"node": ">=20"
 	},
-	"dependencies": {
-		"vereda": "file:.."
-	},
 	"devDependencies": {
 		"@types/node": "^26.4.1",
 		"tsx": "^4.23.13",

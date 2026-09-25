@@ -13,9 +13,13 @@ This project provides:
 ## Installation
 
 ```bash
-cd benchmarks
+cd performance
 bun install
 ```
+
+The benchmarks import `vereda` straight from `../src` (a `paths` mapping in
+`tsconfig.json`, which `tsx` applies at runtime), so they always measure the
+current source: no build step, and nothing to reinstall after a change.
 
 ## Usage
 
