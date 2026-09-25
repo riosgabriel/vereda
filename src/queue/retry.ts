@@ -216,6 +216,7 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 								timeoutConfig,
 								retryConfig,
 								deadlineAt,
+								displayUrl,
 								signal: ticket.signal,
 								attempt: attempt + 1,
 								ticketId: ticket.id,

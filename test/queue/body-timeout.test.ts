@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { HttpClient } from "../../src/core/client.js";
-import { HttpError } from "../../src/core/errors.js";
+import { DeadlineExceededError, HttpError, TimeoutError } from "../../src/core/errors.js";
 
 /**
  * Bounding an unread Response handed back to the caller (no `parse`, or an
@@ -12,6 +12,12 @@ import { HttpError } from "../../src/core/errors.js";
  * introduced this: without it, `raw.json()`/`error.response.text()` on a
  * server that sends headers then stalls the body hangs forever, past both
  * deadlines.
+ *
+ * The bound fires by aborting with Vereda's own error (a `TimeoutError` when
+ * the attempt bound fired, a `DeadlineExceededError` when the total deadline
+ * fired) as the abort reason, not a bare `DOMException` — so the rejection
+ * is `instanceof` the right class, `.kind`-narrowable, and its `.url` is
+ * redacted the same way every other error the client builds is.
  */
 
 interface TestServer {
@@ -82,7 +88,7 @@ describe("bounding a handed-off Response body's read window", () => {
 		await server.close();
 	});
 
-	it("bounds an unparsed success response's body by the remaining attemptMs", async () => {
+	it("bounds an unparsed success response's body by the remaining attemptMs, rejecting with Vereda's TimeoutError", async () => {
 		server.setHandler(stallBody(200));
 
 		const client = HttpClient.create({ timeout: { attemptMs: 100 } });
@@ -93,7 +99,16 @@ describe("bounding a handed-off Response body's read window", () => {
 		if (!result.success) return;
 
 		const start = Date.now();
-		await expect(withGuard(result.raw.text())).rejects.toMatchObject({ name: "TimeoutError" });
+		let caught: unknown;
+		try {
+			await withGuard(result.raw.text());
+		} catch (err) {
+			caught = err;
+		}
+		expect(caught).toBeInstanceOf(TimeoutError);
+		expect((caught as TimeoutError).kind).toBe("timeout");
+		expect((caught as TimeoutError).name).toBe("TimeoutError");
+		expect((caught as TimeoutError).timeoutMs).toBe(100);
 		expect(Date.now() - start).toBeLessThan(1_000);
 
 		expect(events.filter((e) => e.name === "success")).toHaveLength(1);
@@ -103,7 +118,7 @@ describe("bounding a handed-off Response body's read window", () => {
 		await client.close();
 	});
 
-	it("bounds via the deadline cap when attemptMs is unbounded", async () => {
+	it("bounds via the deadline cap when attemptMs is unbounded, rejecting with Vereda's DeadlineExceededError", async () => {
 		server.setHandler(stallBody(200));
 
 		const client = HttpClient.create({ timeout: { attemptMs: Infinity, totalMs: 150 } });
@@ -114,7 +129,16 @@ describe("bounding a handed-off Response body's read window", () => {
 		if (!result.success) return;
 
 		const start = Date.now();
-		await expect(withGuard(result.raw.text())).rejects.toMatchObject({ name: "TimeoutError" });
+		let caught: unknown;
+		try {
+			await withGuard(result.raw.text());
+		} catch (err) {
+			caught = err;
+		}
+		expect(caught).toBeInstanceOf(DeadlineExceededError);
+		expect((caught as DeadlineExceededError).kind).toBe("deadline");
+		expect((caught as DeadlineExceededError).name).toBe("DeadlineExceededError");
+		expect((caught as DeadlineExceededError).totalMs).toBe(150);
 		expect(Date.now() - start).toBeLessThan(1_000);
 
 		expect(events.filter((e) => e.name === "success")).toHaveLength(1);
@@ -124,7 +148,7 @@ describe("bounding a handed-off Response body's read window", () => {
 		await client.close();
 	});
 
-	it("bounds an HttpError's response body the same way", async () => {
+	it("bounds an HttpError's response body the same way, rejecting with Vereda's TimeoutError", async () => {
 		server.setHandler(stallBody(404));
 
 		const client = HttpClient.create({ timeout: { attemptMs: 100 } });
@@ -136,8 +160,31 @@ describe("bounding a handed-off Response body's read window", () => {
 		const error = result.error as HttpError;
 
 		const start = Date.now();
-		await expect(withGuard(error.response.text())).rejects.toMatchObject({ name: "TimeoutError" });
+		await expect(withGuard(error.response.text())).rejects.toBeInstanceOf(TimeoutError);
 		expect(Date.now() - start).toBeLessThan(1_000);
+
+		await client.close();
+	});
+
+	it("redacts a query secret in the rejection's .url, matching the client's own redaction", async () => {
+		server.setHandler(stallBody(200));
+
+		const client = HttpClient.create({ timeout: { attemptMs: 100 } });
+
+		const result = await client.get(`${server.url}/stall?token=secret`).toPromise();
+		expect(result.success).toBe(true);
+		if (!result.success) return;
+
+		let caught: unknown;
+		try {
+			await withGuard(result.raw.text());
+		} catch (err) {
+			caught = err;
+		}
+		expect(caught).toBeInstanceOf(TimeoutError);
+		const url = (caught as TimeoutError).url;
+		expect(url).not.toContain("secret");
+		expect(url).toContain("token=[redacted]");
 
 		await client.close();
 	});
