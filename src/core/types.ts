@@ -34,11 +34,16 @@ export interface BackoffOptions {
 
 export interface TimeoutConfig {
 	/** Per-attempt timeout in ms. Omit to inherit the client-level default;
-	 *  `Infinity` explicitly means no per-attempt cap. */
+	 *  `Infinity` explicitly means no per-attempt cap. Also bounds, from
+	 *  attempt start, how long the caller has to read the body of a Response
+	 *  handed back unread (a success without `parse`, or an `HttpError`'s
+	 *  `.response`) before that read is aborted. */
 	attemptMs?: number;
 	/** Whole-ticket deadline in ms. Starts at request(); cancels the ticket
 	 *  and resolves with DeadlineExceededError on expiry. Omit (or pass
-	 *  `Infinity`) for no total deadline. */
+	 *  `Infinity`) for no total deadline. Also caps how long the caller has
+	 *  to read an unread Response's body handed back as above, if that's
+	 *  sooner than `attemptMs` would otherwise allow. */
 	totalMs?: number;
 }
 

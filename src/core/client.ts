@@ -319,6 +319,9 @@ export class HttpClient {
 			// partitions. It is acquired for every attempt (including the first),
 			// while the per-partition bulkhead slot only applies to retries (D4).
 			const semaphore = this.bulkheads.getSemaphore();
+			// Absolute deadline for a handed-off Response body's read window
+			// (ExecuteRequest.deadlineAt) — undefined when totalMs isn't bounded.
+			const deadlineAt = isBoundedMs(timeoutConfig.totalMs) ? startTime + timeoutConfig.totalMs : undefined;
 			const execute = () =>
 				executeRequest(
 					{
@@ -326,6 +329,7 @@ export class HttpClient {
 						options,
 						timeoutConfig,
 						retryConfig,
+						deadlineAt,
 						signal: ticket.signal,
 						attempt: 0,
 						ticketId: ticket.id,
@@ -586,6 +590,7 @@ export class HttpClient {
 			requestOptions: options,
 			timeoutConfig,
 			retryConfig,
+			deadlineAt: isBoundedMs(timeoutConfig.totalMs) ? startTime + timeoutConfig.totalMs : undefined,
 			ticket,
 			controller,
 			middleware: this.middlewares,
