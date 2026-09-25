@@ -1,4 +1,4 @@
-import type { BackoffFn, BackoffOptions } from "./types.js";
+import type { BackoffFn, BackoffOptions } from "./types.ts";
 
 /** Default base delay in ms for exponential backoff. */
 export const DEFAULT_BASE_DELAY_MS = 200;

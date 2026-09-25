@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { HttpClient } from "../../src/core/client.js";
+import { HttpClient } from "../../src/core/client.ts";
 
 describe("Injectable fetch (6.4)", () => {
 	it("uses a custom fetch function instead of globalThis.fetch", async () => {

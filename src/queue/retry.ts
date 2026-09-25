@@ -1,5 +1,5 @@
-import { buildBackoffFn, DEFAULT_MAX_DELAY_MS } from "../core/backoff.js";
-import type { AppError } from "../core/errors.js";
+import { buildBackoffFn, DEFAULT_MAX_DELAY_MS } from "../core/backoff.ts";
+import type { AppError } from "../core/errors.ts";
 import {
 	CancelledError,
 	CircuitOpenError,
@@ -9,7 +9,7 @@ import {
 	QueueFullError,
 	RetryableStatusError,
 	TimeoutError,
-} from "../core/errors.js";
+} from "../core/errors.ts";
 import {
 	type BackoffOptions,
 	DEFAULT_MAX_RETRIES,
@@ -17,13 +17,13 @@ import {
 	type RequestOptions,
 	type RetryConfig,
 	type TimeoutConfig,
-} from "../core/types.js";
-import type { Ticket, TicketController } from "../ticket/ticket.js";
-import type { Bulkhead } from "./bulkhead.js";
-import type { CircuitBreaker } from "./circuit-breaker.js";
-import { executeRequest, type MiddlewareFn } from "./executor.js";
-import { defaultRetryPolicy, type RetryPolicyContext, shouldRetry } from "./policy.js";
-import type { Semaphore } from "./semaphore.js";
+} from "../core/types.ts";
+import type { Ticket, TicketController } from "../ticket/ticket.ts";
+import type { Bulkhead } from "./bulkhead.ts";
+import type { CircuitBreaker } from "./circuit-breaker.ts";
+import { executeRequest, type MiddlewareFn } from "./executor.ts";
+import { defaultRetryPolicy, type RetryPolicyContext, shouldRetry } from "./policy.ts";
+import type { Semaphore } from "./semaphore.ts";
 
 export interface RetryJobOptions {
 	/** Fully resolved request URL (baseUrl applied) — what each retry fetches. */

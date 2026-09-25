@@ -1,7 +1,7 @@
 import * as http from "node:http";
 import { describe, expect, it } from "vitest";
-import { HttpClient } from "../../src/core/client.js";
-import { CircuitOpenError } from "../../src/core/errors.js";
+import { HttpClient } from "../../src/core/client.ts";
+import { CircuitOpenError } from "../../src/core/errors.ts";
 
 function createServer(
 	handler: (req: http.IncomingMessage, res: http.ServerResponse) => void,

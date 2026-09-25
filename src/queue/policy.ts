@@ -1,4 +1,4 @@
-import type { AppError } from "../core/errors.js";
+import type { AppError } from "../core/errors.ts";
 
 export interface RetryPolicyContext {
 	method: string;

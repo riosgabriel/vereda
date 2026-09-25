@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { HttpClient } from "../../src/core/client.js";
-import { redactUrl } from "../../src/core/redact.js";
-import type { LifecycleEventMap } from "../../src/core/types.js";
-import { requestLogger } from "../../src/middleware/index.js";
+import { HttpClient } from "../../src/core/client.ts";
+import { redactUrl } from "../../src/core/redact.ts";
+import type { LifecycleEventMap } from "../../src/core/types.ts";
+import { requestLogger } from "../../src/middleware/index.ts";
 
 const fastRetry = { backoff: { baseDelayMs: 1, jitter: false } } as const;
 

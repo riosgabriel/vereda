@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { HttpClient } from "../../src/core/client.js";
-import type { CloseOptions } from "../../src/core/types.js";
+import { HttpClient } from "../../src/core/client.ts";
+import type { CloseOptions } from "../../src/core/types.ts";
 
 const slowOk: typeof globalThis.fetch = () =>
 	new Promise((resolve) => setTimeout(() => resolve(new Response("{}", { status: 200 })), 50));

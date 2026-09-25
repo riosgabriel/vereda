@@ -1,5 +1,5 @@
-import { ConfigurationError } from "./errors.js";
-import type { ClientConfig, PartitionConfig, RequestOptions, RetryConfig, TimeoutConfig } from "./types.js";
+import { ConfigurationError } from "./errors.ts";
+import type { ClientConfig, PartitionConfig, RequestOptions, RetryConfig, TimeoutConfig } from "./types.ts";
 
 /** Realm-safe ReadableStream detection — instanceof fails across realms
  *  (vm contexts, other copies of node:stream/web). No non-stream BodyInit

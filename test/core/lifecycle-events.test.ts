@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { HttpClient } from "../../src/core/client.js";
-import type { LifecycleEventMap } from "../../src/core/types.js";
+import { HttpClient } from "../../src/core/client.ts";
+import type { LifecycleEventMap } from "../../src/core/types.ts";
 
 interface TestServer {
 	url: string;

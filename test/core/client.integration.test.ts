@@ -2,8 +2,8 @@ import { getEventListeners } from "node:events";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as z from "zod";
-import { withZod } from "../../src/adapters/zod.js";
-import { HttpClient, json } from "../../src/core/client.js";
+import { withZod } from "../../src/adapters/zod.ts";
+import { HttpClient, json } from "../../src/core/client.ts";
 import {
 	CancelledError,
 	ConfigurationError,
@@ -14,8 +14,8 @@ import {
 	RetryableStatusError,
 	TimeoutError,
 	ValidationError,
-} from "../../src/core/errors.js";
-import type { LifecycleEventMap } from "../../src/core/types.js";
+} from "../../src/core/errors.ts";
+import type { LifecycleEventMap } from "../../src/core/types.ts";
 
 interface TestServer {
 	url: string;

@@ -1,5 +1,5 @@
 import { HttpClient } from "vereda";
-import { checkThresholds, type Thresholds } from "./thresholds.js";
+import { checkThresholds, type Thresholds } from "./thresholds.ts";
 import {
 	type BenchmarkResult,
 	calculatePercentile,
@@ -7,7 +7,7 @@ import {
 	runBenchmark,
 	saveResults,
 	TestServer,
-} from "./utils.js";
+} from "./utils.ts";
 
 /**
  * Comprehensive benchmark runner

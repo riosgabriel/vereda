@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { NetworkError, QueueFullError } from "../../src/core/errors.js";
-import { Bulkhead } from "../../src/queue/bulkhead.js";
-import { CircuitBreaker } from "../../src/queue/circuit-breaker.js";
-import { runRetryLoop } from "../../src/queue/retry.js";
-import { createTicket } from "../../src/ticket/ticket.js";
+import { NetworkError, QueueFullError } from "../../src/core/errors.ts";
+import { Bulkhead } from "../../src/queue/bulkhead.ts";
+import { CircuitBreaker } from "../../src/queue/circuit-breaker.ts";
+import { runRetryLoop } from "../../src/queue/retry.ts";
+import { createTicket } from "../../src/ticket/ticket.ts";
 
 // A disabled breaker is always inert (canRequest() always true, record*() no-ops),
 // so it's safe to pass into every test here that isn't exercising the breaker itself.

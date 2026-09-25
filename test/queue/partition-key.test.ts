@@ -1,7 +1,7 @@
 import * as http from "node:http";
 import { describe, expect, it } from "vitest";
-import { HttpClient } from "../../src/core/client.js";
-import type { BulkheadRegistry } from "../../src/queue/bulkhead.js";
+import { HttpClient } from "../../src/core/client.ts";
+import type { BulkheadRegistry } from "../../src/queue/bulkhead.ts";
 
 function createServer(): Promise<{ url: string; close: () => Promise<void> }> {
 	return new Promise((resolve) => {

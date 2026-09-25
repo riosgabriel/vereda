@@ -114,6 +114,8 @@ function writeTsconfig(dir: string): string {
 			target: "ES2022",
 			module: "ESNext",
 			moduleResolution: "Bundler",
+			// `paths` below pulls in src/, whose relative imports use `.ts` specifiers.
+			allowImportingTsExtensions: true,
 			strict: true,
 			esModuleInterop: true,
 			skipLibCheck: true,

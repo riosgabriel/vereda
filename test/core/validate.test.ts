@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { ConfigurationError } from "../../src/core/errors.js";
-import type { ClientConfig } from "../../src/core/types.js";
-import { validateConfig, validateRequestBody, validateRequestOptions } from "../../src/core/validate.js";
+import { ConfigurationError } from "../../src/core/errors.ts";
+import type { ClientConfig } from "../../src/core/types.ts";
+import { validateConfig, validateRequestBody, validateRequestOptions } from "../../src/core/validate.ts";
 
 describe("validateConfig", () => {
 	it("accepts a minimal config with only timeout set", () => {

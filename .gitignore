@@ -48,3 +48,6 @@ TRACKER.md
 # Agent worktrees (each has its own biome.json, which trips up a repo-root
 # biome scan if not excluded)
 .claude/worktrees/
+# Per-developer Claude Code settings. Listed here, not just in a global git
+# excludes file, because biome's useIgnoreFile only reads the repo's .gitignore.
+.claude/settings.local.json

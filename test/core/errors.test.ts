@@ -14,7 +14,7 @@ import {
 	RetryableStatusError,
 	TimeoutError,
 	ValidationError,
-} from "../../src/core/errors.js";
+} from "../../src/core/errors.ts";
 
 describe("Error classes", () => {
 	it("NetworkError has kind 'network'", () => {

@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { HttpClient } from "../../src/core/client.js";
-import { DeadlineExceededError, HttpError, TimeoutError } from "../../src/core/errors.js";
+import { HttpClient } from "../../src/core/client.ts";
+import { DeadlineExceededError, HttpError, TimeoutError } from "../../src/core/errors.ts";
 
 /**
  * Bounding an unread Response handed back to the caller (no `parse`, or an

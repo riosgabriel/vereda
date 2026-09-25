@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { HttpClient } from "../../src/core/client.js";
-import type { MetricsSink } from "../../src/core/metrics.js";
-import { createTicket } from "../../src/ticket/ticket.js";
+import { HttpClient } from "../../src/core/client.ts";
+import type { MetricsSink } from "../../src/core/metrics.ts";
+import { createTicket } from "../../src/ticket/ticket.ts";
 
 // reportCallbackError rethrows on a microtask so the error reaches
 // uncaughtException; capture it here instead of crashing the test run.

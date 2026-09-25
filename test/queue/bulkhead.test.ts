@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { Bulkhead, BulkheadRegistry } from "../../src/queue/bulkhead.js";
-import { Semaphore } from "../../src/queue/semaphore.js";
+import { Bulkhead, BulkheadRegistry } from "../../src/queue/bulkhead.ts";
+import { Semaphore } from "../../src/queue/semaphore.ts";
 
 describe("Bulkhead", () => {
 	it("runs tasks up to concurrency limit", async () => {

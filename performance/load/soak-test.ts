@@ -1,5 +1,5 @@
 import { HttpClient } from "vereda";
-import { type BenchmarkResult, printResults, TestServer } from "../src/utils.js";
+import { type BenchmarkResult, printResults, TestServer } from "../src/utils.ts";
 
 /**
  * Soak test: Run sustained load over time to detect memory leaks and degradation

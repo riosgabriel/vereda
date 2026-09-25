@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { HttpClient } from "../../src/core/client.js";
-import { defaultHeaders, requestLogger } from "../../src/middleware/index.js";
+import { HttpClient } from "../../src/core/client.ts";
+import { defaultHeaders, requestLogger } from "../../src/middleware/index.ts";
 
 /**
  * Runs the README's "Middleware" example and checks the behavior its prose

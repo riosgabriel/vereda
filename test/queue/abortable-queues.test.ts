@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { HttpClient } from "../../src/core/client.js";
-import { CancelledError } from "../../src/core/errors.js";
-import { Bulkhead } from "../../src/queue/bulkhead.js";
-import { Semaphore } from "../../src/queue/semaphore.js";
+import { HttpClient } from "../../src/core/client.ts";
+import { CancelledError } from "../../src/core/errors.ts";
+import { Bulkhead } from "../../src/queue/bulkhead.ts";
+import { Semaphore } from "../../src/queue/semaphore.ts";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 

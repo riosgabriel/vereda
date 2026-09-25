@@ -1,7 +1,7 @@
 import * as http from "node:http";
 import { describe, expect, it } from "vitest";
-import { CancelledError, QueueFullError } from "../../src/core/errors.js";
-import { Semaphore } from "../../src/queue/semaphore.js";
+import { CancelledError, QueueFullError } from "../../src/core/errors.ts";
+import { Semaphore } from "../../src/queue/semaphore.ts";
 
 function createServer(
 	handler: (req: http.IncomingMessage, res: http.ServerResponse) => void,
@@ -42,7 +42,7 @@ describe("Global semaphore (5.2)", () => {
 
 		try {
 			// Import HttpClient here to avoid circular dependency issues
-			const { HttpClient } = await import("../../src/core/client.js");
+			const { HttpClient } = await import("../../src/core/client.ts");
 
 			const client = HttpClient.create({
 				baseUrl: url,
@@ -158,7 +158,7 @@ describe("Global semaphore (5.2)", () => {
 		});
 
 		try {
-			const { HttpClient } = await import("../../src/core/client.js");
+			const { HttpClient } = await import("../../src/core/client.ts");
 
 			const client = HttpClient.create({
 				baseUrl: url,
@@ -212,7 +212,7 @@ describe("Global semaphore (5.2)", () => {
 		});
 
 		try {
-			const { HttpClient } = await import("../../src/core/client.js");
+			const { HttpClient } = await import("../../src/core/client.ts");
 
 			const client = HttpClient.create({
 				baseUrl: url,

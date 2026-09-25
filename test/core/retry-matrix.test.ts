@@ -7,7 +7,7 @@ import {
 	NetworkError,
 	RetryableStatusError,
 	ValidationError,
-} from "../../src/core/index.js";
+} from "../../src/core/index.ts";
 
 interface TestServer {
 	url: string;

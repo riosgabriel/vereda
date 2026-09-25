@@ -1,5 +1,5 @@
-import type { AppError } from "./errors.js";
-import type { MetricsSink } from "./metrics.js";
+import type { AppError } from "./errors.ts";
+import type { MetricsSink } from "./metrics.ts";
 
 // ---------------------------------------------------------------------------
 // Result type

@@ -1,6 +1,6 @@
-import { redactUrl } from "../core/redact.js";
+import { redactUrl } from "../core/redact.ts";
 
-export type { MiddlewareFn, NextFn, RequestContext } from "../queue/executor.js";
+export type { MiddlewareFn, NextFn, RequestContext } from "../queue/executor.ts";
 
 /**
  * Adds a base set of headers to every request. Only sets a header the
@@ -10,7 +10,7 @@ export type { MiddlewareFn, NextFn, RequestContext } from "../queue/executor.js"
  * @example
  * client.use(defaultHeaders({ 'X-Api-Key': 'secret' }));
  */
-export function defaultHeaders(headers: HeadersInit): import("../queue/executor.js").MiddlewareFn {
+export function defaultHeaders(headers: HeadersInit): import("../queue/executor.ts").MiddlewareFn {
 	return async (ctx, next) => {
 		for (const [key, value] of new Headers(headers)) {
 			if (!ctx.headers.has(key)) {
@@ -35,7 +35,7 @@ export function requestLogger(options?: {
 	log?: (msg: string, meta: Record<string, unknown>) => void;
 	/** @default true */
 	redactQuery?: boolean;
-}): import("../queue/executor.js").MiddlewareFn {
+}): import("../queue/executor.ts").MiddlewareFn {
 	// biome-ignore lint/suspicious/noConsole: console is the intended default sink for this opt-in logger middleware; callers override it via options.log.
 	const log = options?.log ?? ((msg, meta) => console.log(msg, meta));
 
