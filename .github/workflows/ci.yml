@@ -145,6 +145,50 @@ jobs:
           ./node_modules/.bin/tsc --noEmit
           ./node_modules/.bin/tsc --noEmit -p tsconfig.test.json
           ./node_modules/.bin/tsc --noEmit -p examples/tsconfig.json
+          ./node_modules/.bin/tsc --noEmit -p performance/tsconfig.json
+
+  # Informational for now, same as typecheck-next: `continue-on-error` and
+  # exclusion from `needs` below keep it from blocking merges. The suite exits
+  # non-zero on a threshold breach, but its latency ceilings (e.g. p95 ≤ 100ms)
+  # were set on a dev machine, and shared runners are noisier. Promote it to
+  # the gate once it has a green track record here.
+  bench:
+    name: bench (informational)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # performance/ has its own bun.lock (tsx lives there). It imports vereda
+      # from ../src through tsconfig `paths`, so no root install or build is
+      # needed.
+      - name: Install dependencies
+        working-directory: performance
+        run: bun install --frozen-lockfile
+
+      - name: Run benchmark suite
+        working-directory: performance
+        run: bun run bench
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: bench-results
+          path: performance/results/
+          retention-days: 14
+          if-no-files-found: ignore
 
   test-bun:
     name: test (bun runtime)
