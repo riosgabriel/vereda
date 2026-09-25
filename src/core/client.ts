@@ -420,37 +420,37 @@ export class HttpClient {
 					return;
 				}
 
-				case "error":
+				case "error": {
 					// Record the raw attempt outcome against the circuit breaker
 					// regardless of what the retry policy decides to do with it.
 					permit.failure(result.error);
+					// maxRetries=0: no retries configured, surface the raw error immediately
+					// without entering the bulkhead (which would waste a slot for no work),
+					// and without consulting retryWhen — there is nothing left to decide
+					// for an attempt that couldn't be retried anyway.
+					const effectiveMaxRetries = retryConfig.maxRetries ?? DEFAULT_MAX_RETRIES;
+					if (effectiveMaxRetries === 0) {
+						const durationMs = Date.now() - startTime;
+						this.emit("failure", {
+							ticketId: ticket.id,
+							url: displayUrl,
+							attempts: 1,
+							durationMs,
+							queuedMs,
+							error: result.error,
+						});
+						controller.markDone({
+							success: false,
+							error: result.error,
+						} as never);
+						cleanup();
+						return;
+					}
 					// Apply the unified retry gate (default policy + retryWhen). Errors
 					// that fail it (e.g. ValidationError, HttpError) resolve immediately.
 					if (this.vetoed(retryConfig, result.error, 0, options, ticket, controller, displayUrl, startTime, queuedMs)) {
 						cleanup();
 						return;
-					}
-					// maxRetries=0: no retries configured, surface the raw error immediately
-					// without entering the bulkhead (which would waste a slot for no work).
-					{
-						const effectiveMaxRetries = retryConfig.maxRetries ?? DEFAULT_MAX_RETRIES;
-						if (effectiveMaxRetries === 0) {
-							const durationMs = Date.now() - startTime;
-							this.emit("failure", {
-								ticketId: ticket.id,
-								url: displayUrl,
-								attempts: 1,
-								durationMs,
-								queuedMs,
-								error: result.error,
-							});
-							controller.markDone({
-								success: false,
-								error: result.error,
-							} as never);
-							cleanup();
-							return;
-						}
 					}
 					controller.markQueued();
 					this._scheduleInBulkhead(
@@ -470,33 +470,34 @@ export class HttpClient {
 						queuedMs,
 					);
 					return;
+				}
 
 				case "timeout": {
 					const error = new TimeoutError(displayUrl, timeoutConfig.attemptMs ?? NO_TIMEOUT_CONFIGURED);
 					// Record the raw attempt outcome against the circuit breaker
 					// regardless of what the retry policy decides to do with it.
 					permit.failure(error);
-					if (this.vetoed(retryConfig, error, 0, options, ticket, controller, displayUrl, startTime, queuedMs)) {
+					// maxRetries=0: surface timeout immediately without entering the
+					// bulkhead, and without consulting retryWhen — see the "error"
+					// case above for why this must come before the retry gate.
+					const effectiveMaxRetries = retryConfig.maxRetries ?? DEFAULT_MAX_RETRIES;
+					if (effectiveMaxRetries === 0) {
+						const durationMs = Date.now() - startTime;
+						this.emit("failure", {
+							ticketId: ticket.id,
+							url: displayUrl,
+							attempts: 1,
+							durationMs,
+							queuedMs,
+							error,
+						});
+						controller.markDone({ success: false, error } as never);
 						cleanup();
 						return;
 					}
-					// maxRetries=0: surface timeout immediately without entering the bulkhead
-					{
-						const effectiveMaxRetries = retryConfig.maxRetries ?? DEFAULT_MAX_RETRIES;
-						if (effectiveMaxRetries === 0) {
-							const durationMs = Date.now() - startTime;
-							this.emit("failure", {
-								ticketId: ticket.id,
-								url: displayUrl,
-								attempts: 1,
-								durationMs,
-								queuedMs,
-								error,
-							});
-							controller.markDone({ success: false, error } as never);
-							cleanup();
-							return;
-						}
+					if (this.vetoed(retryConfig, error, 0, options, ticket, controller, displayUrl, startTime, queuedMs)) {
+						cleanup();
+						return;
 					}
 					controller.markQueued();
 					this._scheduleInBulkhead(

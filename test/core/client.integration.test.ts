@@ -451,6 +451,103 @@ describe("HttpClient integration", () => {
 		}
 	});
 
+	it("retryWhen is never called when maxRetries: 0 (retryable status)", async () => {
+		const iso = await createTestServer();
+		try {
+			let requestCount = 0;
+			iso.setHandler((_req, res) => {
+				requestCount++;
+				res.writeHead(503);
+				res.end("busy");
+			});
+
+			const isoClient = HttpClient.create({ timeout: { attemptMs: 5_000 } });
+			const attemptsSeen: number[] = [];
+			const result = await isoClient
+				.get(`${iso.url}/bad`, {
+					retry: {
+						maxRetries: 0,
+						retryWhen: (_err, attempt) => {
+							attemptsSeen.push(attempt);
+							return true;
+						},
+					},
+				})
+				.toPromise();
+
+			// No retries configured — nothing left to decide, so retryWhen must
+			// never be consulted, and the raw error surfaces unwrapped.
+			expect(attemptsSeen).toEqual([]);
+			expect(requestCount).toBe(1);
+			expect(result.success).toBe(false);
+			if (!result.success) {
+				expect(result.error).toBeInstanceOf(RetryableStatusError);
+				expect((result.error as RetryableStatusError).statusCode).toBe(503);
+			}
+		} finally {
+			await iso.close();
+		}
+	});
+
+	it("retryWhen is never called when maxRetries: 0 (network error)", async () => {
+		const attemptsSeen: number[] = [];
+		const isoClient = HttpClient.create({ timeout: { attemptMs: 5_000 } });
+		const result = await isoClient
+			.get("http://127.0.0.1:1/unreachable", {
+				retry: {
+					maxRetries: 0,
+					retryWhen: (_err, attempt) => {
+						attemptsSeen.push(attempt);
+						return true;
+					},
+				},
+			})
+			.toPromise();
+
+		expect(attemptsSeen).toEqual([]);
+		expect(result.success).toBe(false);
+		if (!result.success) {
+			expect(result.error).toBeInstanceOf(NetworkError);
+		}
+	});
+
+	it("retryWhen is never called when maxRetries: 0 (timeout)", async () => {
+		const iso = await createTestServer();
+		try {
+			iso.setHandler((_req, res) => {
+				setTimeout(() => {
+					try {
+						res.writeHead(200, { "Content-Type": "application/json" });
+						res.end(JSON.stringify({ ok: true }));
+					} catch {}
+				}, 500);
+			});
+
+			const isoClient = HttpClient.create({ timeout: { attemptMs: 5_000 } });
+			const attemptsSeen: number[] = [];
+			const result = await isoClient
+				.get(`${iso.url}/slow`, {
+					timeout: { attemptMs: 50 },
+					retry: {
+						maxRetries: 0,
+						retryWhen: (_err, attempt) => {
+							attemptsSeen.push(attempt);
+							return true;
+						},
+					},
+				})
+				.toPromise();
+
+			expect(attemptsSeen).toEqual([]);
+			expect(result.success).toBe(false);
+			if (!result.success) {
+				expect(result.error).toBeInstanceOf(TimeoutError);
+			}
+		} finally {
+			await iso.close();
+		}
+	});
+
 	it("cancel() aborts the ticket immediately", async () => {
 		server.setHandler((_req, res) => {
 			setTimeout(() => {
