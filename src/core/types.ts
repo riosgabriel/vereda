@@ -186,6 +186,7 @@ export type LifecycleEventMap = {
 	retry: {
 		ticketId: string;
 		url: string;
+		partition: string;
 		attempt: number;
 		delayMs: number;
 		error: AppError;
@@ -193,6 +194,7 @@ export type LifecycleEventMap = {
 	success: {
 		ticketId: string;
 		url: string;
+		partition: string;
 		attempts: number;
 		durationMs: number;
 		queuedMs: number;
@@ -201,6 +203,9 @@ export type LifecycleEventMap = {
 	failure: {
 		ticketId: string;
 		url: string;
+		/** `undefined` only when the URL couldn't be resolved, so no partition
+		 *  was ever chosen (no `request` event is emitted in that case either). */
+		partition: string | undefined;
 		attempts: number;
 		durationMs: number;
 		queuedMs: number;
@@ -209,6 +214,7 @@ export type LifecycleEventMap = {
 	cancelled: {
 		ticketId: string;
 		url: string;
+		partition: string;
 		attempts: number;
 		durationMs: number;
 		queuedMs: number;

@@ -49,8 +49,8 @@ Implement `MetricsSink` (`counter`, `histogram`, `gauge` — all synchronous, no
 | Series | Type | Tags | Meaning |
 | --- | --- | --- | --- |
 | `METRICS.REQUESTS` (`vereda.requests`) | counter | `partition`, `method` | One per request initiated |
-| `METRICS.RETRIES` (`vereda.retries`) | counter | `kind` | One per retry attempt, tagged by the error `kind` that triggered it |
-| `METRICS.DURATION` (`vereda.duration_ms`) | histogram | `kind` (`success`, `cancelled`, or the error `kind`) | Total ticket duration at settlement |
+| `METRICS.RETRIES` (`vereda.retries`) | counter | `partition`, `kind` | One per retry attempt, tagged by the error `kind` that triggered it |
+| `METRICS.DURATION` (`vereda.duration_ms`) | histogram | `partition` (absent only when the URL couldn't be resolved), `kind` (`success`, `cancelled`, or the error `kind`) | Total ticket duration at settlement |
 | `METRICS.QUEUE_DEPTH` (`vereda.queue_depth`) | gauge | `partition` | Current per-partition queue size — same retries-only caveat as `partitions()` above: a partition only shows queued first attempts if `limitFirstAttempts` is enabled for it |
 | `METRICS.GLOBAL_QUEUE_DEPTH` (`vereda.global_queue_depth`) | gauge | — | Callers currently waiting for a permit under the global concurrency cap (D1) — the signal that you're throttled by `concurrency`/`ClientConfig.concurrency` rather than downstream latency |
 | `METRICS.IN_FLIGHT` (`vereda.in_flight`) | gauge | — | Current in-flight executions across all partitions |

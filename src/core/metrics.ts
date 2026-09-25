@@ -28,7 +28,8 @@ export const METRICS = {
 	REQUESTS: "vereda.requests",
 	/** Total retries executed. Tags: partition, kind. */
 	RETRIES: "vereda.retries",
-	/** Request duration in ms (histogram). Tags: partition, kind, status. */
+	/** Request duration in ms (histogram). Tags: partition (omitted when the URL
+	 *  never resolved), kind. */
 	DURATION: "vereda.duration_ms",
 	/** Current queue depth per partition. Tags: partition. */
 	QUEUE_DEPTH: "vereda.queue_depth",

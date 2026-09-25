@@ -80,6 +80,7 @@ describe("Metrics sink (6.2)", () => {
 		expect(durations).toHaveLength(1);
 		expect(durations[0].value).toBeGreaterThanOrEqual(0);
 		expect(durations[0].tags?.kind).toBe("success");
+		expect(durations[0].tags?.partition).toBe(new URL(server.url).host);
 
 		const retries = sink.counters.filter((c) => c.name === METRICS.RETRIES);
 		expect(retries).toHaveLength(0);
@@ -114,12 +115,59 @@ describe("Metrics sink (6.2)", () => {
 		for (const r of retryCounters) {
 			expect(r.value).toBe(1);
 			expect(r.tags?.kind).toBe("retryable_status");
+			expect(r.tags?.partition).toBe(new URL(server.url).host);
 		}
 
 		const durations = sink.histograms.filter((h) => h.name === METRICS.DURATION);
 		expect(durations).toHaveLength(1);
 		expect(durations[0].value).toBeGreaterThanOrEqual(0);
 		expect(durations[0].tags?.kind).toBe("max_retries");
+		expect(durations[0].tags?.partition).toBe(new URL(server.url).host);
+
+		await client.close();
+	});
+
+	it("tags retries and duration with an explicit options.partition, and the events carry it too", async () => {
+		const sink = createFakeSink();
+		const client = HttpClient.create({
+			timeout: { attemptMs: 5_000 },
+			metrics: sink,
+			retry: { maxRetries: 1, retryOnStatus: [503], backoff: { baseDelayMs: 10, jitter: false } },
+		});
+		const eventPartitions: (string | undefined)[] = [];
+		client.on("retry", (e) => eventPartitions.push(e.partition));
+		client.on("failure", (e) => eventPartitions.push(e.partition));
+
+		server.setHandler((_req, res) => {
+			res.writeHead(503, { "Content-Type": "application/json" });
+			res.end("{}");
+		});
+
+		await client.get(`${server.url}/fail`, { partition: "payments" }).toPromise();
+
+		const retry = sink.counters.filter((c) => c.name === METRICS.RETRIES);
+		expect(retry.map((r) => r.tags?.partition)).toEqual(["payments"]);
+		const durations = sink.histograms.filter((h) => h.name === METRICS.DURATION);
+		expect(durations.map((h) => h.tags?.partition)).toEqual(["payments"]);
+		expect(eventPartitions).toEqual(["payments", "payments"]);
+
+		await client.close();
+	});
+
+	it("omits the partition tag on duration when the URL never resolved", async () => {
+		const sink = createFakeSink();
+		const client = HttpClient.create({ timeout: { attemptMs: 5_000 }, metrics: sink });
+		const failurePartitions: (string | undefined)[] = [];
+		client.on("failure", (e) => failurePartitions.push(e.partition));
+
+		// Relative URL with no baseUrl: fails before any partition is chosen.
+		const result = await client.get("/no-base-url").toPromise();
+		expect(result.success).toBe(false);
+
+		const durations = sink.histograms.filter((h) => h.name === METRICS.DURATION);
+		expect(durations).toHaveLength(1);
+		expect(durations[0].tags).toEqual({ kind: "network" });
+		expect(failurePartitions).toEqual([undefined]);
 
 		await client.close();
 	});

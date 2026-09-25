@@ -508,10 +508,10 @@ The client emits typed events across all requests, useful for metrics, logging, 
 
 ```typescript
 client.on("request",   ({ ticketId, url, method, partition }) => {});
-client.on("retry",     ({ ticketId, url, attempt, delayMs, error }) => {});
-client.on("success",   ({ ticketId, url, attempts, durationMs, queuedMs, statusCode }) => {});
-client.on("failure",   ({ ticketId, url, attempts, durationMs, queuedMs, error }) => {});
-client.on("cancelled", ({ ticketId, url, attempts, durationMs, queuedMs }) => {});
+client.on("retry",     ({ ticketId, url, partition, attempt, delayMs, error }) => {});
+client.on("success",   ({ ticketId, url, partition, attempts, durationMs, queuedMs, statusCode }) => {});
+client.on("failure",   ({ ticketId, url, partition, attempts, durationMs, queuedMs, error }) => {});
+client.on("cancelled", ({ ticketId, url, partition, attempts, durationMs, queuedMs }) => {});
 ```
 
 `retry`'s `attempt` is a zero-based retry index (`0` = the first retry, after the initial attempt). `off(event, listener)` removes a listener with the same signature as `on`. A listener (or `metrics` sink) that throws never affects the request: every other listener still runs, and the error is rethrown on a microtask, so it surfaces through `process.on("uncaughtException")` the same way a throwing `EventEmitter` listener would.

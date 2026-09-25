@@ -209,6 +209,7 @@ export class HttpClient {
 				this.emit("failure", {
 					ticketId: ticket.id,
 					url: this.logUrl(url),
+					partition: this.tryResolvePartition(url, options as RequestOptions<unknown>),
 					attempts: 1,
 					durationMs,
 					queuedMs: 0,
@@ -245,6 +246,7 @@ export class HttpClient {
 			this.emit("failure", {
 				ticketId: ticket.id,
 				url: this.logUrl(url),
+				partition: undefined,
 				attempts: 1,
 				durationMs,
 				queuedMs: 0,
@@ -265,6 +267,7 @@ export class HttpClient {
 			this.emit("failure", {
 				ticketId: ticket.id,
 				url: this.logUrl(url),
+				partition: partitionName,
 				attempts: 1,
 				durationMs,
 				queuedMs: 0,
@@ -287,6 +290,7 @@ export class HttpClient {
 			this.emit("failure", {
 				ticketId: ticket.id,
 				url: this.logUrl(url),
+				partition: partitionName,
 				attempts: 1,
 				durationMs,
 				queuedMs: 0,
@@ -323,6 +327,7 @@ export class HttpClient {
 			this.emit("failure", {
 				ticketId: ticket.id,
 				url: displayUrl,
+				partition: partitionName,
 				attempts: 1,
 				durationMs,
 				queuedMs: 0,
@@ -412,6 +417,7 @@ export class HttpClient {
 					this.emit("success", {
 						ticketId: ticket.id,
 						url: displayUrl,
+						partition: partitionName,
 						attempts: 1,
 						durationMs,
 						queuedMs,
@@ -433,10 +439,25 @@ export class HttpClient {
 					// event must agree with the result (B7), as in the retry loop.
 					if (!ticket.isCancelled && isBoundedMs(timeoutConfig.totalMs)) {
 						const error = new DeadlineExceededError(displayUrl, timeoutConfig.totalMs);
-						this.emit("failure", { ticketId: ticket.id, url: displayUrl, attempts: 1, durationMs, queuedMs, error });
+						this.emit("failure", {
+							ticketId: ticket.id,
+							url: displayUrl,
+							partition: partitionName,
+							attempts: 1,
+							durationMs,
+							queuedMs,
+							error,
+						});
 						controller.markDone({ success: false, error } as never);
 					} else {
-						this.emit("cancelled", { ticketId: ticket.id, url: displayUrl, attempts: 1, durationMs, queuedMs });
+						this.emit("cancelled", {
+							ticketId: ticket.id,
+							url: displayUrl,
+							partition: partitionName,
+							attempts: 1,
+							durationMs,
+							queuedMs,
+						});
 						controller.markDone({ success: false, error: new CancelledError() } as never);
 					}
 					cleanup();
@@ -457,6 +478,7 @@ export class HttpClient {
 						this.emit("failure", {
 							ticketId: ticket.id,
 							url: displayUrl,
+							partition: partitionName,
 							attempts: 1,
 							durationMs,
 							queuedMs,
@@ -471,7 +493,20 @@ export class HttpClient {
 					}
 					// Apply the unified retry gate (default policy + retryWhen). Errors
 					// that fail it (e.g. ValidationError, HttpError) resolve immediately.
-					if (this.vetoed(retryConfig, result.error, 0, options, ticket, controller, displayUrl, startTime, queuedMs)) {
+					if (
+						this.vetoed(
+							retryConfig,
+							result.error,
+							0,
+							options,
+							ticket,
+							controller,
+							displayUrl,
+							partitionName,
+							startTime,
+							queuedMs,
+						)
+					) {
 						cleanup();
 						return;
 					}
@@ -509,6 +544,7 @@ export class HttpClient {
 						this.emit("failure", {
 							ticketId: ticket.id,
 							url: displayUrl,
+							partition: partitionName,
 							attempts: 1,
 							durationMs,
 							queuedMs,
@@ -518,7 +554,20 @@ export class HttpClient {
 						cleanup();
 						return;
 					}
-					if (this.vetoed(retryConfig, error, 0, options, ticket, controller, displayUrl, startTime, queuedMs)) {
+					if (
+						this.vetoed(
+							retryConfig,
+							error,
+							0,
+							options,
+							ticket,
+							controller,
+							displayUrl,
+							partitionName,
+							startTime,
+							queuedMs,
+						)
+					) {
 						cleanup();
 						return;
 					}
@@ -558,6 +607,7 @@ export class HttpClient {
 		ticket: Ticket<unknown>,
 		controller: TicketController<unknown>,
 		displayUrl: string,
+		partitionName: string,
 		startTime: number,
 		queuedMs: number,
 	): boolean {
@@ -571,6 +621,7 @@ export class HttpClient {
 			this.emit("failure", {
 				ticketId: ticket.id,
 				url: displayUrl,
+				partition: partitionName,
 				attempts: 1,
 				durationMs,
 				queuedMs,
@@ -629,6 +680,7 @@ export class HttpClient {
 				this.emit("retry", {
 					ticketId: ticket.id,
 					url: displayUrl,
+					partition: partitionName,
 					attempt,
 					delayMs,
 					error,
@@ -639,6 +691,7 @@ export class HttpClient {
 				this.emit("success", {
 					ticketId: ticket.id,
 					url: displayUrl,
+					partition: partitionName,
 					attempts,
 					durationMs,
 					queuedMs,
@@ -650,6 +703,7 @@ export class HttpClient {
 				this.emit("failure", {
 					ticketId: ticket.id,
 					url: displayUrl,
+					partition: partitionName,
 					attempts,
 					durationMs,
 					queuedMs,
@@ -666,6 +720,7 @@ export class HttpClient {
 				this.emit("cancelled", {
 					ticketId: ticket.id,
 					url: displayUrl,
+					partition: partitionName,
 					attempts,
 					durationMs,
 					queuedMs,
@@ -686,6 +741,7 @@ export class HttpClient {
 				this.emit("failure", {
 					ticketId: ticket.id,
 					url: displayUrl,
+					partition: partitionName,
 					attempts: 1,
 					durationMs: Date.now() - startTime,
 					queuedMs: initialQueuedMs,
@@ -889,12 +945,18 @@ export class HttpClient {
 				this.emitQueueDepthGauges();
 			} else if (e === "retry") {
 				const d = data as LifecycleEventMap["retry"];
-				this.metrics.counter(METRICS.RETRIES, 1, { kind: d.error.kind });
+				this.metrics.counter(METRICS.RETRIES, 1, { partition: d.partition, kind: d.error.kind });
 			} else if (e === "success" || e === "failure" || e === "cancelled") {
 				const d = data as LifecycleEventMap["success"] | LifecycleEventMap["failure"] | LifecycleEventMap["cancelled"];
 				const kind =
 					e === "success" ? "success" : e === "failure" ? (d as LifecycleEventMap["failure"]).error.kind : "cancelled";
-				this.metrics.histogram(METRICS.DURATION, d.durationMs, { kind });
+				// A failure whose URL never resolved has no partition — omit the tag
+				// rather than inventing a value for it.
+				this.metrics.histogram(
+					METRICS.DURATION,
+					d.durationMs,
+					d.partition === undefined ? { kind } : { partition: d.partition, kind },
+				);
 				this.metrics.gauge(METRICS.IN_FLIGHT, this._inflightTickets.size);
 				this.emitQueueDepthGauges();
 			} else if (e === "circuitOpen") {
