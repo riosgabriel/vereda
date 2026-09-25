@@ -184,7 +184,7 @@ describe("HttpClient integration", () => {
 		}
 	});
 
-	it("retryWhen receives the failed attempt's zero-based number", async () => {
+	it("retryWhen receives the failed attempt's zero-based number, exactly once per attempt", async () => {
 		const iso = await createTestServer();
 		try {
 			let requestCount = 0;
@@ -217,13 +217,90 @@ describe("HttpClient integration", () => {
 				})
 				.toPromise();
 
-			// vetoed passes 0, then the loop also checks every retry: 0, 1, 2 (rejected)
-			expect(attemptsSeen).toEqual([0, 0, 1, 2]);
+			// Called once per failed attempt that could still be retried: 0 (first
+			// attempt, client-side), then 1, 2 inside the loop — never twice for
+			// the same attempt, and attempt 2 is the one that vetoes.
+			expect(attemptsSeen).toEqual([0, 1, 2]);
 			expect(requestCount).toBe(3);
 			expect(result.success).toBe(false);
 			if (!result.success) {
 				expect(result.error).toBeInstanceOf(RetryableStatusError);
 				expect((result.error as RetryableStatusError).statusCode).toBe(429);
+			}
+		} finally {
+			await iso.close();
+		}
+	});
+
+	it("retryWhen is called [0, 1, 2] when all attempts fail retryably (maxRetries 3)", async () => {
+		const iso = await createTestServer();
+		try {
+			let requestCount = 0;
+			iso.setHandler((_req, res) => {
+				requestCount++;
+				res.writeHead(503);
+				res.end("busy");
+			});
+
+			const isoClient = HttpClient.create({ timeout: { attemptMs: 5_000 } });
+			const attemptsSeen: number[] = [];
+			const result = await isoClient
+				.get(`${iso.url}/bad`, {
+					retry: {
+						maxRetries: 3,
+						backoff: { baseDelayMs: 10, jitter: false },
+						retryWhen: (_err, attempt) => {
+							attemptsSeen.push(attempt);
+							return true;
+						},
+					},
+				})
+				.toPromise();
+
+			// 4 total attempts (1 + 3 retries), but retryWhen is only consulted for
+			// the 3 that could still be retried — never for the final, exhausted one.
+			expect(attemptsSeen).toEqual([0, 1, 2]);
+			expect(requestCount).toBe(4);
+			expect(result.success).toBe(false);
+			if (!result.success) {
+				expect(result.error).toBeInstanceOf(MaxRetriesExceededError);
+			}
+		} finally {
+			await iso.close();
+		}
+	});
+
+	it("retryWhen vetoing at attempt 1 calls [0, 1] and surfaces the raw error", async () => {
+		const iso = await createTestServer();
+		try {
+			let requestCount = 0;
+			iso.setHandler((_req, res) => {
+				requestCount++;
+				res.writeHead(503);
+				res.end("busy");
+			});
+
+			const isoClient = HttpClient.create({ timeout: { attemptMs: 5_000 } });
+			const attemptsSeen: number[] = [];
+			const result = await isoClient
+				.get(`${iso.url}/bad`, {
+					retry: {
+						maxRetries: 3,
+						backoff: { baseDelayMs: 10, jitter: false },
+						retryWhen: (_err, attempt) => {
+							attemptsSeen.push(attempt);
+							return attempt < 1;
+						},
+					},
+				})
+				.toPromise();
+
+			expect(attemptsSeen).toEqual([0, 1]);
+			expect(requestCount).toBe(2);
+			expect(result.success).toBe(false);
+			if (!result.success) {
+				expect(result.error).toBeInstanceOf(RetryableStatusError);
+				expect(result.error).not.toBeInstanceOf(MaxRetriesExceededError);
 			}
 		} finally {
 			await iso.close();

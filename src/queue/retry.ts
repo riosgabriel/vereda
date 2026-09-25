@@ -104,6 +104,18 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 	let totalAttempts = 1; // first attempt already fired client-side
 	let totalQueuedMs = initialQueuedMs; // cumulative bulkhead/semaphore wait across all attempts
 
+	// Attempt 0's error was already vetted (default policy + retryWhen) by
+	// client.ts's vetoed() before this loop was ever entered — that's what
+	// decided to queue the ticket for retry in the first place. `ctx` is
+	// constant across the loop (derived only from requestOptions/retryConfig),
+	// so it's built once here and reused both by the loop's gate below and by
+	// the final-attempt check after the loop.
+	const ctx: RetryPolicyContext = {
+		method: requestOptions.method ?? "GET",
+		headers: requestOptions.headers,
+		idempotent: retryConfig.idempotent,
+	};
+
 	for (let attempt = 0; attempt < maxRetries; attempt++) {
 		if (ticket.isCancelled) {
 			onCleanup?.();
@@ -127,16 +139,15 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 		// Every exit from this iteration settles the permit: an outcome below,
 		// or release() for the veto/cancel/deadline/queue-full paths (B1).
 		try {
-			// Consult the default policy + retryWhen for every retry iteration.
-			// The first attempt was already vetted at queue time (before the bulkhead),
-			// but each retry within the bulkhead must pass the same gate so that
-			// a user-provided retryWhen correctly limits retries to N+1 attempts total.
-			const ctx: RetryPolicyContext = {
-				method: requestOptions.method ?? "GET",
-				headers: requestOptions.headers,
-				idempotent: retryConfig.idempotent,
-			};
-			if (!shouldRetry(lastError, attempt, ctx, retryConfig.retryWhen)) {
+			// Consult the default policy + retryWhen for every retry iteration
+			// *except the first* (attempt 0): that error is always `firstError`,
+			// already vetted by client.ts's vetoed() before this loop was ever
+			// entered. Re-checking it here would call a user-provided retryWhen
+			// twice for the same failed attempt. From attempt 1 on, `lastError`
+			// is a fresh error produced by a retry this loop just ran, so the
+			// gate must run — it's what lets retryWhen limit retries to N+1
+			// attempts total.
+			if (attempt > 0 && !shouldRetry(lastError, attempt, ctx, retryConfig.retryWhen)) {
 				onCleanup?.();
 				onFailure?.(lastError, totalAttempts, totalQueuedMs);
 				controller.markDone({ success: false, error: lastError } as never);
