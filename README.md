@@ -72,7 +72,7 @@ Even once that loop is correct, it has no limit on how many retries pile onto a 
 | A host is down, not just slow | an opt-in circuit breaker fails fast with `CircuitOpenError` until it recovers |
 | The response isn't the shape you expected | validates it with your `parse` function (or Zod); a failed parse is never retried |
 | The caller no longer needs the answer | cancels via the ticket or your `AbortSignal`; a cancelled request is never retried |
-| You need to know what happened | emits typed lifecycle events (with attempt counts and queue time) and metrics (requests, retries, latency, in-flight, queue depth, breaker trips) |
+| You need to know what happened | emits typed lifecycle events (with attempt counts and queue time) and [metrics](#metrics) (requests, retries, latency, in-flight, queue depth, breaker trips), tagged per partition |
 | You need auth headers, logging, URL rewriting | runs onion middleware around every attempt |
 
 **What Vereda does not do.** No response caching, no request deduplication, no streaming helpers, no browser support. It targets Node.js 20+ services that depend on other services; for a handful of calls in a script, plain `fetch` is fine.
@@ -169,6 +169,17 @@ Every request is assigned to a partition by host, and each partition has its own
 One limit is shared: every attempt, first attempts included, takes a permit from the client-wide `concurrency` cap (default 50, with 100 waiting). A host that fails *slowly* holds those permits while it hangs, so under enough load it can delay or reject requests to healthy hosts. Keep `attemptMs` short for dependencies that tend to hang, and set `limitFirstAttempts: true` on a partition to put its fresh traffic behind its own bulkhead too.
 
 [`examples/checkout/`](examples/checkout/) is this scenario as a runnable app: stub upstreams on localhost, a small checkout server, and a driver that asserts the retries and the breaker tripping while inventory and shipping keep succeeding (sequential traffic and smaller numbers, so it runs fast; it doesn't exercise the queue limits). Clone the repo and run `npm run example:checkout`.
+
+It ends by printing what a dashboard fed from Vereda's [metrics](#metrics) would show for that run. Every metric is tagged with its partition, so the failing dependency is easy to pick out:
+
+```
+dependency  requests  retries  p50 ms  max ms  circuit_open
+inventory          5        0       3       8             0
+payments           5        2       1      21             1
+shipping           5        0       3       7             0
+```
+
+Note payments' low median latency, despite the outage: once its breaker opened, its calls were rejected on the spot instead of waiting on a failing host.
 
 ## How it works
 
@@ -524,6 +535,33 @@ If the circuit breaker is enabled, a partition also fires `circuitOpen`/`circuit
 client.on("circuitOpen",  ({ partition }) => {});
 client.on("circuitClose", ({ partition }) => {});
 ```
+
+### Metrics
+
+Pass a `metrics` sink and the client reports counters, histograms and gauges as requests run. A sink is three methods, so it's a thin adapter over OpenTelemetry, StatsD, Prometheus or whatever your service already uses:
+
+```typescript
+import { HttpClient, type MetricsSink } from "vereda";
+
+const metrics: MetricsSink = {
+  counter: (name, value, tags) => console.log("counter", name, value, tags),
+  histogram: (name, value, tags) => console.log("histogram", name, value, tags),
+  gauge: (name, value, tags) => console.log("gauge", name, value, tags),
+};
+
+const client = HttpClient.create({ timeout: { attemptMs: 5_000 }, metrics });
+```
+
+| Metric | Type | Tags |
+| --- | --- | --- |
+| `vereda.requests` | counter | `partition`, `method` |
+| `vereda.retries` | counter | `partition`, `kind` (what triggered the retry) |
+| `vereda.duration_ms` | histogram | `partition`, `kind` (`success`, `cancelled`, or the error `kind`) |
+| `vereda.circuit_open` | counter | `partition` |
+| `vereda.queue_depth` | gauge | `partition` |
+| `vereda.in_flight`, `vereda.global_queue_depth` | gauge | none |
+
+Because everything that concerns a single dependency is tagged with `partition` (its host, unless you set one), one struggling upstream gets its own line on a graph instead of being averaged into all the others. [`examples/otel.ts`](examples/otel.ts) is an OpenTelemetry adapter, and the [operations guide](docs/operations.md#wiring-a-metrics-sink) covers each metric in detail and how to read the queue-depth gauges.
 
 ## Design philosophy
 
