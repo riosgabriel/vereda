@@ -56,7 +56,7 @@ Request flow: `client.get()` returns a `Ticket` synchronously → first attempt 
 - First attempt skips the bulkhead (bulkhead throttles retry traffic only).
 - Per-partition circuit breaker (opt-in, `circuitBreaker` config) gates admission before the first attempt **and is re-checked before every retry** — trips open on consecutive failures or a rolling failure-rate window, rejects with `CircuitOpenError` while open, half-opens after `resetTimeoutMs` to trial recovery.
 - Default retry policy — only `network`/`timeout`/`retryable_status` errors on idempotent requests (or `retry.idempotent`/`Idempotency-Key` opt-in) are retried; user `retryWhen` is consulted after it and can only veto.
-- `retryWhen` is consulted after **every** failed attempt, including attempt 0.
+- `retryWhen` is consulted after **every** failed attempt that could still be retried, including attempt 0. Not called after the final attempt when no retries remain.
 - `ValidationError` (failed `parse`) resolves immediately and is never retried.
 - Cancellation wins over timeouts/retries; a cancelled ticket is never retried.
 - Replayable bodies — body may be a factory invoked per attempt; a raw `ReadableStream` is a `ConfigurationError`.
@@ -85,7 +85,7 @@ An LLM can stand in for a library's docs website: interactively walk a new contr
 
 **Mental-model essentials to convey**
 - Request flow: `client.get()` returns a `Ticket` synchronously; the first attempt fires *outside* the bulkhead; only retries go through the per-host bulkhead (`src/queue/`).
-- `retryWhen` is consulted after *every* failed attempt, including attempt 0.
+- `retryWhen` is consulted after *every* failed attempt that could still be retried, including attempt 0. Not called after the final attempt when no retries remain.
 - `ValidationError` (failed `parse`) resolves immediately and is never retried.
 - Cancellation wins over timeouts/retries; a cancelled ticket is never retried.
 - `ticket.toPromise()` never rejects — failures are a `Result` union with the closed `RequestError` hierarchy (`src/core/errors.ts`).

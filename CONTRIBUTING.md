@@ -94,7 +94,7 @@ run it, read the diff carefully.
 
 - The first attempt skips the bulkhead; the bulkhead throttles retry traffic only.
 - The opt-in per-partition circuit breaker is checked before the bulkhead, before the first attempt, **and again before every retry** — while open it rejects with `CircuitOpenError` and nothing is attempted.
-- `retryWhen` is consulted after **every** failed attempt, including attempt 0.
+- `retryWhen` is consulted after **every** failed attempt that could still be retried, including attempt 0. Not called after the final attempt when no retries remain.
 - A failed `parse` (`ValidationError`) resolves immediately and is never retried.
 - Cancellation wins over timeouts and retries; a cancelled ticket is never retried.
 - `ticket.toPromise()` never rejects — failures are a `Result` union with a closed `RequestError` hierarchy.

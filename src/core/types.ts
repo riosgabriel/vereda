@@ -145,10 +145,13 @@ export interface RetryConfig {
 	 *  `Idempotency-Key` header also enables retries. Default: false. */
 	idempotent?: boolean;
 	/** Optional predicate to decide whether a failed attempt should be retried.
-	 *  Called with the error and the zero-based attempt number:
+	 *  Called exactly once per failed attempt that could still be retried, with
+	 *  the zero-based attempt number:
 	 *  - 0 = the first attempt (called client-side before the retry loop)
 	 *  - 1, 2, … = retries (called inside the loop, after attempt 0)
-	 *  Returning `false` surfaces the error immediately without retrying. */
+	 *  Returning `false` surfaces the error immediately without retrying. Not
+	 *  called after the final attempt when no retries remain — there is
+	 *  nothing left to decide. */
 	retryWhen?: (error: AppError, attempt: number) => boolean;
 }
 
