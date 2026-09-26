@@ -69,6 +69,8 @@ of this project before today.
 
 ### Changed (breaking, relative to pre-1.0 GitHub installs)
 
+- Configuration validation rejects values it used to let through. `NaN` was accepted everywhere a number is checked (`NaN <= 0` is false), so `timeout: { attemptMs: NaN }` silently meant no timeout; every numeric option now rejects it. `maxRetries` must be an integer, and the global `maxQueueSize` a non-negative integer. `circuitBreaker` config (client and partition level) is validated for the first time: `failureThreshold`, `halfOpenMaxAttempts` and `window.minimumRequests` must be positive integers, `resetTimeoutMs` and `window.sizeMs` positive and finite, `window.failureRatePercent` in (0, 100], and `isFailure` a function. `halfOpenMaxAttempts: 0` used to keep a tripped circuit open forever. `baseUrl` must be an absolute URL.
+- A relative URL with no `baseUrl` resolves the ticket with `ConfigurationError` instead of a `NetworkError`. It's a caller mistake, not a network fault.
 - Project renamed `relay` → `vereda`; the public base error class renamed
   `RelayError` → `RequestError` (subclass names — `NetworkError`,
   `TimeoutError`, `ValidationError`, `CancelledError`,

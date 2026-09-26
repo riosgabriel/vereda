@@ -414,7 +414,7 @@ Errors are a closed hierarchy under `RequestError`, and `AppError` is the union 
 | `CancelledError` | `"cancelled"` | Ticket cancelled or signal aborted (terminal) | — |
 | `QueueFullError` | `"queue_full"` | A partition's retry queue, or the global queue (`partition: "global"`), was full (terminal) | `partition`, `queueSize`, `maxQueueSize` |
 | `CircuitOpenError` | `"circuit_open"` | The partition's breaker was open when an attempt was due, so it wasn't sent; earlier attempts may have run (terminal) | `partition` |
-| `ConfigurationError` | `"configuration"` | A bare `ReadableStream` body, a body factory that threw, or invalid request-level `timeout`/`retry` options (terminal). Invalid client config throws from `create()` instead | `key` |
+| `ConfigurationError` | `"configuration"` | A relative URL with no `baseUrl`, a bare `ReadableStream` body, a body factory that threw, or invalid request-level `timeout`/`retry` options (terminal). Invalid client config throws from `create()` instead | `key` |
 | `MaxRetriesExceededError` | `"max_retries"` | Retries ran out while the failure was still transient (terminal) | `attempts`, `lastError` |
 
 Only `network`, `timeout`, and `retryable_status` are retried by default — see [What gets retried](#what-gets-retried) above. Everything else is terminal: it resolves the ticket on the first attempt that produces it.

@@ -158,7 +158,7 @@ describe("validateRequestOptions", () => {
 	it("rejects request retry.maxRetries < 0", () => {
 		expect(() => validateRequestOptions({ retry: { maxRetries: -1 } })).toThrow(ConfigurationError);
 		expect(() => validateRequestOptions({ retry: { maxRetries: -1 } })).toThrow(
-			/request\.retry\.maxRetries must be non-negative/,
+			/request\.retry\.maxRetries must be a non-negative integer/,
 		);
 	});
 
@@ -173,5 +173,64 @@ describe("validateRequestOptions", () => {
 		expect(() => validateRequestOptions({ retry: { retryOnStatus: [200] } })).toThrow(
 			/request\.retry\.retryOnStatus must contain only integer HTTP error status codes/,
 		);
+	});
+});
+
+describe("validateConfig rejects NaN and non-integers (B11)", () => {
+	const base = { timeout: { attemptMs: 1_000 } } satisfies ClientConfig;
+	const cases: Array<[string, Partial<ClientConfig>, RegExp]> = [
+		["timeout.attemptMs: NaN", { timeout: { attemptMs: Number.NaN } }, /timeout\.attemptMs must be positive/],
+		["timeout.totalMs: NaN", { timeout: { attemptMs: 1_000, totalMs: Number.NaN } }, /timeout\.totalMs/],
+		["retry.maxRetries: NaN", { retry: { maxRetries: Number.NaN } }, /maxRetries must be a non-negative integer/],
+		["retry.maxRetries: 1.5", { retry: { maxRetries: 1.5 } }, /maxRetries must be a non-negative integer/],
+		["backoff.baseDelayMs: NaN", { retry: { backoff: { baseDelayMs: Number.NaN } } }, /baseDelayMs/],
+		["maxQueueSize: -1", { maxQueueSize: -1 }, /^Invalid configuration: maxQueueSize/],
+		["maxQueueSize: 2.5", { maxQueueSize: 2.5 }, /^Invalid configuration: maxQueueSize/],
+		["partition maxQueueSize: NaN", { partitions: { a: { maxQueueSize: Number.NaN } } }, /partitions\.a\.maxQueueSize/],
+		["baseUrl: relative", { baseUrl: "/api" }, /baseUrl must be an absolute URL/],
+	];
+
+	it.each(cases)("%s", (_label, patch, message) => {
+		expect(() => validateConfig({ ...base, ...patch })).toThrow(message);
+	});
+
+	it("accepts a global maxQueueSize of 0 (overflow rejects immediately)", () => {
+		expect(() => validateConfig({ ...base, maxQueueSize: 0 })).not.toThrow();
+	});
+});
+
+describe("validateConfig circuitBreaker", () => {
+	const base = { timeout: { attemptMs: 1_000 } } satisfies ClientConfig;
+	const window = { sizeMs: 10_000, failureRatePercent: 50, minimumRequests: 10 };
+	const cases: Array<[string, NonNullable<ClientConfig["circuitBreaker"]>, RegExp]> = [
+		["failureThreshold: 0", { failureThreshold: 0 }, /failureThreshold must be a positive integer/],
+		["failureThreshold: NaN", { failureThreshold: Number.NaN }, /failureThreshold/],
+		["resetTimeoutMs: 0", { resetTimeoutMs: 0 }, /resetTimeoutMs must be a positive finite number/],
+		["resetTimeoutMs: Infinity", { resetTimeoutMs: Infinity }, /resetTimeoutMs/],
+		["halfOpenMaxAttempts: 0", { halfOpenMaxAttempts: 0 }, /halfOpenMaxAttempts must be a positive integer/],
+		["isFailure: not a function", { isFailure: "yes" as never }, /isFailure must be a function/],
+		["window.sizeMs: 0", { window: { ...window, sizeMs: 0 } }, /window\.sizeMs/],
+		["window.failureRatePercent: 0", { window: { ...window, failureRatePercent: 0 } }, /failureRatePercent/],
+		["window.failureRatePercent: 101", { window: { ...window, failureRatePercent: 101 } }, /failureRatePercent/],
+		["window.minimumRequests: 0", { window: { ...window, minimumRequests: 0 } }, /minimumRequests/],
+	];
+
+	it.each(cases)("client-level %s", (_label, circuitBreaker, message) => {
+		expect(() => validateConfig({ ...base, circuitBreaker })).toThrow(message);
+	});
+
+	it("validates partition-level circuitBreaker with the partition in the key", () => {
+		expect(() =>
+			validateConfig({ ...base, partitions: { api: { circuitBreaker: { halfOpenMaxAttempts: 0 } } } }),
+		).toThrow(/partitions\.api\.circuitBreaker\.halfOpenMaxAttempts/);
+	});
+
+	it("accepts a complete valid config", () => {
+		expect(() =>
+			validateConfig({
+				...base,
+				circuitBreaker: { enabled: true, resetTimeoutMs: 5_000, halfOpenMaxAttempts: 2, window, isFailure: () => true },
+			}),
+		).not.toThrow();
 	});
 });

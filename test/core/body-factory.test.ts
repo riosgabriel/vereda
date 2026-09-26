@@ -235,7 +235,7 @@ describe("request-level timeout/retry option validation", () => {
 		if (!result.success) {
 			expect(result.error).toBeInstanceOf(ConfigurationError);
 			expect(result.error.kind).toBe("configuration");
-			expect((result.error as ConfigurationError).key).toBe("request.retry.maxRetries must be non-negative");
+			expect((result.error as ConfigurationError).key).toBe("request.retry.maxRetries must be a non-negative integer");
 		}
 		expect(failures).toHaveLength(1);
 	});

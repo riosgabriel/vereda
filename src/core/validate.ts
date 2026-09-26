@@ -1,5 +1,20 @@
 import { ConfigurationError } from "./errors.ts";
-import type { ClientConfig, PartitionConfig, RequestOptions, RetryConfig, TimeoutConfig } from "./types.ts";
+import type {
+	CircuitBreakerConfig,
+	ClientConfig,
+	PartitionConfig,
+	RequestOptions,
+	RetryConfig,
+	TimeoutConfig,
+} from "./types.ts";
+
+// Every numeric check is written so that NaN fails it: `NaN <= 0` is false,
+// so a bare `x <= 0` guard would let NaN through (and `attemptMs: NaN` would
+// silently mean "no timeout"). `!(x > 0)` rejects it.
+
+function isPositiveInteger(value: number): boolean {
+	return Number.isInteger(value) && value >= 1;
+}
 
 /** Realm-safe ReadableStream detection — instanceof fails across realms
  *  (vm contexts, other copies of node:stream/web). No non-stream BodyInit
@@ -17,10 +32,17 @@ export function validateRequestBody(body: BodyInit | (() => BodyInit) | undefine
 }
 
 export function validateConfig(config: ClientConfig): void {
-	if (config.concurrency !== undefined) {
-		if (!Number.isInteger(config.concurrency) || config.concurrency < 1) {
-			throw new ConfigurationError("concurrency must be a positive integer");
-		}
+	if (config.baseUrl !== undefined && !URL.canParse(config.baseUrl)) {
+		throw new ConfigurationError("baseUrl must be an absolute URL");
+	}
+
+	if (config.concurrency !== undefined && !isPositiveInteger(config.concurrency)) {
+		throw new ConfigurationError("concurrency must be a positive integer");
+	}
+
+	// 0 is valid globally: no waiting, overflow rejects with QueueFullError.
+	if (config.maxQueueSize !== undefined && !(Number.isInteger(config.maxQueueSize) && config.maxQueueSize >= 0)) {
+		throw new ConfigurationError("maxQueueSize must be a non-negative integer");
 	}
 
 	if (!config.timeout || config.timeout.attemptMs === undefined) {
@@ -30,6 +52,7 @@ export function validateConfig(config: ClientConfig): void {
 	}
 	validateTimeoutConfig(config.timeout, "timeout");
 	validateRetryConfig(config.retry, "retry");
+	validateCircuitBreakerConfig(config.circuitBreaker, "circuitBreaker");
 	validatePartitions(config.partitions);
 }
 
@@ -49,11 +72,11 @@ export function validateRequestOptions(options: Pick<RequestOptions, "timeout" |
 function validateTimeoutConfig(timeout: TimeoutConfig | undefined, prefix: string): void {
 	if (!timeout) return;
 
-	if (timeout.attemptMs !== undefined && timeout.attemptMs <= 0) {
+	if (timeout.attemptMs !== undefined && !(timeout.attemptMs > 0)) {
 		throw new ConfigurationError(`${prefix}.attemptMs must be positive`);
 	}
 
-	if (timeout.totalMs !== undefined && timeout.totalMs <= 0) {
+	if (timeout.totalMs !== undefined && !(timeout.totalMs > 0)) {
 		throw new ConfigurationError(`${prefix}.totalMs must be positive`);
 	}
 }
@@ -61,8 +84,8 @@ function validateTimeoutConfig(timeout: TimeoutConfig | undefined, prefix: strin
 function validateRetryConfig(retry: RetryConfig | undefined, prefix: string): void {
 	if (!retry) return;
 
-	if (retry.maxRetries !== undefined && retry.maxRetries < 0) {
-		throw new ConfigurationError(`${prefix}.maxRetries must be non-negative`);
+	if (retry.maxRetries !== undefined && !(Number.isInteger(retry.maxRetries) && retry.maxRetries >= 0)) {
+		throw new ConfigurationError(`${prefix}.maxRetries must be a non-negative integer`);
 	}
 
 	if (retry.retryOnStatus !== undefined) {
@@ -77,10 +100,10 @@ function validateRetryConfig(retry: RetryConfig | undefined, prefix: string): vo
 
 	if (retry.backoff && typeof retry.backoff === "object") {
 		const { baseDelayMs, maxDelayMs } = retry.backoff;
-		if (baseDelayMs !== undefined && baseDelayMs < 0) {
+		if (baseDelayMs !== undefined && !(baseDelayMs >= 0)) {
 			throw new ConfigurationError(`${prefix}.backoff.baseDelayMs must be non-negative`);
 		}
-		if (maxDelayMs !== undefined && maxDelayMs < 0) {
+		if (maxDelayMs !== undefined && !(maxDelayMs >= 0)) {
 			throw new ConfigurationError(`${prefix}.backoff.maxDelayMs must be non-negative`);
 		}
 		if (baseDelayMs !== undefined && maxDelayMs !== undefined && baseDelayMs > maxDelayMs) {
@@ -92,15 +115,49 @@ function validateRetryConfig(retry: RetryConfig | undefined, prefix: string): vo
 function validatePartitions(partitions: Record<string, PartitionConfig> | undefined): void {
 	if (!partitions) return;
 	for (const [name, config] of Object.entries(partitions)) {
-		if (config.concurrency !== undefined) {
-			if (!Number.isInteger(config.concurrency) || config.concurrency < 1) {
-				throw new ConfigurationError(`partitions.${name}.concurrency must be a positive integer`);
-			}
+		if (config.concurrency !== undefined && !isPositiveInteger(config.concurrency)) {
+			throw new ConfigurationError(`partitions.${name}.concurrency must be a positive integer`);
 		}
-		if (config.maxQueueSize !== undefined && config.maxQueueSize < 1) {
-			throw new ConfigurationError(`partitions.${name}.maxQueueSize must be at least 1`);
+		if (config.maxQueueSize !== undefined && !isPositiveInteger(config.maxQueueSize)) {
+			throw new ConfigurationError(`partitions.${name}.maxQueueSize must be a positive integer`);
 		}
 		validateRetryConfig(config.retry, `partitions.${name}.retry`);
 		validateTimeoutConfig(config.timeout, `partitions.${name}.timeout`);
+		validateCircuitBreakerConfig(config.circuitBreaker, `partitions.${name}.circuitBreaker`);
+	}
+}
+
+function validateCircuitBreakerConfig(breaker: CircuitBreakerConfig | undefined, prefix: string): void {
+	if (!breaker) return;
+
+	if (breaker.failureThreshold !== undefined && !isPositiveInteger(breaker.failureThreshold)) {
+		throw new ConfigurationError(`${prefix}.failureThreshold must be a positive integer`);
+	}
+	// Finite: the open -> half-open transition is a timer, and an unbounded
+	// reset would keep the circuit open forever.
+	if (
+		breaker.resetTimeoutMs !== undefined &&
+		!(Number.isFinite(breaker.resetTimeoutMs) && breaker.resetTimeoutMs > 0)
+	) {
+		throw new ConfigurationError(`${prefix}.resetTimeoutMs must be a positive finite number`);
+	}
+	// 0 would admit no half-open trial, so the circuit could never close again.
+	if (breaker.halfOpenMaxAttempts !== undefined && !isPositiveInteger(breaker.halfOpenMaxAttempts)) {
+		throw new ConfigurationError(`${prefix}.halfOpenMaxAttempts must be a positive integer`);
+	}
+	if (breaker.isFailure !== undefined && typeof breaker.isFailure !== "function") {
+		throw new ConfigurationError(`${prefix}.isFailure must be a function`);
+	}
+
+	const { window } = breaker;
+	if (window === undefined) return;
+	if (!(Number.isFinite(window.sizeMs) && window.sizeMs > 0)) {
+		throw new ConfigurationError(`${prefix}.window.sizeMs must be a positive finite number`);
+	}
+	if (!(window.failureRatePercent > 0 && window.failureRatePercent <= 100)) {
+		throw new ConfigurationError(`${prefix}.window.failureRatePercent must be greater than 0 and at most 100`);
+	}
+	if (!isPositiveInteger(window.minimumRequests)) {
+		throw new ConfigurationError(`${prefix}.window.minimumRequests must be a positive integer`);
 	}
 }
