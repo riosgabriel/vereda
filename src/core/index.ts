@@ -1,11 +1,7 @@
 export type { RetryPolicy, RetryPolicyContext } from "../queue/policy.ts";
 export { defaultRetryPolicy } from "../queue/policy.ts";
-export type {
-	TicketController,
-	TicketStatus,
-	TicketUpdate,
-} from "../ticket/ticket.ts";
-export { createTicket, Ticket } from "../ticket/ticket.ts";
+export type { TicketStatus, TicketUpdate } from "../ticket/ticket.ts";
+export { Ticket } from "../ticket/ticket.ts";
 export { DEFAULT_BASE_DELAY_MS, DEFAULT_JITTER, DEFAULT_MAX_DELAY_MS } from "./backoff.ts";
 export { HttpClient, json } from "./client.ts";
 export type { AppError } from "./errors.ts";
@@ -36,12 +32,14 @@ export type {
 	CloseOptions,
 	LifecycleEventMap,
 	Logger,
+	ParsedRequestOptions,
 	ParseFn,
 	PartitionConfig,
 	RequestOptions,
 	Result,
 	RetryConfig,
 	TimeoutConfig,
+	UnparsedRequestOptions,
 } from "./types.ts";
 export {
 	DEFAULT_CONCURRENCY,

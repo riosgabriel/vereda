@@ -26,11 +26,13 @@ import type {
 	CloseOptions,
 	LifecycleEventMap,
 	Logger,
+	ParsedRequestOptions,
 	ParseFn,
 	PartitionConfig,
 	RequestOptions,
 	RetryConfig,
 	TimeoutConfig,
+	UnparsedRequestOptions,
 } from "./types.ts";
 import { DEFAULT_GLOBAL_CONCURRENCY, DEFAULT_GLOBAL_QUEUE_SIZE, DEFAULT_MAX_RETRIES, isBoundedMs } from "./types.ts";
 import { validateConfig, validateRequestBody, validateRequestOptions } from "./validate.ts";
@@ -116,7 +118,17 @@ export class HttpClient {
 	// Core request method
 	// ---------------------------------------------------------------------------
 
+	/** Send a request. With `parse`, `data` is whatever `parse` returns; without
+	 *  it, the body is left unread on `raw` and `data` is `undefined`. When
+	 *  `parse` may or may not be set, `data` is `T | undefined`. */
+	request<T>(url: string, options: ParsedRequestOptions<T>): Ticket<T>;
+	request(url: string, options?: UnparsedRequestOptions): Ticket<undefined>;
+	request<T>(url: string, options?: RequestOptions<T>): Ticket<T | undefined>;
 	request<T>(url: string, options: RequestOptions<T> = {}): Ticket<T> {
+		return this.send(url, options);
+	}
+
+	private send<T>(url: string, options: RequestOptions<T>): Ticket<T> {
 		if (this._closed) {
 			throw new ConfigurationError("client closed");
 		}
@@ -757,52 +769,89 @@ export class HttpClient {
 	// Convenience methods
 	// ---------------------------------------------------------------------------
 
-	/** GET request with JSON parsing. */
+	/** GET request. */
+	get<T>(url: string, options: Omit<ParsedRequestOptions<T>, "method">): Ticket<T>;
+	get(url: string, options?: Omit<UnparsedRequestOptions, "method">): Ticket<undefined>;
 	get<T>(url: string, options: Omit<RequestOptions<T>, "method"> = {}): Ticket<T> {
-		return this.request(url, { ...options, method: "GET" });
+		return this.send(url, { ...options, method: "GET" });
 	}
 
 	/** HEAD request. */
+	head<T>(url: string, options: Omit<ParsedRequestOptions<T>, "method">): Ticket<T>;
+	head(url: string, options?: Omit<UnparsedRequestOptions, "method">): Ticket<undefined>;
 	head<T>(url: string, options: Omit<RequestOptions<T>, "method"> = {}): Ticket<T> {
-		return this.request<T>(url, { ...options, method: "HEAD" });
+		return this.send(url, { ...options, method: "HEAD" });
 	}
 
 	/** OPTIONS request. */
+	options<T>(url: string, options: Omit<ParsedRequestOptions<T>, "method">): Ticket<T>;
+	options(url: string, options?: Omit<UnparsedRequestOptions, "method">): Ticket<undefined>;
 	options<T>(url: string, options: Omit<RequestOptions<T>, "method"> = {}): Ticket<T> {
-		return this.request<T>(url, { ...options, method: "OPTIONS" });
+		return this.send(url, { ...options, method: "OPTIONS" });
 	}
 
-	/** Parse JSON response body without validation. */
-	json<T>(): ParseFn<T> {
-		return (data: unknown): T => data as T;
-	}
-
+	/** POST request. */
+	post<T>(
+		url: string,
+		body: BodyInit | (() => BodyInit) | undefined,
+		options: Omit<ParsedRequestOptions<T>, "method" | "body">,
+	): Ticket<T>;
+	post(
+		url: string,
+		body?: BodyInit | (() => BodyInit),
+		options?: Omit<UnparsedRequestOptions, "method" | "body">,
+	): Ticket<undefined>;
 	post<T>(
 		url: string,
 		body?: BodyInit | (() => BodyInit),
 		options: Omit<RequestOptions<T>, "method" | "body"> = {},
 	): Ticket<T> {
-		return this.request<T>(url, { ...options, method: "POST", body });
+		return this.send(url, { ...options, method: "POST", body });
 	}
 
+	/** PUT request. */
+	put<T>(
+		url: string,
+		body: BodyInit | (() => BodyInit) | undefined,
+		options: Omit<ParsedRequestOptions<T>, "method" | "body">,
+	): Ticket<T>;
+	put(
+		url: string,
+		body?: BodyInit | (() => BodyInit),
+		options?: Omit<UnparsedRequestOptions, "method" | "body">,
+	): Ticket<undefined>;
 	put<T>(
 		url: string,
 		body?: BodyInit | (() => BodyInit),
 		options: Omit<RequestOptions<T>, "method" | "body"> = {},
 	): Ticket<T> {
-		return this.request<T>(url, { ...options, method: "PUT", body });
+		return this.send(url, { ...options, method: "PUT", body });
 	}
 
+	/** PATCH request. */
+	patch<T>(
+		url: string,
+		body: BodyInit | (() => BodyInit) | undefined,
+		options: Omit<ParsedRequestOptions<T>, "method" | "body">,
+	): Ticket<T>;
+	patch(
+		url: string,
+		body?: BodyInit | (() => BodyInit),
+		options?: Omit<UnparsedRequestOptions, "method" | "body">,
+	): Ticket<undefined>;
 	patch<T>(
 		url: string,
 		body?: BodyInit | (() => BodyInit),
 		options: Omit<RequestOptions<T>, "method" | "body"> = {},
 	): Ticket<T> {
-		return this.request<T>(url, { ...options, method: "PATCH", body });
+		return this.send(url, { ...options, method: "PATCH", body });
 	}
 
+	/** DELETE request. */
+	delete<T>(url: string, options: Omit<ParsedRequestOptions<T>, "method">): Ticket<T>;
+	delete(url: string, options?: Omit<UnparsedRequestOptions, "method">): Ticket<undefined>;
 	delete<T>(url: string, options: Omit<RequestOptions<T>, "method"> = {}): Ticket<T> {
-		return this.request<T>(url, { ...options, method: "DELETE" });
+		return this.send(url, { ...options, method: "DELETE" });
 	}
 
 	// ---------------------------------------------------------------------------

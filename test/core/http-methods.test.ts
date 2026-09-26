@@ -99,11 +99,6 @@ describe("HttpClient convenience methods", () => {
 		expect(result.success).toBe(true);
 	});
 
-	it("json() is an identity parse function", () => {
-		const parse = client.json<{ ok: boolean }>();
-		expect(parse({ ok: true })).toEqual({ ok: true });
-	});
-
 	it("with retry.maxRetries: 0, surfaces the raw error without wrapping it in MaxRetriesExceededError", async () => {
 		server.setHandler((_req, res) => {
 			res.writeHead(503, { "Content-Type": "application/json" });
