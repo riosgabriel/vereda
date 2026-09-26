@@ -1,4 +1,4 @@
-import { HttpClient, type MetricsSink, type MetricTags } from "vereda";
+import { HttpClient, type MetricsSink, type MetricTags } from "@vereda/http";
 
 // ---------------------------------------------------------------------------
 // Example: wiring vereda metrics into OpenTelemetry

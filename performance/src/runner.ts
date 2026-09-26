@@ -1,4 +1,4 @@
-import { HttpClient } from "vereda";
+import { HttpClient } from "@vereda/http";
 import { checkThresholds, type Thresholds } from "./thresholds.ts";
 import {
 	type BenchmarkResult,

@@ -1,5 +1,5 @@
 {
-	"name": "vereda",
+	"name": "@vereda/http",
 	"version": "1.0.0",
 	"description": "A resilient HTTP client with automatic queuing, retries, and bulkhead isolation",
 	"type": "module",

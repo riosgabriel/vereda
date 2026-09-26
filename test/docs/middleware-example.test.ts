@@ -19,7 +19,7 @@ function readmeMiddlewareBody(): string {
 	const section = README.slice(README.indexOf("### Middleware"));
 	const block = section.match(/```typescript\n([\s\S]*?)```/)?.[1];
 	if (!block) throw new Error("README has no typescript block under ### Middleware");
-	const importLine = /^import \{([^}]*)\} from "vereda\/middleware";\n/m;
+	const importLine = /^import \{([^}]*)\} from "@vereda\/http\/middleware";\n/m;
 	const imported = block
 		.match(importLine)?.[1]
 		.split(",")

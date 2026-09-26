@@ -1,4 +1,4 @@
-import { METRICS, type MetricsSink, type MetricTags } from "vereda";
+import { METRICS, type MetricsSink, type MetricTags } from "@vereda/http";
 
 // ---------------------------------------------------------------------------
 // An in-memory metrics sink

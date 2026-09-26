@@ -45,9 +45,9 @@ function extractCodeBlocks(doc: string, markdown: string): CodeBlock[] {
  * otherwise tsc reports "Cannot redeclare".
  */
 const AMBIENT_DECLARATIONS: Record<string, string> = {
-	client: 'import type { HttpClient as __HttpClient } from "vereda";\ndeclare const client: __HttpClient;',
-	ticket: 'import type { Ticket as __Ticket } from "vereda";\ndeclare const ticket: __Ticket<unknown>;',
-	AppError: 'import type { AppError } from "vereda";',
+	client: 'import type { HttpClient as __HttpClient } from "@vereda/http";\ndeclare const client: __HttpClient;',
+	ticket: 'import type { Ticket as __Ticket } from "@vereda/http";\ndeclare const ticket: __Ticket<unknown>;',
+	AppError: 'import type { AppError } from "@vereda/http";',
 	User: "type User = { id: number; name: string };",
 	order: "declare const order: { id: string };",
 };
@@ -56,7 +56,7 @@ function declaresOrImports(source: string, name: string): boolean {
 	const declared = new RegExp(`\\b(?:const|let|var|type|interface|function|class)\\s+${name}\\b`);
 	// Destructuring: `const { ticket } = …` / `const [client] = …`.
 	const destructured = new RegExp(`\\b(?:const|let|var)\\s*[{[][^}\\]]*\\b${name}\\b[^}\\]]*[}\\]]`);
-	// Imports may span lines (`import {\\n  AppError,\\n} from "vereda";`).
+	// Imports may span lines (`import {\\n  AppError,\\n} from "@vereda/http";`).
 	const imported = new RegExp(`\\bimport\\b[^;]*\\b${name}\\b[^;]*\\bfrom\\b[^;]*;`);
 	return declared.test(source) || destructured.test(source) || imported.test(source);
 }
@@ -124,9 +124,9 @@ function writeTsconfig(dir: string): string {
 			typeRoots: [path.join(repoRoot, "node_modules/@types")],
 			noEmit: true,
 			paths: {
-				vereda: [path.join(repoRoot, "src/core/index.ts")],
-				"vereda/middleware": [path.join(repoRoot, "src/middleware/index.ts")],
-				"vereda/zod": [path.join(repoRoot, "src/adapters/zod.ts")],
+				"@vereda/http": [path.join(repoRoot, "src/core/index.ts")],
+				"@vereda/http/middleware": [path.join(repoRoot, "src/middleware/index.ts")],
+				"@vereda/http/zod": [path.join(repoRoot, "src/adapters/zod.ts")],
 			},
 		},
 		include: ["*.ts"],

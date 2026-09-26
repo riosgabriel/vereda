@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.0] - 2026-09-25
 
-Vereda's first release published to npm. Before this, there was no published
+Vereda's first release published to npm, as `@vereda/http` (npm rejected the unscoped name `vereda` as too similar to an existing package). Before this, there was no published
 package: the project (then named `relay`) was consumed by pointing a
 dependency straight at a GitHub ref, where a `prepare` script compiled
 `dist/` on install and there were no semver guarantees. The entries below
@@ -49,9 +49,9 @@ of this project before today.
 - Injectable `fetch` (`ClientConfig.fetch`) for tests and custom transports,
   threaded through every attempt including retries (#44).
 - Middleware onion model (`client.use(...)`), with `defaultHeaders()` and
-  `requestLogger()` helpers shipped from the `vereda/middleware` entry point.
+  `requestLogger()` helpers shipped from the `@vereda/http/middleware` entry point.
 - `withZod()` response-validation adapter shipped from the optional
-  `vereda/zod` entry point (zod stays an optional peer dependency; only this
+  `@vereda/http/zod` entry point (zod stays an optional peer dependency; only this
   module imports it).
 - `HEAD` / `OPTIONS` / `PUT` / `PATCH` / `DELETE` convenience methods
   alongside `get`/`post`, and a `json<T>()` identity parse helper — the API
@@ -64,7 +64,7 @@ of this project before today.
 - Per-partition circuit breaker (opt-in via `circuitBreaker: { enabled: true }`), mirroring the bulkhead registry: trips on consecutive failures (default) or a rolling failure-rate window, then half-opens after `resetTimeoutMs` to trial recovery. Rejects immediately with the new `CircuitOpenError` — no attempt is made while open (#60).
 - Real `queuedMs` on `success`/`failure`/`cancelled` lifecycle events — total time a ticket spent waiting for a bulkhead/global-semaphore permit, summed across all attempts (previously always `0`). New `vereda.global_queue_depth` gauge reports the global concurrency cap's (D1) wait-queue backlog; `vereda.queue_depth` (declared previously but never emitted) now reports real per-partition backlog. See [Wiring a metrics sink](docs/operations.md#wiring-a-metrics-sink) (#72).
 
-- `redactUrl` is exported from `vereda`, for redacting URLs in your own logging the same way the client does. `requestLogger()` accepts `redactQuery` (default `true`).
+- `redactUrl` is exported from `@vereda/http`, for redacting URLs in your own logging the same way the client does. `requestLogger()` accepts `redactQuery` (default `true`).
 - `Semaphore.acquire()` and `Bulkhead.run()` accept an `AbortSignal`: a waiter whose signal aborts leaves the queue.
 - `vereda.retries` and `vereda.duration_ms` are tagged with `partition`, so retry volume and latency can be broken down per host. The `retry`, `success`, `failure` and `cancelled` lifecycle events carry `partition` too, like `request` already did. On `failure` it is `undefined` only when the URL couldn't be resolved, and `duration_ms` omits the tag in that case.
 

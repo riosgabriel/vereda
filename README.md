@@ -20,7 +20,7 @@
 </p>
 
 ```typescript
-import { HttpClient } from "vereda";
+import { HttpClient } from "@vereda/http";
 
 const api = HttpClient.create({
   baseUrl: "https://api.example.com",
@@ -80,11 +80,11 @@ Even once that loop is correct, it has no limit on how many retries pile onto a 
 ## Quick start
 
 ```bash
-npm install vereda
+npm install @vereda/http
 ```
 
 ```typescript
-import { HttpClient, json } from "vereda";
+import { HttpClient, json } from "@vereda/http";
 
 type User = { id: number; name: string };
 
@@ -133,7 +133,7 @@ if (result.success) {
 A checkout service calls three hosts. The payment provider starts returning `503`.
 
 ```typescript
-import { HttpClient } from "vereda";
+import { HttpClient } from "@vereda/http";
 
 const client = HttpClient.create({
   timeout: { attemptMs: 3_000, totalMs: 15_000 },
@@ -229,7 +229,7 @@ Idempotent means `GET`, `HEAD`, `OPTIONS`, `PUT`, `DELETE`, or `TRACE`. Non-idem
 `maxRetries: 0` disables retries entirely — a failed request resolves with its own error, unwrapped. When retries run out and the last failure was still transient, the ticket resolves with a `MaxRetriesExceededError` carrying the attempt count and the last underlying error. If an attempt fails with a non-retryable error, that error is returned as is.
 
 ```typescript
-import { HttpClient } from "vereda";
+import { HttpClient } from "@vereda/http";
 
 const client = HttpClient.create({
   timeout: { attemptMs: 5_000 },
@@ -250,7 +250,7 @@ The default backoff is `200ms * 2^attempt`, capped at 30s, with full jitter appl
 You can also supply a custom backoff function:
 
 ```typescript
-import { HttpClient } from "vereda";
+import { HttpClient } from "@vereda/http";
 
 const client = HttpClient.create({
   timeout: { attemptMs: 5_000 },
@@ -264,7 +264,7 @@ const client = HttpClient.create({
 `retryWhen` is consulted once after every failed attempt that could still be retried, including the first one. It runs after the default policy and can only veto a retry, never force one. Return `false` to surface the error immediately:
 
 ```typescript
-import { HttpClient, NetworkError } from "vereda";
+import { HttpClient, NetworkError } from "@vereda/http";
 
 const client = HttpClient.create({
   timeout: { attemptMs: 5_000 },
@@ -283,7 +283,7 @@ A request `body` may also be supplied as a factory (`() => BodyInit`); the facto
 ### Timeouts
 
 ```typescript
-import { HttpClient } from "vereda";
+import { HttpClient } from "@vereda/http";
 
 const client = HttpClient.create({
   timeout: {
@@ -307,7 +307,7 @@ Every request is assigned to a partition, keyed by URL host by default: the host
 The partition's concurrency limit and queue govern only **retry traffic** — the initial attempt skips them (unless `limitFirstAttempts` is set on the partition). It still counts against the client-wide `concurrency` cap.
 
 ```typescript
-import { HttpClient } from "vereda";
+import { HttpClient } from "@vereda/http";
 
 const client = HttpClient.create({
   timeout: { attemptMs: 5_000 },
@@ -332,7 +332,7 @@ When a partition's queue, or the global queue, is full, the ticket resolves with
 Opt-in, per-partition. Once a host is clearly failing, stop sending it requests instead of retrying into it. Disabled by default; enable it for every partition at the client level, or for specific hosts under `partitions`.
 
 ```typescript
-import { HttpClient } from "vereda";
+import { HttpClient } from "@vereda/http";
 
 const client = HttpClient.create({
   timeout: { attemptMs: 5_000 },
@@ -349,7 +349,7 @@ The breaker is checked before the first attempt and again before every retry —
 Trip on a rolling failure rate instead of consecutive failures:
 
 ```typescript
-import { HttpClient } from "vereda";
+import { HttpClient } from "@vereda/http";
 
 const client = HttpClient.create({
   timeout: { attemptMs: 5_000 },
@@ -379,11 +379,11 @@ if (result.success) {
 
 #### Zod adapter (optional)
 
-Zod is an optional peer dependency. Only the `vereda/zod` entry point imports it; the core has zero dependencies. Vereda ships a Zod adapter for it:
+Zod is an optional peer dependency. Only the `@vereda/http/zod` entry point imports it; the core has zero dependencies. Vereda ships a Zod adapter for it:
 
 ```typescript
 import { z } from "zod";
-import { withZod } from "vereda/zod";
+import { withZod } from "@vereda/http/zod";
 
 const UserSchema = z.object({
   id: z.number(),
@@ -496,7 +496,7 @@ A promise is a single future value. A resilient request has a lifecycle — queu
 Middleware wraps every attempt (including retries) in the standard onion shape. Each middleware receives a `RequestContext` — `{ url, method, headers, body, signal, attempt, ticketId, partition }`, where `headers` is a real `Headers` instance — and a `next` function that calls the next middleware (or the actual fetch):
 
 ```typescript
-import { defaultHeaders, requestLogger } from "vereda/middleware";
+import { defaultHeaders, requestLogger } from "@vereda/http/middleware";
 
 client.use(defaultHeaders({ Authorization: "Bearer token123" }));
 client.use(requestLogger()); // redacts URL query values/credentials by default
@@ -541,7 +541,7 @@ client.on("circuitClose", ({ partition }) => {});
 Pass a `metrics` sink and the client reports counters, histograms and gauges as requests run. A sink is three methods, so it's a thin adapter over OpenTelemetry, StatsD, Prometheus or whatever your service already uses:
 
 ```typescript
-import { HttpClient, type MetricsSink } from "vereda";
+import { HttpClient, type MetricsSink } from "@vereda/http";
 
 const metrics: MetricsSink = {
   counter: (name, value, tags) => console.log("counter", name, value, tags),

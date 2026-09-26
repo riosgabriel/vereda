@@ -17,7 +17,7 @@ cd performance
 bun install
 ```
 
-The benchmarks import `vereda` straight from `../src` (a `paths` mapping in
+The benchmarks import `@vereda/http` straight from `../src` (a `paths` mapping in
 `tsconfig.json`, which `tsx` applies at runtime), so they always measure the
 current source: no build step, and nothing to reinstall after a change.
 
@@ -184,7 +184,7 @@ const client = HttpClient.create({
 Example:
 
 ```typescript
-import { HttpClient } from "vereda";
+import { HttpClient } from "@vereda/http";
 import { TestServer, runBenchmark, printResults } from "../src/utils.js";
 
 async function myBenchmark() {

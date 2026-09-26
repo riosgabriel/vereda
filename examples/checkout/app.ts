@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
-import { HttpClient, type MetricsSink, type Result } from "vereda";
+import { HttpClient, type MetricsSink, type Result } from "@vereda/http";
 
 // ---------------------------------------------------------------------------
 // The checkout app
