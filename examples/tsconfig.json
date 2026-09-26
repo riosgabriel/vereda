@@ -3,15 +3,15 @@
 	"compilerOptions": {
 		"noEmit": true,
 		"rootDir": "..",
-		// Lets examples read like user code (`import { HttpClient } from "vereda"`)
+		// Lets examples read like user code (`import { HttpClient } from "@vereda/http"`)
 		// against the source, without a build step or a self-referencing
 		// node_modules entry. Resolved relative to this file since there's no
 		// `baseUrl`. tsx also honors this at runtime — see package.json's
 		// `example:checkout` script.
 		"paths": {
-			"vereda": ["../src/core/index.ts"],
-			"vereda/middleware": ["../src/middleware/index.ts"],
-			"vereda/zod": ["../src/adapters/zod.ts"]
+			"@vereda/http": ["../src/core/index.ts"],
+			"@vereda/http/middleware": ["../src/middleware/index.ts"],
+			"@vereda/http/zod": ["../src/adapters/zod.ts"]
 		}
 	},
 	"include": ["**/*"]

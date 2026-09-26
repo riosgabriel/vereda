@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { HttpClient } from "vereda";
+import type { HttpClient } from "@vereda/http";
 
 export interface BenchmarkResult {
 	name: string;

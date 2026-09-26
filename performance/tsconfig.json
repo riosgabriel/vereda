@@ -3,7 +3,7 @@
 	"compilerOptions": {
 		"noEmit": true,
 		"rootDir": "..",
-		// Resolve `import { HttpClient } from "vereda"` straight to the source,
+		// Resolve `import { HttpClient } from "@vereda/http"` straight to the source,
 		// the same way examples/tsconfig.json does. tsx reads this at runtime
 		// (it picks up the tsconfig.json in the working directory), so the
 		// benchmarks always measure the current src/ with no build step. It
@@ -11,9 +11,9 @@
 		// parent directory — this folder included — into node_modules/vereda,
 		// recursively, and the copy froze whatever dist/ existed at install time.
 		"paths": {
-			"vereda": ["../src/core/index.ts"],
-			"vereda/middleware": ["../src/middleware/index.ts"],
-			"vereda/zod": ["../src/adapters/zod.ts"]
+			"@vereda/http": ["../src/core/index.ts"],
+			"@vereda/http/middleware": ["../src/middleware/index.ts"],
+			"@vereda/http/zod": ["../src/adapters/zod.ts"]
 		}
 	},
 	"include": ["**/*.ts"],

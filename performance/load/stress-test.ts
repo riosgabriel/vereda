@@ -1,4 +1,4 @@
-import { HttpClient } from "vereda";
+import { HttpClient } from "@vereda/http";
 import { printResults, runBenchmark, TestServer } from "../src/utils.ts";
 
 /**

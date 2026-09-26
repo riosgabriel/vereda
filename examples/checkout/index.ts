@@ -1,4 +1,4 @@
-import { CircuitOpenError, MaxRetriesExceededError } from "vereda";
+import { CircuitOpenError, MaxRetriesExceededError } from "@vereda/http";
 import { createCheckoutApp } from "./app.ts";
 import { createInMemoryMetrics, formatMetricsTable } from "./metrics.ts";
 import { startInventoryStub, startPaymentsStub, startShippingStub } from "./stubs.ts";
