@@ -13,7 +13,7 @@
 <p align="center">
   <a href="https://github.com/riosgabriel/vereda/actions/workflows/ci.yml"><img src="https://github.com/riosgabriel/vereda/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://github.com/riosgabriel/vereda/blob/main/LICENSE"><img src="https://img.shields.io/github/license/riosgabriel/vereda" alt="License" /></a>
-  <a href="https://nodejs.org/en/about/previous-releases"><img src="https://img.shields.io/badge/node-20%2B-green" alt="Node 20+" /></a>
+  <a href="https://nodejs.org/en/about/previous-releases"><img src="https://img.shields.io/badge/node-22%2B-green" alt="Node 22+" /></a>
   <a href="https://github.com/riosgabriel/vereda"><img src="https://img.shields.io/badge/ESM-only-blue" alt="ESM only" /></a>
   <a href="https://github.com/riosgabriel/vereda"><img src="https://img.shields.io/badge/TypeScript-6.0-blue" alt="TypeScript" /></a>
   <a href="https://github.com/riosgabriel/vereda/blob/main/package.json"><img src="https://img.shields.io/badge/dependencies-0-brightgreen" alt="Zero runtime dependencies" /></a>
@@ -75,7 +75,7 @@ Even once that loop is correct, it has no limit on how many retries pile onto a 
 | You need to know what happened | emits typed lifecycle events (with attempt counts and queue time) and [metrics](#metrics) (requests, retries, latency, in-flight, queue depth, breaker trips), tagged per partition |
 | You need auth headers, logging, URL rewriting | runs onion middleware around every attempt |
 
-**What Vereda does not do.** No response caching, no request deduplication, no streaming helpers, no browser support. It targets Node.js 20+ services that depend on other services; for a handful of calls in a script, plain `fetch` is fine.
+**What Vereda does not do.** No response caching, no request deduplication, no streaming helpers, no browser support. It targets Node.js 22+ services that depend on other services; for a handful of calls in a script, plain `fetch` is fine.
 
 ## Quick start
 
@@ -584,7 +584,7 @@ Because everything that concerns a single dependency is tagged with `partition` 
 
 Vereda follows [Semantic Versioning](https://semver.org/) from `1.0.0` onward: breaking changes land only in a major version, and anything scheduled for removal is deprecated in a minor release first and noted in [CHANGELOG.md](CHANGELOG.md) before it goes. The public surface is exactly what `src/core/index.ts`, `src/middleware/index.ts`, and `src/adapters/zod.ts` export — anything under `src/queue/` and `src/ticket/` that those entry points don't re-export is internal, even though it's readable source.
 
-**Node support:** the currently supported line is whatever `engines.node` in `package.json` declares (`>=20` today); CI runs the full suite against Node 20, 22, and 24 on every change, so those three are the versions actually verified. The floor moves only in a major release.
+**Node support:** the currently supported line is whatever `engines.node` in `package.json` declares (`>=22` today); CI runs the full suite against Node 22 and 24 on every change, so those two are the versions actually verified. The floor moves only in a major release.
 
 ## Contributing
 
