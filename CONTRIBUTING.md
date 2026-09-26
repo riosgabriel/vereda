@@ -14,7 +14,7 @@ npx husky
 ```
 
 `bun.lock` is the only lockfile — install with Bun so you get the same
-dependency tree CI does. Requires Node 20+ (enforced via `engines` in
+dependency tree CI does. Requires Node 22+ (enforced via `engines` in
 package.json); the library itself is runtime-agnostic and CI tests it under
 both Node and Bun.
 

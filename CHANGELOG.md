@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.0.0] - TBD
+## [1.0.0] - 2026-09-25
 
 Vereda's first release published to npm. Before this, there was no published
 package: the project (then named `relay`) was consumed by pointing a
@@ -19,6 +19,7 @@ of this project before today.
 
 ### Added
 
+- The package ships `src/` next to `dist/`, so source maps and declaration maps resolve: stack traces point at the original TypeScript, and go-to-definition opens the source instead of the `.d.ts`.
 - Structured error hierarchy: every failure is a `RequestError` subclass with
   a discriminated `kind` — `NetworkError` (`network`), `HttpError` (`http`),
   `RetryableStatusError` (`retryable_status`), `TimeoutError` (`timeout`),
@@ -69,6 +70,7 @@ of this project before today.
 
 ### Changed (breaking, relative to pre-1.0 GitHub installs)
 
+- Requires Node.js 22 or later (`engines.node: ">=22"`). Node 20 reached end-of-life on 2026-04-30; CI verifies Node 22 and 24.
 - Configuration validation rejects values it used to let through. `NaN` was accepted everywhere a number is checked (`NaN <= 0` is false), so `timeout: { attemptMs: NaN }` silently meant no timeout; every numeric option now rejects it. `maxRetries` must be an integer, and the global `maxQueueSize` a non-negative integer. `circuitBreaker` config (client and partition level) is validated for the first time: `failureThreshold`, `halfOpenMaxAttempts` and `window.minimumRequests` must be positive integers, `resetTimeoutMs` and `window.sizeMs` positive and finite, `window.failureRatePercent` in (0, 100], and `isFailure` a function. `halfOpenMaxAttempts: 0` used to keep a tripped circuit open forever. `baseUrl` must be an absolute URL.
 - A relative URL with no `baseUrl` resolves the ticket with `ConfigurationError` instead of a `NetworkError`. It's a caller mistake, not a network fault.
 - Project renamed `relay` → `vereda`; the public base error class renamed
