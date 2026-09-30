@@ -225,8 +225,11 @@ export async function executeRequest(req: ExecuteRequest, middleware: Middleware
 		if (signal.aborted || options.signal?.aborted) {
 			return { kind: "cancelled" };
 		}
-		if (isAbortError(err)) {
-			// Could be our timeout abort
+		// Classify by which signal actually aborted, not by the thrown error's
+		// shape: middleware may wrap/rethrow the abort error (losing its
+		// `AbortError` name), and the attempt's own timeout controller is the
+		// authority on whether the attempt timed out.
+		if (timeoutController.signal.aborted) {
 			return { kind: "timeout" };
 		}
 		return {
@@ -338,10 +341,6 @@ export function parseRetryAfter(header: string | null): number | undefined {
 	const parsed = Date.parse(trimmed);
 	if (Number.isNaN(parsed)) return undefined;
 	return Math.max(0, parsed - Date.now());
-}
-
-function isAbortError(err: unknown): boolean {
-	return err instanceof Error && err.name === "AbortError";
 }
 
 function extractIssues(err: unknown): unknown[] {
