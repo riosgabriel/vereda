@@ -19,8 +19,8 @@ jobs:
     name: release
     runs-on: ubuntu-latest
     # contents: write to create the GitHub Release; id-token: write for npm
-    # provenance (OIDC-based attestation, separate from the registry auth
-    # token below).
+    # Trusted Publishing: the OIDC token authenticates `npm publish` (no
+    # NPM_TOKEN secret) and signs the provenance attestation.
     permissions:
       contents: write
       id-token: write
@@ -50,7 +50,12 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: 22
-          registry-url: "https://registry.npmjs.org"
+
+      # Trusted Publishing needs npm >= 11.5.1; Node 22 bundles npm 10.
+      # Upgrade npm rather than the Node version so the release still builds
+      # and tests on the supported floor.
+      - name: Upgrade npm for Trusted Publishing
+        run: npm install -g npm@^11.5.1
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -117,16 +122,17 @@ jobs:
             echo "RELEASE_NOTES_EOF"
           } >> "$GITHUB_OUTPUT"
 
+      # Authenticated via OIDC against the Trusted Publisher configured on
+      # npmjs.com (riosgabriel/vereda, release.yml). Provenance is generated
+      # automatically under Trusted Publishing.
       - name: Publish to npm
         if: steps.mode.outputs.dry_run == 'false'
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
 
       - name: Would publish to npm (dry run)
         if: steps.mode.outputs.dry_run == 'true'
         run: |
-          echo "DRY RUN: would run 'npm publish --provenance --access public'"
+          echo "DRY RUN: would run 'npm publish --access public' (Trusted Publishing, npm $(npm --version))"
           echo "DRY RUN: package ${{ steps.version.outputs.tag }} (version ${{ steps.version.outputs.version }})"
           npm pack --dry-run
 
