@@ -111,3 +111,14 @@ run it, read the diff carefully.
 - `ticket.toPromise()` never rejects — failures are a `Result` union with a closed `RequestError` hierarchy.
 
 See [AGENTS.md](./AGENTS.md) for more gotchas.
+
+## Releasing (maintainers)
+
+Releases publish `@vereda/http` to npm from `.github/workflows/release.yml` using **npm Trusted Publishing**: GitHub Actions authenticates with a short-lived OIDC token, so no npm token is stored in the repo, and every version gets a provenance attestation automatically. The trusted publisher is configured on npmjs.com for this repo and the `release.yml` filename, so renaming the workflow breaks publishing until the npm setting is updated.
+
+1. On a branch: bump `version` in `package.json`, and in `CHANGELOG.md` turn `## [Unreleased]` into `## [X.Y.Z] - YYYY-MM-DD`. The workflow uses that section as the GitHub Release notes and fails if it's missing.
+2. Merge to `main`.
+3. Optional: run the **Release** workflow manually with `dry_run: true` to see the notes and the `npm pack` file list.
+4. Tag the merge commit and push it: `git tag vX.Y.Z && git push origin vX.Y.Z`. The tag must match `package.json`, or the workflow fails. The workflow typechecks, tests, builds, runs publint and attw, publishes to npm, then creates the GitHub Release.
+
+Re-running a release is safe: the publish step skips a version that's already on npm and continues to the GitHub Release.

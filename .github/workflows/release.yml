@@ -125,9 +125,24 @@ jobs:
       # Authenticated via OIDC against the Trusted Publisher configured on
       # npmjs.com (riosgabriel/vereda, release.yml). Provenance is generated
       # automatically under Trusted Publishing.
+      #
+      # Skips a version that's already on the registry, so re-running a
+      # release whose publish succeeded but whose GitHub Release step failed
+      # still creates the Release instead of failing here with E403.
       - name: Publish to npm
         if: steps.mode.outputs.dry_run == 'false'
-        run: npm publish --access public
+        run: |
+          PACKAGE="$(node -p "require('./package.json').name")"
+          VERSION="${{ steps.version.outputs.version }}"
+          # Skip only on a positive match: any `npm view` failure (404 or a
+          # registry outage) falls through to publish, which fails loudly
+          # rather than reporting a release that never happened.
+          PUBLISHED="$(npm view "$PACKAGE@$VERSION" version 2>/dev/null || true)"
+          if [ "$PUBLISHED" = "$VERSION" ]; then
+            echo "$PACKAGE@$VERSION is already on npm; skipping publish"
+          else
+            npm publish --access public
+          fi
 
       - name: Would publish to npm (dry run)
         if: steps.mode.outputs.dry_run == 'true'
