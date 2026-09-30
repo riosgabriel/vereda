@@ -137,6 +137,12 @@ export class CircuitBreaker {
 		}
 	}
 
+	/** True while the breaker is closed. Open and half-open breakers carry
+	 *  state that a fresh instance would lose, so the registry keeps them. */
+	get isClosed(): boolean {
+		return this.state === "closed";
+	}
+
 	/** Whether a request may proceed against this partition right now.
 	 *  Always true when the breaker is disabled. Handles the open -> half-open
 	 *  transition on `resetTimeoutMs` elapse, and reserves a half-open trial
@@ -360,8 +366,10 @@ export class CircuitBreakerRegistry {
 
 	prune(): void {
 		const now = Date.now();
-		for (const [key, [, lastAccessed]] of this.breakers) {
-			if (now - lastAccessed > this.ttlMs) {
+		for (const [key, [cb, lastAccessed]] of this.breakers) {
+			// Only closed breakers are evictable: replacing an open or half-open
+			// one with a fresh closed breaker would defeat resetTimeoutMs.
+			if (now - lastAccessed > this.ttlMs && cb.isClosed) {
 				this.breakers.delete(key);
 			}
 		}

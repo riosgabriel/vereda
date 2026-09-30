@@ -42,6 +42,12 @@ export class Bulkhead {
 		return this._limitFirstAttempts;
 	}
 
+	/** True when nothing is running or queued, so the bulkhead can be
+	 *  discarded without changing the effective concurrency cap. */
+	get isIdle(): boolean {
+		return this.running === 0 && this._waitQueue.length === 0;
+	}
+
 	/** Acquire a concurrency slot, execute `task`, release the slot.
 	 *  Rejects with `QueueFullError` when the queue is at capacity.
 	 *  `this.running` is decremented *before* the returned Promise resolves,
@@ -212,8 +218,10 @@ export class BulkheadRegistry {
 
 	prune(): void {
 		const now = Date.now();
-		for (const [key, [, lastAccessed]] of this.bulkheads) {
-			if (now - lastAccessed > this.ttlMs) {
+		for (const [key, [bh, lastAccessed]] of this.bulkheads) {
+			// Never evict a busy bulkhead: the next get() would build a fresh one
+			// and briefly double the concurrency cap.
+			if (now - lastAccessed > this.ttlMs && bh.isIdle) {
 				this.bulkheads.delete(key);
 			}
 		}
