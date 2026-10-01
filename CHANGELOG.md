@@ -9,15 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.1] - 2026-10-01
 
-### Changed
-
-- An `AbortError` that none of Vereda's own signals caused (for example, one thrown by middleware's own abort logic) is now classified as a `NetworkError`. Previously any error named `AbortError` was reported as a `TimeoutError`, even when no Vereda timeout had fired.
-
 ### Fixed
 
 - **Idle-partition cleanup could double a partition's concurrency cap.** After 60s without a new request, a partition's bulkhead was discarded even if requests were still running, queued, or waiting to retry, so the next request got a fresh bulkhead and the old and new ones each admitted up to `concurrency` requests. A partition is now kept while any request still uses it.
 - **Idle-partition cleanup silently reset open circuit breakers.** An open breaker idle for 60s was discarded and replaced by a closed one, so a `resetTimeoutMs` longer than 60s never took effect. An open breaker is now kept until its `resetTimeoutMs` has elapsed. After that, if the partition stays idle, it is discarded so breakers for hosts that are never contacted again don't accumulate.
-- A timeout during middleware that wraps or rethrows the abort error was reported as a `NetworkError` instead of a `TimeoutError`. Timeouts are now detected from the attempt's own timeout signal, not the shape of the thrown error.
+- Timeouts were detected from the shape of the thrown error instead of from which signal fired. A timeout during middleware that wraps or rethrows the abort error was reported as a `NetworkError`, and an `AbortError` that no Vereda signal caused (e.g. from middleware's own abort logic) was reported as a `TimeoutError`. Classification now follows the attempt's own timeout signal: the first case is a `TimeoutError` and the second a `NetworkError`.
 - Backoff sleeps between retries and per-attempt (`attemptMs`) timers kept the Node.js process alive. They are now `unref()`ed, like the `totalMs` deadline timer, as `docs/operations.md` already described.
 
 ## [1.0.0] - 2026-09-25
