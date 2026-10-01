@@ -198,4 +198,68 @@ describe("CircuitBreakerRegistry", () => {
 		payments.recordFailure(new NetworkError("boom"));
 		expect(payments.canRequest()).toBe(false);
 	});
+
+	describe("prune (fake timers)", () => {
+		beforeEach(() => {
+			vi.useFakeTimers();
+		});
+
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		it("keeps an open breaker past the TTL but evicts an idle closed one", () => {
+			const registry = new CircuitBreakerRegistry(
+				{ enabled: true, failureThreshold: 1, resetTimeoutMs: 120_000 },
+				{},
+				1_000,
+			);
+			const open = registry.get("open");
+			open.recordFailure(new NetworkError("boom"));
+			const closed = registry.get("closed");
+
+			vi.advanceTimersByTime(5_000);
+			registry.prune();
+
+			expect(registry.get("open")).toBe(open);
+			expect(open.canRequest()).toBe(false);
+			expect(registry.get("closed")).not.toBe(closed);
+		});
+
+		it("evicts an open breaker once resetTimeoutMs and the TTL have both elapsed", () => {
+			const registry = new CircuitBreakerRegistry(
+				{ enabled: true, failureThreshold: 1, resetTimeoutMs: 10_000 },
+				{},
+				1_000,
+			);
+			const tripped = registry.get("open");
+			tripped.recordFailure(new NetworkError("boom"));
+
+			vi.advanceTimersByTime(10_000);
+			registry.prune();
+
+			expect(registry.get("open")).not.toBe(tripped);
+		});
+
+		it("keeps a breaker a live ticket holds, even past resetTimeoutMs and the TTL", () => {
+			const registry = new CircuitBreakerRegistry(
+				{ enabled: true, failureThreshold: 1, resetTimeoutMs: 10_000 },
+				{},
+				1_000,
+			);
+			const tripped = registry.get("open");
+			tripped.recordFailure(new NetworkError("boom"));
+			const release = tripped.retain();
+
+			vi.advanceTimersByTime(20_000);
+			registry.prune();
+			expect(registry.get("open")).toBe(tripped);
+
+			release();
+			release();
+			vi.advanceTimersByTime(20_000);
+			registry.prune();
+			expect(registry.get("open")).not.toBe(tripped);
+		});
+	});
 });

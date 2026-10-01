@@ -13,6 +13,7 @@ export class Bulkhead {
 	private readonly maxQueueSize: number;
 	private readonly _limitFirstAttempts: boolean;
 	private running = 0;
+	private activeTickets = 0;
 	private readonly _waitQueue: Array<() => void> = [];
 
 	constructor(name: string, config: PartitionConfig = {}) {
@@ -40,6 +41,27 @@ export class Bulkhead {
 
 	get limitFirstAttempts(): boolean {
 		return this._limitFirstAttempts;
+	}
+
+	/** True when nothing is running or queued and no live ticket holds a
+	 *  reference, so the bulkhead can be discarded without changing the
+	 *  effective concurrency cap. */
+	get isIdle(): boolean {
+		return this.activeTickets === 0 && this.running === 0 && this._waitQueue.length === 0;
+	}
+
+	/** Mark a ticket as holding this bulkhead until the returned function is
+	 *  called. A ticket keeps its reference across retry backoff, when nothing
+	 *  is running or queued, so the registry must not evict it meanwhile.
+	 *  The returned release is idempotent. */
+	retain(): () => void {
+		this.activeTickets++;
+		let released = false;
+		return () => {
+			if (released) return;
+			released = true;
+			this.activeTickets--;
+		};
 	}
 
 	/** Acquire a concurrency slot, execute `task`, release the slot.
@@ -212,8 +234,10 @@ export class BulkheadRegistry {
 
 	prune(): void {
 		const now = Date.now();
-		for (const [key, [, lastAccessed]] of this.bulkheads) {
-			if (now - lastAccessed > this.ttlMs) {
+		for (const [key, [bh, lastAccessed]] of this.bulkheads) {
+			// Never evict a busy bulkhead: the next get() would build a fresh one
+			// and briefly double the concurrency cap.
+			if (now - lastAccessed > this.ttlMs && bh.isIdle) {
 				this.bulkheads.delete(key);
 			}
 		}

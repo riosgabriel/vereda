@@ -388,6 +388,9 @@ async function runAllBenchmarks(selectedBenchmarks?: string[]) {
 
 	const results: BenchmarkResult[] = [];
 	const allViolations: { benchmark: string; metric: string; limit: number; actual: number }[] = [];
+	// Kept apart from threshold violations: a crash means the harness broke,
+	// not that the code got slower, and the exit message should say which.
+	const crashed: string[] = [];
 
 	for (const [name, fn] of toRun) {
 		console.log(`\n▶ Running: ${name}`);
@@ -410,6 +413,7 @@ async function runAllBenchmarks(selectedBenchmarks?: string[]) {
 		} catch (error) {
 			console.error(`✗ Failed: ${name}`);
 			console.error(error);
+			crashed.push(name);
 		}
 	}
 
@@ -419,8 +423,13 @@ async function runAllBenchmarks(selectedBenchmarks?: string[]) {
 	const resultsFile = await saveResults(results);
 	console.log(`Results saved to: ${resultsFile}`);
 
+	if (crashed.length > 0) {
+		console.error(`\n${crashed.length} benchmark(s) crashed: ${crashed.join(", ")}`);
+	}
 	if (allViolations.length > 0) {
 		console.error(`\n${allViolations.length} threshold violation(s) detected across ${toRun.length} benchmark(s).`);
+	}
+	if (crashed.length > 0 || allViolations.length > 0) {
 		process.exit(1);
 	}
 }
