@@ -118,6 +118,7 @@ export class CircuitBreaker {
 	private consecutiveFailures = 0;
 	private openedAt = 0;
 	private halfOpenInFlight = 0;
+	private activeTickets = 0;
 	/** Bumped on every open -> half-open transition, so a permit can tell
 	 *  whether the trial slot it reserved still belongs to the current
 	 *  half-open episode or to one that has since ended. */
@@ -137,10 +138,26 @@ export class CircuitBreaker {
 		}
 	}
 
-	/** True while the breaker is closed. Open and half-open breakers carry
-	 *  state that a fresh instance would lose, so the registry keeps them. */
-	get isClosed(): boolean {
-		return this.state === "closed";
+	/** Whether the registry may discard this breaker at `now`. Never while a
+	 *  live ticket holds it. A closed breaker is evictable; an open or
+	 *  half-open one only once its reset timeout has elapsed, so a
+	 *  `resetTimeoutMs` longer than the registry TTL is still honored. */
+	isEvictable(now: number): boolean {
+		if (this.activeTickets > 0) return false;
+		if (this.state === "closed") return true;
+		return now - this.openedAt >= (this.config.resetTimeoutMs ?? DEFAULT_RESET_TIMEOUT_MS);
+	}
+
+	/** Mark a ticket as holding this breaker until the returned function is
+	 *  called (see `Bulkhead.retain`). The returned release is idempotent. */
+	retain(): () => void {
+		this.activeTickets++;
+		let released = false;
+		return () => {
+			if (released) return;
+			released = true;
+			this.activeTickets--;
+		};
 	}
 
 	/** Whether a request may proceed against this partition right now.
@@ -367,9 +384,9 @@ export class CircuitBreakerRegistry {
 	prune(): void {
 		const now = Date.now();
 		for (const [key, [cb, lastAccessed]] of this.breakers) {
-			// Only closed breakers are evictable: replacing an open or half-open
-			// one with a fresh closed breaker would defeat resetTimeoutMs.
-			if (now - lastAccessed > this.ttlMs && cb.isClosed) {
+			// Never evict before an open breaker's resetTimeoutMs or while a
+			// ticket holds it: a fresh closed breaker would defeat the reset.
+			if (now - lastAccessed > this.ttlMs && cb.isEvictable(now)) {
 				this.breakers.delete(key);
 			}
 		}

@@ -13,6 +13,7 @@ export class Bulkhead {
 	private readonly maxQueueSize: number;
 	private readonly _limitFirstAttempts: boolean;
 	private running = 0;
+	private activeTickets = 0;
 	private readonly _waitQueue: Array<() => void> = [];
 
 	constructor(name: string, config: PartitionConfig = {}) {
@@ -42,10 +43,25 @@ export class Bulkhead {
 		return this._limitFirstAttempts;
 	}
 
-	/** True when nothing is running or queued, so the bulkhead can be
-	 *  discarded without changing the effective concurrency cap. */
+	/** True when nothing is running or queued and no live ticket holds a
+	 *  reference, so the bulkhead can be discarded without changing the
+	 *  effective concurrency cap. */
 	get isIdle(): boolean {
-		return this.running === 0 && this._waitQueue.length === 0;
+		return this.activeTickets === 0 && this.running === 0 && this._waitQueue.length === 0;
+	}
+
+	/** Mark a ticket as holding this bulkhead until the returned function is
+	 *  called. A ticket keeps its reference across retry backoff, when nothing
+	 *  is running or queued, so the registry must not evict it meanwhile.
+	 *  The returned release is idempotent. */
+	retain(): () => void {
+		this.activeTickets++;
+		let released = false;
+		return () => {
+			if (released) return;
+			released = true;
+			this.activeTickets--;
+		};
 	}
 
 	/** Acquire a concurrency slot, execute `task`, release the slot.

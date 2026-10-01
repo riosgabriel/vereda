@@ -43,6 +43,8 @@ import { validateConfig, validateRequestBody, validateRequestOptions } from "./v
 interface InflightTicket {
 	ticket: Ticket<unknown>;
 	cleanup: () => void;
+	/** Releases the bulkhead/breaker holds; run once by `cleanup`. */
+	release?: () => void;
 }
 
 export class HttpClient {
@@ -190,6 +192,11 @@ export class HttpClient {
 		entry.cleanup = () => {
 			cleanupExternalSignal();
 			cleanupDeadline();
+			// Take-and-clear so the holds are released exactly once even though
+			// cleanup runs on several paths (terminal state, shutdown, catch).
+			const release = entry.release;
+			entry.release = undefined;
+			release?.();
 			this._inflightTickets.delete(entry);
 		};
 
@@ -203,6 +210,9 @@ export class HttpClient {
 			controller as TicketController<unknown>,
 			entry.cleanup,
 			startTime,
+			(release) => {
+				entry.release = release;
+			},
 		).catch((err: unknown) => {
 			// A pre-typed RequestError (e.g. QueueFullError from the global
 			// semaphore acquire in _fireFirstAttempt) is an expected, well-typed
@@ -242,6 +252,7 @@ export class HttpClient {
 		controller: TicketController<unknown>,
 		cleanup: () => void,
 		startTime: number,
+		hold: (release: () => void) => void,
 	): Promise<void> {
 		// Resolve URL and partition inside the async path so relative URLs
 		// without a baseUrl surface as a ticket ConfigurationError instead of
@@ -337,6 +348,12 @@ export class HttpClient {
 		});
 
 		const breaker = this.circuitBreakers.get(partitionName);
+		const releaseBulkhead = bulkhead.retain();
+		const releaseBreaker = breaker.retain();
+		hold(() => {
+			releaseBulkhead();
+			releaseBreaker();
+		});
 		const permit = breaker.tryAcquire();
 		if (!permit) {
 			const error = new CircuitOpenError(partitionName);
