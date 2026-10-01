@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Bulkhead, BulkheadRegistry } from "../../src/queue/bulkhead.ts";
 import { Semaphore } from "../../src/queue/semaphore.ts";
 
@@ -133,5 +133,31 @@ describe("BulkheadRegistry", () => {
 		const registry = new BulkheadRegistry({ concurrency: 10 }, { payments: { concurrency: 2 } });
 		const payments = registry.get("payments");
 		expect((payments as unknown as { concurrency: number }).concurrency).toBe(2);
+	});
+
+	describe("prune (fake timers)", () => {
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		it("keeps a bulkhead with running or queued work past the TTL", async () => {
+			vi.useFakeTimers();
+			const registry = new BulkheadRegistry({ concurrency: 1 }, {}, 1_000);
+			const bh = registry.get("busy");
+			let release!: () => void;
+			const first = bh.run(() => new Promise<void>((r) => (release = r)));
+			const second = bh.run(async () => {});
+
+			vi.advanceTimersByTime(5_000);
+			registry.prune();
+			expect(registry.get("busy")).toBe(bh);
+
+			release();
+			await Promise.all([first, second]);
+
+			vi.advanceTimersByTime(5_000);
+			registry.prune();
+			expect(registry.get("busy")).not.toBe(bh);
+		});
 	});
 });
