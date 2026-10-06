@@ -370,7 +370,11 @@ const benchmarkThresholds: Record<string, Thresholds> = {
 	"Stress Test (Low Concurrency)": { minSuccessRate: 0.9, maxP95LatencyMs: 250, maxP99LatencyMs: 500 },
 	"Stress Test (High Concurrency)": { minSuccessRate: 0.85, maxP95LatencyMs: 500, maxP99LatencyMs: 1000 },
 	"Network Chaos (30% failures)": { minSuccessRate: 0.9 },
-	"Retry Storm": { minSuccessRate: 0.5 },
+	// 80% fail rate × 4 attempts → per-request success 1 − 0.8⁴ ≈ 0.59, so over
+	// 100 requests the success count is ~Binomial(100, 0.59): mean 59, σ ≈ 4.9.
+	// A 0.5 floor sat <2σ below the mean and failed ~3% of healthy runs; 0.4 is
+	// ~4σ down (~1 in 24k) yet still trips if retries stop happening (~0.2).
+	"Retry Storm": { minSuccessRate: 0.4 },
 	"Thundering Herd": { minSuccessRate: 0.9, maxP99LatencyMs: 2000 },
 };
 
