@@ -116,9 +116,12 @@ See [AGENTS.md](./AGENTS.md) for more gotchas.
 
 Releases publish `@vereda/http` to npm from `.github/workflows/release.yml` using **npm Trusted Publishing**: GitHub Actions authenticates with a short-lived OIDC token, so no npm token is stored in the repo, and every version gets a provenance attestation automatically. The trusted publisher is configured on npmjs.com for this repo and the `release.yml` filename, so renaming the workflow breaks publishing until the npm setting is updated.
 
+The trusted publisher may only **stage** versions (npm staged publishing): CI uploads the version, and it goes live only after a maintainer approves it with 2FA. Approving needs npm >= 11.15.0 and an npm account with 2FA.
+
 1. On a branch: bump `version` in `package.json`, and in `CHANGELOG.md` turn `## [Unreleased]` into `## [X.Y.Z] - YYYY-MM-DD`. The workflow uses that section as the GitHub Release notes and fails if it's missing.
 2. Merge to `main`.
 3. Optional: run the **Release** workflow manually with `dry_run: true` to see the notes and the `npm pack` file list.
-4. Tag the merge commit and push it: `git tag vX.Y.Z && git push origin vX.Y.Z`. The tag must match `package.json`, or the workflow fails. The workflow typechecks, tests, builds, runs publint and attw, publishes to npm, then creates the GitHub Release.
+4. Tag the merge commit and push it: `git tag vX.Y.Z && git push origin vX.Y.Z`. The tag must match `package.json`, or the workflow fails. The workflow typechecks, tests, builds, runs publint and attw, stages the version on npm, then creates the GitHub Release.
+5. Approve the staged version: `npm stage list`, check it with `npm stage view <stage-id>`, then `npm stage approve <stage-id>` (asks for 2FA). You can also approve it on npmjs.com. Until you do, the version isn't installable.
 
-Re-running a release is safe: the publish step skips a version that's already on npm and continues to the GitHub Release.
+Re-running a release is safe: the publish step skips a version that's already live on npm and continues to the GitHub Release. A version that's staged but not yet approved isn't live, so approve or reject it (`npm stage reject <stage-id>`) before re-running.
