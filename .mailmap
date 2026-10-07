@@ -1,0 +1,5 @@
+# Canonical identity for git log/shortlog/blame. History before October 2026
+# has some commits authored with a work address; map them here instead of
+# rewriting published history (tags v1.0.0/v1.0.1 point into it).
+Gabriel Fernandes Rios <gabrielfrios@gmail.com> Gabriel Rios <gabriel.rios@stay.com.br>
+Gabriel Fernandes Rios <gabrielfrios@gmail.com> Gabriel Rios <gabrielfrios@gmail.com>
