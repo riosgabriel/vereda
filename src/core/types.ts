@@ -295,6 +295,11 @@ export interface ClientConfig {
 	redactQuery?: boolean;
 	/** Custom fetch function (defaults to globalThis.fetch). */
 	fetch?: typeof globalThis.fetch;
+	/** Redirect mode passed to fetch on every attempt. Use `"manual"` when the
+	 *  caller must vet each hop itself (e.g. an SSRF guard): a 3xx then comes back
+	 *  as an `HttpError` whose `response` carries the `Location` header.
+	 *  @default "follow" */
+	redirect?: RequestRedirect;
 }
 
 /** Options for `HttpClient.close()`.

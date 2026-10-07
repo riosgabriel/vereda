@@ -67,7 +67,7 @@ export class HttpClient {
 		this.logger = config.logger;
 		this.metrics = config.metrics;
 		this.redactQuery = config.redactQuery !== false;
-		this.customFetch = config.fetch;
+		this.customFetch = withRedirect(config.fetch, config.redirect);
 		this.partitionConfigs = config.partitions ?? {};
 		const semaphore = new Semaphore(
 			config.concurrency ?? DEFAULT_GLOBAL_CONCURRENCY,
@@ -1073,4 +1073,15 @@ export class HttpClient {
  *  Unlike `parse` with Zod, this does not validate the shape. */
 export function json<T>(): ParseFn<T> {
 	return (data: unknown): T => data as T;
+}
+
+/** Folds a client-level `redirect` mode into the fetch call so every attempt
+ *  carries it. `globalThis.fetch` is looked up per call, not captured, so a
+ *  fetch stubbed after `create()` is still the one used. */
+function withRedirect(
+	customFetch: typeof globalThis.fetch | undefined,
+	redirect: RequestRedirect | undefined,
+): typeof globalThis.fetch | undefined {
+	if (redirect === undefined) return customFetch;
+	return (input, init) => (customFetch ?? globalThis.fetch)(input, { ...init, redirect });
 }

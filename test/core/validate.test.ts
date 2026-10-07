@@ -130,6 +130,18 @@ describe("validateConfig", () => {
 		);
 	});
 
+	it("accepts each fetch redirect mode", () => {
+		for (const redirect of ["follow", "manual", "error"] as const) {
+			expect(() => validateConfig({ timeout: { attemptMs: 5_000 }, redirect })).not.toThrow();
+		}
+	});
+
+	it("rejects an unknown redirect mode", () => {
+		expect(() => validateConfig({ timeout: { attemptMs: 5_000 }, redirect: "manaul" as RequestRedirect })).toThrow(
+			/redirect must be "follow", "manual", or "error"/,
+		);
+	});
+
 	it("rejects a stream-like body via duck-typing", () => {
 		expect(() => validateRequestBody({ getReader: () => ({}) } as unknown as BodyInit)).toThrow(ConfigurationError);
 	});

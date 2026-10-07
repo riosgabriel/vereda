@@ -108,4 +108,78 @@ describe("Injectable fetch (6.4)", () => {
 		await client.close();
 		await new Promise<void>((r) => server.close(() => r()));
 	});
+
+	describe("redirect option", () => {
+		it("leaves redirect unset on the fetch init when not configured", async () => {
+			let capturedInit: RequestInit | undefined;
+			const customFetch: typeof globalThis.fetch = async (_input, init) => {
+				capturedInit = init;
+				return new Response("{}", { status: 200 });
+			};
+
+			const client = HttpClient.create({ timeout: { attemptMs: 5_000 }, fetch: customFetch });
+			await client.get("https://example.com/").toPromise();
+
+			expect(capturedInit).toBeDefined();
+			expect(capturedInit?.redirect).toBeUndefined();
+
+			await client.close();
+		});
+
+		it("passes the configured redirect mode to custom fetch on every attempt", async () => {
+			const modes: Array<RequestRedirect | undefined> = [];
+			const customFetch: typeof globalThis.fetch = async (_input, init) => {
+				modes.push(init?.redirect);
+				return modes.length < 2 ? new Response("", { status: 503 }) : new Response("{}", { status: 200 });
+			};
+
+			const client = HttpClient.create({
+				timeout: { attemptMs: 5_000 },
+				fetch: customFetch,
+				redirect: "manual",
+				retry: { maxRetries: 1, retryOnStatus: [503], backoff: { baseDelayMs: 1, jitter: false } },
+			});
+			const result = await client.get("https://example.com/").toPromise();
+
+			expect(result.success).toBe(true);
+			expect(modes).toEqual(["manual", "manual"]);
+
+			await client.close();
+		});
+
+		it("returns a 3xx as a readable HttpError with redirect: manual, without following it", async () => {
+			const { createServer } = await import("node:http");
+			const hits: string[] = [];
+			const server = createServer((req, res) => {
+				hits.push(req.url ?? "");
+				if (req.url === "/start") {
+					res.writeHead(302, { Location: "http://169.254.169.254/latest/meta-data/" });
+					res.end();
+					return;
+				}
+				res.writeHead(200);
+				res.end("followed");
+			});
+			await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
+			const addr = server.address() as { port: number };
+
+			// No custom fetch: the mode must reach globalThis.fetch too.
+			const client = HttpClient.create({ timeout: { attemptMs: 5_000 }, redirect: "manual" });
+			const result = await client.get(`http://127.0.0.1:${addr.port}/start`).toPromise();
+
+			expect(result.success).toBe(false);
+			if (!result.success) {
+				expect(result.error.kind).toBe("http");
+				if (result.error.kind === "http") {
+					expect(result.error.statusCode).toBe(302);
+					expect(result.error.response.headers.get("location")).toBe("http://169.254.169.254/latest/meta-data/");
+					await result.error.response.body?.cancel();
+				}
+			}
+			expect(hits).toEqual(["/start"]);
+
+			await client.close();
+			await new Promise<void>((r) => server.close(() => r()));
+		});
+	});
 });
