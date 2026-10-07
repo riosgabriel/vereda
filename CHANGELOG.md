@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `redirect` client option (`"follow"` | `"manual"` | `"error"`, default `"follow"`), set on every attempt's fetch init. With `"manual"`, a 3xx comes back as an `HttpError` whose `response` carries the `Location` header, so callers can vet each hop themselves.
+- `redirect` client option (`"follow"` | `"manual"`, default `"follow"`), set on every attempt's fetch init and exposed to middleware as `ctx.redirect`. fetch's `"error"` mode is rejected: its `TypeError` on a 3xx is indistinguishable from a network failure, so redirects would be retried and counted against the circuit breaker. With `"manual"`, a 3xx comes back as an `HttpError` whose `response` carries the `Location` header, so callers can vet each hop themselves.
 
 ### Documentation
 

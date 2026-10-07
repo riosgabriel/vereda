@@ -264,6 +264,13 @@ export const DEFAULT_GLOBAL_CONCURRENCY = 50;
  *  a concurrency permit before new requests are rejected with QueueFullError. */
 export const DEFAULT_GLOBAL_QUEUE_SIZE = 100;
 
+/** How fetch treats a 3xx. fetch's third mode, `"error"`, is deliberately
+ *  absent: it makes fetch throw a `TypeError` that is indistinguishable from a
+ *  network failure, so a deterministic redirect would be retried and counted
+ *  against the circuit breaker. `"manual"` rejects redirects without that trap:
+ *  the 3xx comes back as a non-retriable `HttpError`. */
+export type RedirectMode = "follow" | "manual";
+
 export interface ClientConfig {
 	/** Base URL prepended to all requests */
 	baseUrl?: string;
@@ -299,7 +306,7 @@ export interface ClientConfig {
 	 *  caller must vet each hop itself (e.g. an SSRF guard): a 3xx then comes back
 	 *  as an `HttpError` whose `response` carries the `Location` header.
 	 *  @default "follow" */
-	redirect?: RequestRedirect;
+	redirect?: RedirectMode;
 }
 
 /** Options for `HttpClient.close()`.

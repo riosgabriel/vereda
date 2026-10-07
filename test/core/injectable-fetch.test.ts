@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HttpClient } from "../../src/core/client.ts";
+import type { RedirectMode } from "../../src/core/types.ts";
 
 describe("Injectable fetch (6.4)", () => {
 	it("uses a custom fetch function instead of globalThis.fetch", async () => {
@@ -144,6 +145,74 @@ describe("Injectable fetch (6.4)", () => {
 			expect(result.success).toBe(true);
 			expect(modes).toEqual(["manual", "manual"]);
 
+			await client.close();
+		});
+
+		it('rejects redirect: "error" at create(), pointing to "manual"', () => {
+			// fetch's "error" mode throws a TypeError on a 3xx, which the executor
+			// can't tell from a network failure: one request to a redirecting URL
+			// was retried until it opened the circuit breaker for the partition.
+			expect(() =>
+				HttpClient.create({ timeout: { attemptMs: 5_000 }, redirect: "error" as unknown as RedirectMode }),
+			).toThrow(/use "manual" to reject redirects/);
+		});
+
+		it('a 3xx under redirect: "manual" is not retried and does not trip the breaker', async () => {
+			const { createServer } = await import("node:http");
+			let hits = 0;
+			const server = createServer((_req, res) => {
+				hits++;
+				res.writeHead(302, { Location: "/elsewhere" });
+				res.end();
+			});
+			await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
+			const addr = server.address() as { port: number };
+			const url = `http://127.0.0.1:${addr.port}/start`;
+
+			const client = HttpClient.create({
+				timeout: { attemptMs: 5_000 },
+				redirect: "manual",
+				retry: { maxRetries: 3, backoff: { baseDelayMs: 1, jitter: false } },
+				circuitBreaker: { enabled: true, failureThreshold: 2 },
+			});
+
+			const first = await client.get(url).toPromise();
+			const second = await client.get(url).toPromise();
+
+			// A redirect is the server's deliberate answer: asking again gets the same one.
+			expect(hits).toBe(2);
+			for (const result of [first, second]) {
+				expect(result.success).toBe(false);
+				if (!result.success && result.error.kind === "http") {
+					expect(result.error.statusCode).toBe(302);
+					await result.error.response.body?.cancel();
+				} else expect.unreachable("expected an HttpError, not a retried/circuit_open failure");
+			}
+
+			await client.close();
+			await new Promise<void>((r) => server.close(() => r()));
+		});
+
+		it("exposes the redirect mode to middleware, which can override it per attempt", async () => {
+			const seen: Array<RedirectMode | undefined> = [];
+			const inits: Array<RequestRedirect | undefined> = [];
+			const client = HttpClient.create({
+				timeout: { attemptMs: 5_000 },
+				redirect: "manual",
+				fetch: async (_input, init) => {
+					inits.push(init?.redirect);
+					return new Response("{}", { status: 200 });
+				},
+			});
+			client.use(async (ctx, next) => {
+				seen.push(ctx.redirect);
+				return next({ ...ctx, redirect: "follow" });
+			});
+
+			await client.get("https://example.com/").toPromise();
+
+			expect(seen).toEqual(["manual"]);
+			expect(inits).toEqual(["follow"]);
 			await client.close();
 		});
 

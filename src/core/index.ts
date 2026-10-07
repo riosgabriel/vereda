@@ -35,6 +35,7 @@ export type {
 	ParsedRequestOptions,
 	ParseFn,
 	PartitionConfig,
+	RedirectMode,
 	RequestOptions,
 	Result,
 	RetryConfig,

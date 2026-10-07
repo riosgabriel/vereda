@@ -515,7 +515,7 @@ Middleware receives the same `AbortSignal` the request uses (`ctx.signal`), so i
 
 ### Custom fetch
 
-By default each attempt calls `globalThis.fetch`. Pass `fetch` to swap it for your own function. That function runs inside the innermost middleware, once per attempt (retries included), and receives the final URL plus a `RequestInit` that carries `method`, `headers`, `body` and `signal`. Use it to route requests through your own undici dispatcher, add a proxy, or stub the network in tests.
+By default each attempt calls `globalThis.fetch`. Pass `fetch` to swap it for your own function. That function runs inside the innermost middleware, once per attempt (retries included), and receives the final URL plus a `RequestInit` that carries `method`, `headers`, `body`, `signal`, `redirect` (when configured) and `duplex` (for stream bodies). Use it to route requests through your own undici dispatcher, add a proxy, or stub the network in tests. Spread the whole `init` into your call, as the example below does. A function that rebuilds it from a few fields silently drops whatever it leaves out: without `signal`, cancellation can't stop the request, and without `redirect`, undici follows the hops your guard is meant to check.
 
 For example, a service that fetches URLs supplied by users can guard against SSRF with an undici `Agent` that checks each resolved address in a custom DNS lookup and turns off connection reuse. Import `Agent` and `fetch` from the same `undici` package. Node's built-in `fetch` bundles its own copy of undici, and that copy isn't guaranteed to accept an `Agent` from a different version.
 
@@ -545,7 +545,16 @@ const client = HttpClient.create({
 });
 ```
 
-`redirect` accepts fetch's modes (`"follow"`, the default; `"manual"`; `"error"`) and is set on every attempt's `RequestInit` before it reaches `fetch`. With `"manual"`, a 3xx comes back as a non-2xx response, so the result is `success: false` with an `HttpError` (`kind: "http"`). Read `error.statusCode` and `error.response.headers.get("location")`, resolve the location against the current URL, and send the next hop as a new request, which runs `checkUrl` again. Stop after your own hop limit, since undici's default allows 20. A 3xx isn't retried and doesn't trip the circuit breaker by default, but it does fire a `failure` event, so filter redirects out of failure-rate alerts.
+`redirect` takes `"follow"` (the default) or `"manual"`, and is set on every attempt's `RequestInit` (middleware sees it as `ctx.redirect`). fetch's `"error"` mode isn't supported: it makes fetch throw on a 3xx, which looks the same as a network failure, so the redirect would be retried and counted against the circuit breaker. Use `"manual"` to reject redirects instead.
+
+With `"manual"`, a 3xx comes back as `success: false` with an `HttpError` (`kind: "http"`). It isn't retried and doesn't count against the circuit breaker, unless you add 3xx codes to `retry.retryOnStatus`, which turns them into retries and discards the response. It does fire a `failure` event, so filter redirects out of failure-rate alerts.
+
+To follow a hop yourself, repeat what `"follow"` would have done for you:
+
+1. Read `error.response.headers.get("location")` and resolve it against the current URL. Then cancel the 3xx body (`await error.response.body?.cancel()`) so its connection is released now, not when the body-read bound expires.
+2. If the next URL has a different origin, drop credentials from the headers: `Authorization`, `Cookie` and `Proxy-Authorization`. Otherwise a redirect to another host receives them.
+3. On a 303, or a 301/302 answering a `POST`, send the next hop as a `GET` without a body. A 307/308 keeps the method and body.
+4. Send it as a new request, which runs `checkUrl` again, and stop after your own hop limit (undici's default is 20).
 
 If your caller already retries at a higher level (a job queue, for instance), set `retry: { maxRetries: 0 }` so you don't stack two retry loops.
 

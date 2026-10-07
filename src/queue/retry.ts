@@ -14,6 +14,7 @@ import {
 	type BackoffOptions,
 	DEFAULT_MAX_RETRIES,
 	isBoundedMs,
+	type RedirectMode,
 	type RequestOptions,
 	type RetryConfig,
 	type TimeoutConfig,
@@ -73,6 +74,8 @@ export interface RetryJobOptions {
 	onCleanup?: () => void;
 	/** Custom fetch function. Falls back to globalThis.fetch. */
 	fetch?: typeof globalThis.fetch;
+	/** Client-level redirect mode, forwarded to every attempt. */
+	redirect?: RedirectMode;
 }
 
 export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
@@ -98,6 +101,7 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 		onCancelled,
 		onCleanup,
 		fetch: customFetch,
+		redirect,
 	} = job;
 
 	const maxRetries = retryConfig.maxRetries ?? DEFAULT_MAX_RETRIES;
@@ -222,6 +226,7 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 								ticketId: ticket.id,
 								partition: bulkhead.name,
 								fetch: customFetch,
+								redirect,
 							},
 							middleware,
 						),

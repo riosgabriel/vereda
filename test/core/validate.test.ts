@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ConfigurationError } from "../../src/core/errors.ts";
-import type { ClientConfig } from "../../src/core/types.ts";
+import type { ClientConfig, RedirectMode } from "../../src/core/types.ts";
 import { validateConfig, validateRequestBody, validateRequestOptions } from "../../src/core/validate.ts";
 
 describe("validateConfig", () => {
@@ -130,16 +130,18 @@ describe("validateConfig", () => {
 		);
 	});
 
-	it("accepts each fetch redirect mode", () => {
-		for (const redirect of ["follow", "manual", "error"] as const) {
+	it("accepts the supported redirect modes", () => {
+		for (const redirect of ["follow", "manual"] as const) {
 			expect(() => validateConfig({ timeout: { attemptMs: 5_000 }, redirect })).not.toThrow();
 		}
 	});
 
-	it("rejects an unknown redirect mode", () => {
-		expect(() => validateConfig({ timeout: { attemptMs: 5_000 }, redirect: "manaul" as RequestRedirect })).toThrow(
-			/redirect must be "follow", "manual", or "error"/,
-		);
+	it('rejects an unknown redirect mode, and fetch\'s "error" mode', () => {
+		for (const redirect of ["manaul", "error"]) {
+			expect(() => validateConfig({ timeout: { attemptMs: 5_000 }, redirect: redirect as RedirectMode })).toThrow(
+				/redirect must be "follow" or "manual"/,
+			);
+		}
 	});
 
 	it("rejects a stream-like body via duck-typing", () => {

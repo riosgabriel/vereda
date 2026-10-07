@@ -9,7 +9,7 @@ import {
 	TimeoutError,
 	ValidationError,
 } from "../core/errors.ts";
-import type { RequestOptions, Result, RetryConfig, TimeoutConfig } from "../core/types.ts";
+import type { RedirectMode, RequestOptions, Result, RetryConfig, TimeoutConfig } from "../core/types.ts";
 import { DEFAULT_RETRY_ON_STATUS, isBoundedMs } from "../core/types.ts";
 import { isReadableStream } from "../core/validate.ts";
 
@@ -37,6 +37,8 @@ export interface ExecuteRequest {
 	displayUrl: string;
 	/** Custom fetch function. Falls back to globalThis.fetch. */
 	fetch?: typeof globalThis.fetch;
+	/** Client-level redirect mode; seeds `RequestContext.redirect`. */
+	redirect?: RedirectMode;
 }
 
 export type ExecuteResult =
@@ -121,6 +123,7 @@ export async function executeRequest(req: ExecuteRequest, middleware: Middleware
 		attempt: req.attempt,
 		ticketId: req.ticketId,
 		partition: req.partition,
+		redirect: req.redirect,
 	};
 
 	let response: Response;
@@ -307,6 +310,9 @@ export interface RequestContext {
 	attempt: number;
 	ticketId: string;
 	partition: string;
+	/** The client's `redirect` mode, or undefined for fetch's default
+	 *  (`"follow"`). Middleware may read or override it per attempt. */
+	redirect?: RedirectMode;
 }
 
 export type NextFn = (ctx: RequestContext) => Promise<Response>;
@@ -321,6 +327,8 @@ function buildFetchCall(customFetch?: typeof globalThis.fetch): NextFn {
 			body: ctx.body,
 			signal: ctx.signal,
 		};
+		// Only set when configured, so a custom fetch sees fetch's own default.
+		if (ctx.redirect !== undefined) init.redirect = ctx.redirect;
 		if (isReadableStream(ctx.body)) {
 			// Node's fetch requires duplex: "half" for stream bodies.
 			(init as { duplex?: "half" }).duplex = "half";

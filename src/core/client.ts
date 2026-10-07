@@ -29,6 +29,7 @@ import type {
 	ParsedRequestOptions,
 	ParseFn,
 	PartitionConfig,
+	RedirectMode,
 	RequestOptions,
 	RetryConfig,
 	TimeoutConfig,
@@ -58,6 +59,7 @@ export class HttpClient {
 	private readonly metrics: MetricsSink | undefined;
 	private readonly redactQuery: boolean;
 	private readonly customFetch: typeof globalThis.fetch | undefined;
+	private readonly redirect: RedirectMode | undefined;
 	private _closed = false;
 	private _closing: Promise<void> | undefined;
 	private readonly _inflightTickets = new Set<InflightTicket>();
@@ -67,7 +69,8 @@ export class HttpClient {
 		this.logger = config.logger;
 		this.metrics = config.metrics;
 		this.redactQuery = config.redactQuery !== false;
-		this.customFetch = withRedirect(config.fetch, config.redirect);
+		this.customFetch = config.fetch;
+		this.redirect = config.redirect;
 		this.partitionConfigs = config.partitions ?? {};
 		const semaphore = new Semaphore(
 			config.concurrency ?? DEFAULT_GLOBAL_CONCURRENCY,
@@ -406,6 +409,7 @@ export class HttpClient {
 						ticketId: ticket.id,
 						partition: partitionName,
 						fetch: this.customFetch,
+						redirect: this.redirect,
 					},
 					this.middlewares,
 				);
@@ -719,6 +723,7 @@ export class HttpClient {
 			firstError,
 			initialQueuedMs,
 			fetch: this.customFetch,
+			redirect: this.redirect,
 			onRetry: (attempt, delayMs, error) => {
 				this.emit("retry", {
 					ticketId: ticket.id,
@@ -1073,15 +1078,4 @@ export class HttpClient {
  *  Unlike `parse` with Zod, this does not validate the shape. */
 export function json<T>(): ParseFn<T> {
 	return (data: unknown): T => data as T;
-}
-
-/** Folds a client-level `redirect` mode into the fetch call so every attempt
- *  carries it. `globalThis.fetch` is looked up per call, not captured, so a
- *  fetch stubbed after `create()` is still the one used. */
-function withRedirect(
-	customFetch: typeof globalThis.fetch | undefined,
-	redirect: RequestRedirect | undefined,
-): typeof globalThis.fetch | undefined {
-	if (redirect === undefined) return customFetch;
-	return (input, init) => (customFetch ?? globalThis.fetch)(input, { ...init, redirect });
 }
