@@ -50,6 +50,9 @@ const AMBIENT_DECLARATIONS: Record<string, string> = {
 	AppError: 'import type { AppError } from "@vereda/http";',
 	User: "type User = { id: number; name: string };",
 	order: "declare const order: { id: string };",
+	// The "Custom fetch" SSRF example: caller-owned guards, not library API.
+	pinnedLookup: 'declare const pinnedLookup: import("node:net").LookupFunction;',
+	checkUrl: "declare function checkUrl(url: URL): void;",
 };
 
 function declaresOrImports(source: string, name: string): boolean {

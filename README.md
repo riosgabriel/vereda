@@ -513,6 +513,42 @@ Middleware can rewrite `ctx.url` before calling `next(ctx)` — whatever URL sur
 
 Middleware receives the same `AbortSignal` the request uses (`ctx.signal`), so it can participate in timeout and cancellation handling — but only if it observes or forwards that signal to the work it performs. When a response is handed back unread, the same signal can still abort later, when the body-read bound expires.
 
+### Custom fetch
+
+By default each attempt calls `globalThis.fetch`. Pass `fetch` to swap it for your own function. That function runs inside the innermost middleware, once per attempt (retries included), and receives the final URL plus a `RequestInit` that carries `method`, `headers`, `body` and `signal`. Use it to route requests through your own undici dispatcher, add a proxy, or stub the network in tests.
+
+For example, a service that fetches URLs supplied by users can guard against SSRF with an undici `Agent` that checks each resolved address in a custom DNS lookup and turns off connection reuse. Import `Agent` and `fetch` from the same `undici` package. Node's built-in `fetch` bundles its own copy of undici, and that copy isn't guaranteed to accept an `Agent` from a different version.
+
+> [!WARNING]
+> **A dispatcher-level DNS guard does not survive automatic redirects.** A custom `lookup` only runs when a hostname has to be resolved. A URL with an IP-literal host, such as `http://169.254.169.254/` or `http://127.0.0.1:5432/`, never reaches it. With fetch's default `redirect: "follow"`, a public page that answers `302 Location: http://169.254.169.254/...` gets followed inside undici, and none of your URL checks (scheme, port, IP literal) run on that hop. SSRF-sensitive callers must set the client's `redirect: "manual"`, check every URL themselves, and follow hops in their own loop.
+
+```typescript
+import { HttpClient } from "@vereda/http";
+import { Agent, fetch as undiciFetch, type RequestInit as UndiciRequestInit } from "undici";
+
+const agent = new Agent({
+  connect: { lookup: pinnedLookup }, // resolve, reject private addresses, connect only to the checked ones
+  keepAliveTimeout: 1,
+  pipelining: 0,
+});
+
+// undici's Request/Response types don't line up with Node's global ones, hence the cast.
+const vettedFetch = ((url: string, init: UndiciRequestInit) => {
+  checkUrl(new URL(url)); // scheme, port, credentials, IP-literal hosts
+  return undiciFetch(url, { ...init, dispatcher: agent });
+}) as unknown as typeof fetch;
+
+const client = HttpClient.create({
+  timeout: { attemptMs: 5_000 },
+  redirect: "manual",
+  fetch: vettedFetch,
+});
+```
+
+`redirect` accepts fetch's modes (`"follow"`, the default; `"manual"`; `"error"`) and is set on every attempt's `RequestInit` before it reaches `fetch`. With `"manual"`, a 3xx comes back as a non-2xx response, so the result is `success: false` with an `HttpError` (`kind: "http"`). Read `error.statusCode` and `error.response.headers.get("location")`, resolve the location against the current URL, and send the next hop as a new request, which runs `checkUrl` again. Stop after your own hop limit, since undici's default allows 20. A 3xx isn't retried and doesn't trip the circuit breaker by default, but it does fire a `failure` event, so filter redirects out of failure-rate alerts.
+
+If your caller already retries at a higher level (a job queue, for instance), set `retry: { maxRetries: 0 }` so you don't stack two retry loops.
+
 ### Lifecycle events
 
 The client emits typed events across all requests, useful for metrics, logging, and alerting. Exactly one of `success`, `failure`, or `cancelled` fires per ticket:

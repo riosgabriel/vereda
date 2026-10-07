@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `redirect` client option (`"follow"` | `"manual"` | `"error"`, default `"follow"`), set on every attempt's fetch init. With `"manual"`, a 3xx comes back as an `HttpError` whose `response` carries the `Location` header, so callers can vet each hop themselves.
+
+### Documentation
+
+- README documents the `fetch` client option, with a security note: automatic redirects bypass dispatcher-level DNS guards for IP-literal targets, so SSRF-sensitive callers should use `redirect: "manual"` and follow hops themselves.
+
 ## [1.0.2] - 2026-10-07
 
 ### Fixed
