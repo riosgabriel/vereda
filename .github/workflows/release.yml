@@ -1,9 +1,15 @@
 name: Release
 
+# A release is a merged version bump: when package.json on main has a version
+# with no matching tag yet, this workflow stages it on npm and creates the tag
+# and GitHub Release at the pushed commit. Feature PRs never touch "version",
+# so merging them releases nothing (`npm run release:prepare` makes the bump).
+# The tag is created here rather than pushed by hand: a tag pushed by a
+# workflow's GITHUB_TOKEN wouldn't trigger a second workflow anyway.
 on:
   push:
-    tags:
-      - "v*"
+    branches: [main]
+    paths: [package.json]
   workflow_dispatch:
     inputs:
       dry_run:
@@ -14,9 +20,49 @@ on:
 permissions:
   contents: read
 
+# Never run two releases at once; never cancel one mid-publish.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
+  # Decides whether this run releases anything, before any build work.
+  gate:
+    name: gate
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.check.outputs.release }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Is there a new version to release?
+        id: check
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          DRY_RUN="${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}"
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "Dry run of v$VERSION"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "::error::Real releases run from main only (got ${{ github.ref }})"
+            exit 1
+          elif git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            # package.json changed (e.g. a dependency bump) but the version is
+            # already released: nothing to do.
+            echo "v$VERSION is already tagged; nothing to release"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "v$VERSION has no tag yet: releasing"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
   release:
     name: release
+    needs: gate
+    if: needs.gate.outputs.release == 'true'
     runs-on: ubuntu-latest
     # contents: write to create the GitHub Release; id-token: write for npm
     # Trusted Publishing: the OIDC token authenticates `npm stage publish` (no
@@ -80,17 +126,7 @@ jobs:
         id: version
         run: |
           PACKAGE_VERSION="$(node -p "require('./package.json').version")"
-          if [ "${{ github.event_name }}" = "push" ]; then
-            TAG="${{ github.ref_name }}"
-            TAG_VERSION="${TAG#v}"
-            if [ "$TAG_VERSION" != "$PACKAGE_VERSION" ]; then
-              echo "::error::Tag $TAG does not match package.json version $PACKAGE_VERSION"
-              exit 1
-            fi
-          else
-            TAG="v$PACKAGE_VERSION"
-          fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "tag=v$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
           echo "version=$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Extract changelog section
@@ -156,11 +192,15 @@ jobs:
           echo "DRY RUN: package ${{ steps.version.outputs.tag }} (version ${{ steps.version.outputs.version }})"
           npm pack --dry-run
 
+      # Creates the tag too. Pinned to the commit this run built and tested:
+      # without target_commitish, a new tag lands on main's HEAD at the time
+      # this step runs, which may be a later, untested commit.
       - name: Create GitHub Release
         if: steps.mode.outputs.dry_run == 'false'
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           name: ${{ steps.version.outputs.tag }}
           body: ${{ steps.changelog.outputs.notes }}
 

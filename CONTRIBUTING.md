@@ -71,7 +71,7 @@ gh api -X PUT repos/riosgabriel/vereda/pages -f build_type=workflow
 - Follow the existing patterns in the codebase.
 - Preserve the behavioral invariants below — they're load-bearing.
 - Every relative import must use the real `.ts` extension (`from "./client.ts"`). `tsc` rewrites it to `.js` on build.
-- `npm run typecheck` runs three legs: `src/` (via `tsconfig.json`, which excludes `**/*.test.ts` so tests stay out of `dist/`), then `src/` + `test/` + `vitest.config.ts` (via `tsconfig.test.json`), then `examples/` (via `examples/tsconfig.json`). Example code is held to the same types as the library.
+- `npm run typecheck` runs three legs: `src/` (via `tsconfig.json`, which excludes `**/*.test.ts` so tests stay out of `dist/`), then `src/` + `test/` + `scripts/` + `vitest.config.ts` (via `tsconfig.test.json`), then `examples/` (via `examples/tsconfig.json`). Example code is held to the same types as the library.
 - Zod is an optional peer dependency. Only `src/adapters/zod.ts` may import it; `src/core/` must stay zod-free.
 - CI runs `bun run ci` (`biome ci --error-on-warnings`) over the whole tree — run `bun run check` before pushing.
 
@@ -118,10 +118,13 @@ Releases publish `@vereda/http` to npm from `.github/workflows/release.yml` usin
 
 The trusted publisher may only **stage** versions (npm staged publishing): CI uploads the version, and it goes live only after a maintainer approves it with 2FA. Approving needs npm >= 11.15.0 and an npm account with 2FA.
 
-1. On a branch: bump `version` in `package.json`, and in `CHANGELOG.md` turn `## [Unreleased]` into `## [X.Y.Z] - YYYY-MM-DD`. The workflow uses that section as the GitHub Release notes and fails if it's missing.
-2. Merge to `main`.
-3. Optional: run the **Release** workflow manually with `dry_run: true` to see the notes and the `npm pack` file list.
-4. Tag the merge commit and push it: `git tag vX.Y.Z && git push origin vX.Y.Z`. The tag must match `package.json`, or the workflow fails. The workflow typechecks, tests, builds, runs publint and attw, stages the version on npm, then creates the GitHub Release.
-5. Approve the staged version: `npm stage list`, check it with `npm stage view <stage-id>`, then `npm stage approve <stage-id>` (asks for 2FA). You can also approve it on npmjs.com. Until you do, the version isn't installable.
+**A release is a merged version bump.** When `main` gets a `package.json` version that has no `vX.Y.Z` tag yet, the workflow releases it. Feature PRs only add entries under `## [Unreleased]` in `CHANGELOG.md` and never touch `version`, so merging them releases nothing. You decide when to ship and which version by opening the release PR.
+
+1. Run `npm run release:prepare` on an up-to-date `main`. It reads `[Unreleased]` and bumps `version` by the smallest amount the entries call for: `### Fixed` only → patch, any `### Added`/`### Changed`/`### Deprecated` → minor, `### Removed` → major. It also turns `## [Unreleased]` into `## [X.Y.Z] - <today>` and updates the compare links. Pass `patch`, `minor`, `major` or an exact `X.Y.Z` to choose the version yourself. It refuses a bump smaller than the entries call for unless you add `--force`, and refuses an empty `[Unreleased]`.
+2. Open the release PR with the commands it prints. Optional: run the **Release** workflow manually with `dry_run: true` on that branch to preview the notes and the `npm pack` file list.
+3. Merge it. The workflow typechecks, tests, builds, runs publint and attw, stages the version on npm, then creates the `vX.Y.Z` tag and the GitHub Release at the merged commit. A `package.json` change whose version is already tagged (e.g. a dependency bump) skips all of this.
+4. Approve the staged version: `npm stage list`, check it with `npm stage view <stage-id>`, then `npm stage approve <stage-id>` (asks for 2FA). You can also approve it on npmjs.com. Until you do, the version isn't installable.
+
+Don't push `v*` tags by hand: the workflow creates the tag, and a hand-pushed tag no longer starts a release.
 
 Re-running a release is safe: the publish step skips a version that's already live on npm and continues to the GitHub Release. A version that's staged but not yet approved isn't live, so approve or reject it (`npm stage reject <stage-id>`) before re-running.
