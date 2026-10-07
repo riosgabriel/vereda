@@ -60,7 +60,7 @@ representative at an online or offline event.
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the community leaders responsible for enforcement at
-[gabriel.rios@stay.com.br].
+[gabrielfrios@gmail.com].
 All complaints will be reviewed and investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the
@@ -118,4 +118,4 @@ https://www.contributor-covenant.org/version/2/1/code_of_conduct.html.
 
 For answers to common questions about this code of conduct, see
 https://www.contributor-covenant.org/faq. For other questions, email
-gabriel.rios@stay.com.br.
+gabrielfrios@gmail.com.
