@@ -1,6 +1,6 @@
 {
 	"name": "@vereda/http",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"description": "A resilient HTTP client with automatic queuing, retries, and bulkhead isolation",
 	"type": "module",
 	"sideEffects": false,
