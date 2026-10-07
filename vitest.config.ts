@@ -9,8 +9,17 @@ export default defineConfig({
 			provider: "v8",
 			reporter: ["text", "html", "lcov"],
 			include: ["src/**"],
+			// Just under the current numbers, so coverage can only ratchet up.
+			// Raise them when a PR lifts coverage; don't lower them to land one.
 			thresholds: {
-				lines: 90,
+				lines: 96,
+				statements: 96,
+				functions: 95,
+				branches: 92,
+				// The retry/queue core, where the B1–B17 bugs lived (#136).
+				"src/queue/**": {
+					branches: 95,
+				},
 			},
 		},
 	},

@@ -269,9 +269,7 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 				case "success": {
 					permit.success();
 					onCleanup?.();
-					if (result.result.success) {
-						onSuccess?.(result.result.raw.status, totalAttempts, totalQueuedMs);
-					}
+					onSuccess?.(result.result.raw.status, totalAttempts, totalQueuedMs);
 					controller.markDone(result.result);
 					return;
 				}
@@ -346,10 +344,12 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 	} as never);
 }
 
+/** Resolves after `ms`, or rejects with `signal.reason` once it aborts. The
+ *  retry loop only cares *that* the sleep was interrupted, not why. */
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 	return new Promise((resolve, reject) => {
 		if (signal?.aborted) {
-			reject(signal.reason ?? new DOMException("The operation was aborted", "AbortError"));
+			reject(signal.reason);
 			return;
 		}
 		const timer = setTimeout(() => {
@@ -359,7 +359,7 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 		timer.unref();
 		const onAbort = () => {
 			clearTimeout(timer);
-			reject(signal?.reason ?? new DOMException("The operation was aborted", "AbortError"));
+			reject(signal?.reason);
 		};
 		signal?.addEventListener("abort", onAbort, { once: true });
 	});

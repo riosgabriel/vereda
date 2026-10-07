@@ -456,7 +456,7 @@ export class HttpClient {
 				case "success": {
 					permit.success();
 					const durationMs = Date.now() - startTime;
-					const statusCode = result.result.success ? result.result.raw.status : 0;
+					const statusCode = result.result.raw.status;
 					this.emit("success", {
 						ticketId: ticket.id,
 						url: displayUrl,

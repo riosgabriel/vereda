@@ -40,7 +40,7 @@ export interface ExecuteRequest {
 }
 
 export type ExecuteResult =
-	| { kind: "success"; result: Result<unknown> }
+	| { kind: "success"; result: Extract<Result<unknown>, { success: true }> }
 	| { kind: "timeout" }
 	| { kind: "cancelled" }
 	| { kind: "error"; error: AppError };
