@@ -53,7 +53,7 @@ Implement `MetricsSink` (`counter`, `histogram`, `gauge` — all synchronous, no
 | `METRICS.DURATION` (`vereda.duration_ms`) | histogram | `partition` (absent only when the URL couldn't be resolved), `kind` (`success`, `cancelled`, or the error `kind`) | Total ticket duration at settlement |
 | `METRICS.QUEUE_DEPTH` (`vereda.queue_depth`) | gauge | `partition` | Current per-partition queue size — same retries-only caveat as `partitions()` above: a partition only shows queued first attempts if `limitFirstAttempts` is enabled for it |
 | `METRICS.GLOBAL_QUEUE_DEPTH` (`vereda.global_queue_depth`) | gauge | — | Callers currently waiting for a permit under the global concurrency cap (D1) — the signal that you're throttled by `concurrency`/`ClientConfig.concurrency` rather than downstream latency |
-| `METRICS.IN_FLIGHT` (`vereda.in_flight`) | gauge | — | Current in-flight executions across all partitions |
+| `METRICS.IN_FLIGHT` (`vereda.in_flight`) | gauge | — | Tickets started but not yet finished, across all partitions. Reported when a ticket starts and when it finishes, so it returns to `0` when the client is idle |
 | `METRICS.CIRCUIT_OPEN` (`vereda.circuit_open`) | counter | `partition` | One per circuit breaker trip to open (opt-in feature; silent unless `circuitBreaker.enabled`) |
 
 `examples/otel.ts` shows a minimal OpenTelemetry-backed `MetricsSink` implementation end to end. Lifecycle events (`client.on("request" | "retry" | "success" | "failure" | "cancelled" | "circuitOpen" | "circuitClose", ...)`) are the complementary hook for structured logging or alerting rather than metrics — see the README's [Lifecycle events](../README.md#lifecycle-events) section.

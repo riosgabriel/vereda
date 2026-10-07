@@ -40,7 +40,7 @@ export interface ExecuteRequest {
 }
 
 export type ExecuteResult =
-	| { kind: "success"; result: Result<unknown> }
+	| { kind: "success"; result: Extract<Result<unknown>, { success: true }> }
 	| { kind: "timeout" }
 	| { kind: "cancelled" }
 	| { kind: "error"; error: AppError };
@@ -126,10 +126,17 @@ export async function executeRequest(req: ExecuteRequest, middleware: Middleware
 	let response: Response;
 	try {
 		response = await composed(ctx);
-		// The timeout may fire after fetch resolves but before this check runs;
-		// the timed-out attempt is not trustworthy, so it still surfaces as a
-		// timeout (cancellation is checked first in the catch path below).
+		// An abort may land after fetch resolves but before this check runs
+		// (e.g. while middleware post-processes the response). The attempt is
+		// abandoned, so release its body: a transport that ignores the signal
+		// would otherwise hold the socket until GC (B13). Same precedence as the
+		// catch path: cancellation wins over timeout.
+		if (signal.aborted || options.signal?.aborted) {
+			response.body?.cancel().catch(() => {});
+			return { kind: "cancelled" };
+		}
 		if (timeoutController.signal.aborted) {
+			response.body?.cancel().catch(() => {});
 			return { kind: "timeout" };
 		}
 
@@ -165,7 +172,7 @@ export async function executeRequest(req: ExecuteRequest, middleware: Middleware
 		if (options.parse) {
 			let raw: unknown;
 			try {
-				raw = await response.json();
+				raw = await readJson(response, attemptSignal);
 			} catch (err) {
 				// Check timeout first — if our timer fired during response.json(),
 				// that is the cause regardless of whether the external signal also
@@ -342,6 +349,37 @@ export function parseRetryAfter(header: string | null): number | undefined {
 	const parsed = Date.parse(trimmed);
 	if (Number.isNaN(parsed)) return undefined;
 	return Math.max(0, parsed - Date.now());
+}
+
+/** `response.json()`, but the read stops when `signal` aborts. `json()` alone
+ *  relies on the transport tying the body to the fetch signal; a custom
+ *  `fetch` or middleware that drops the signal would leave it reading forever,
+ *  past `attemptMs`/`totalMs` (B13). `json()` holds the reader lock, so
+ *  `body.cancel()` can't stop it — owning the reader can. Decoding and
+ *  `JSON.parse` match `json()`: UTF-8, leading BOM stripped, `SyntaxError` on
+ *  malformed or empty input (B6 relies on that). */
+async function readJson(response: Response, signal: AbortSignal): Promise<unknown> {
+	if (!response.body) return response.json();
+	const reader = response.body.getReader();
+	const onAbort = () => {
+		reader.cancel(signal.reason).catch(() => {});
+	};
+	if (signal.aborted) onAbort();
+	else signal.addEventListener("abort", onAbort, { once: true });
+	try {
+		const decoder = new TextDecoder();
+		let text = "";
+		for (;;) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			text += decoder.decode(value, { stream: true });
+		}
+		// A cancelled reader reports `done` rather than rejecting.
+		if (signal.aborted) throw signal.reason;
+		return JSON.parse(text + decoder.decode());
+	} finally {
+		signal.removeEventListener("abort", onAbort);
+	}
 }
 
 function extractIssues(err: unknown): unknown[] {

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `timeout.attemptMs` and `timeout.totalMs` did not bound a `parse` body read when the transport ignored the attempt's abort signal (a custom `fetch` that doesn't forward `signal`, or middleware that replaces `ctx.signal`). The ticket stayed pending while the server kept sending, and cancelling it left the read running. Vereda now reads the body itself and stops the read when the attempt aborts. An attempt that times out or is cancelled after `fetch` resolved also cancels the unread body, so the connection is released (#133).
+- The `vereda.in_flight` gauge could stay at `1` after the client went idle. It was read when the terminal event was emitted, and requests that finished on the first attempt (success, non-retryable failure, cancellation, configuration error) emitted before leaving the in-flight set, while retried requests emitted after it. The gauge is now reported when a ticket leaves the in-flight set, so it returns to `0` on every path (#134).
+
 ## [1.0.1] - 2026-10-01
 
 ### Fixed

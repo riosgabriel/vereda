@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { HttpClient } from "../../src/core/client.ts";
 import { METRICS, type MetricsSink, type MetricTags } from "../../src/core/metrics.ts";
 
@@ -185,9 +185,8 @@ describe("Metrics sink (6.2)", () => {
 
 		const gauges = sink.gauges.filter((g) => g.name === METRICS.IN_FLIGHT);
 		expect(gauges.length).toBeGreaterThanOrEqual(1);
-		// At success emit time the ticket hasn't been cleaned up yet, so size is 1
-		const lastGauge = gauges[gauges.length - 1];
-		expect(lastGauge.value).toBeGreaterThanOrEqual(1);
+		// 1 when the request starts, 0 once the ticket leaves the in-flight set (B15)
+		expect(gauges.map((g) => g.value)).toEqual([1, 0]);
 
 		await client.close();
 	});
@@ -246,5 +245,87 @@ describe("Metrics sink (6.2)", () => {
 		expect(result.success).toBe(true);
 
 		await client.close();
+	});
+});
+
+describe("in_flight gauge settles to 0 on every terminal path (B15, #134)", () => {
+	let server: TestServer;
+
+	beforeAll(async () => {
+		server = await createTestServer();
+	});
+
+	afterAll(async () => {
+		await server.close();
+	});
+
+	function lastInFlight(sink: ReturnType<typeof createFakeSink>): number | undefined {
+		return sink.gauges.filter((g) => g.name === METRICS.IN_FLIGHT).at(-1)?.value;
+	}
+
+	function client(sink: MetricsSink): HttpClient {
+		return HttpClient.create({
+			timeout: { attemptMs: 5_000 },
+			retry: { maxRetries: 2, backoff: { baseDelayMs: 1, maxDelayMs: 1, jitter: false } },
+			metrics: sink,
+		});
+	}
+
+	it("first-attempt success", async () => {
+		const sink = createFakeSink();
+		server.setHandler((_req, res) => res.writeHead(200).end());
+		await client(sink).get(`${server.url}/ok`).toPromise();
+		expect(lastInFlight(sink)).toBe(0);
+	});
+
+	it("first-attempt non-retryable failure", async () => {
+		const sink = createFakeSink();
+		server.setHandler((_req, res) => res.writeHead(404).end());
+		await client(sink).get(`${server.url}/missing`).toPromise();
+		expect(lastInFlight(sink)).toBe(0);
+	});
+
+	it("configuration failure before any attempt", async () => {
+		const sink = createFakeSink();
+		await client(sink).get("/relative-without-baseUrl").toPromise();
+		const value = lastInFlight(sink);
+		// No request event fires for an unresolved URL, so the terminal gauge is the only one.
+		expect(value).toBe(0);
+	});
+
+	it("success after a retry", async () => {
+		const sink = createFakeSink();
+		let hits = 0;
+		server.setHandler((_req, res) => res.writeHead(hits++ === 0 ? 503 : 200).end());
+		await client(sink).get(`${server.url}/flaky`).toPromise();
+		expect(hits).toBe(2);
+		expect(lastInFlight(sink)).toBe(0);
+	});
+
+	it("failure after exhausting retries", async () => {
+		const sink = createFakeSink();
+		server.setHandler((_req, res) => res.writeHead(503).end());
+		await client(sink).get(`${server.url}/down`).toPromise();
+		expect(lastInFlight(sink)).toBe(0);
+	});
+
+	it("cancelled during the first attempt", async () => {
+		const sink = createFakeSink();
+		server.setHandler(() => {}); // never responds
+		const ticket = client(sink).get(`${server.url}/hang`);
+		setTimeout(() => ticket.cancel(), 20);
+		await ticket.toPromise();
+		// cancel() settles the ticket synchronously; the aborted attempt unwinds
+		// and leaves the in-flight set a tick later.
+		await vi.waitFor(() => expect(lastInFlight(sink)).toBe(0));
+	});
+
+	it("N concurrent tickets settle to 0", async () => {
+		const sink = createFakeSink();
+		let hits = 0;
+		server.setHandler((_req, res) => res.writeHead(hits++ % 2 === 0 ? 503 : 200).end());
+		const c = client(sink);
+		await Promise.all(Array.from({ length: 10 }, (_, i) => c.get(`${server.url}/n${i}`).toPromise()));
+		expect(lastInFlight(sink)).toBe(0);
 	});
 });

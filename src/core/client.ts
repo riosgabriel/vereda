@@ -197,7 +197,16 @@ export class HttpClient {
 			const release = entry.release;
 			entry.release = undefined;
 			release?.();
-			this._inflightTickets.delete(entry);
+			// Report IN_FLIGHT only when the entry actually leaves the set, so the
+			// gauge can't depend on emit/cleanup ordering at the call site (B15).
+			// cleanup runs on several paths; only the first removal reports.
+			if (this._inflightTickets.delete(entry) && this.metrics) {
+				try {
+					this.metrics.gauge(METRICS.IN_FLIGHT, this._inflightTickets.size);
+				} catch (err) {
+					reportCallbackError(err);
+				}
+			}
 		};
 
 		this._inflightTickets.add(entry);
@@ -447,7 +456,7 @@ export class HttpClient {
 				case "success": {
 					permit.success();
 					const durationMs = Date.now() - startTime;
-					const statusCode = result.result.success ? result.result.raw.status : 0;
+					const statusCode = result.result.raw.status;
 					this.emit("success", {
 						ticketId: ticket.id,
 						url: displayUrl,
@@ -1028,7 +1037,9 @@ export class HttpClient {
 					d.durationMs,
 					d.partition === undefined ? { kind } : { partition: d.partition, kind },
 				);
-				this.metrics.gauge(METRICS.IN_FLIGHT, this._inflightTickets.size);
+				// IN_FLIGHT is reported from entry.cleanup, where the ticket actually
+				// leaves _inflightTickets — sampling it here read N or N-1 depending
+				// on whether the call site ran cleanup() before or after emit (B15).
 				this.emitQueueDepthGauges();
 			} else if (e === "circuitOpen") {
 				const d = data as LifecycleEventMap["circuitOpen"];
