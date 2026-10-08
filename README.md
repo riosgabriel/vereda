@@ -38,9 +38,31 @@ if (result.success) {
 
 A dropped connection, a timeout, or a `503` on that request is retried up to three times with jittered exponential backoff before your code sees an error. Reading `result.raw` afterwards is bounded too: the body read has to finish within the same `attemptMs` (counted from when the attempt started) and `totalMs` limits, or the read rejects with Vereda's own `TimeoutError` (attempt bound) or `DeadlineExceededError` (`totalMs` bound).
 
-**Contents:** [Why Vereda?](#why-vereda) · [Quick start](#quick-start) · [Example](#example-one-failing-dependency) · [How it works](#how-it-works) · [Features](#features) · [Design philosophy](#design-philosophy) · [Documentation](#documentation) · [Versioning](#versioning-and-support) · [Contributing](#contributing)
+## Contents
 
-**Features:** [Retries](#retries-and-backoff) · [Timeouts](#timeouts) · [Bulkhead](#bulkhead-isolation) · [Circuit breaker](#circuit-breaker) · [Typed results](#typed-results) · [Errors](#error-handling) · [Cancellation](#cancellation) · [Tickets](#tickets) · [Middleware](#middleware) · [Custom fetch](#custom-fetch) · [Events](#lifecycle-events) · [Metrics](#metrics)
+- [Why Vereda?](#why-vereda)
+- [Quick start](#quick-start)
+- [Example: one failing dependency](#example-one-failing-dependency)
+- [How it works](#how-it-works)
+- [Features](#features)
+  - [Retries and backoff](#retries-and-backoff)
+  - [Timeouts](#timeouts)
+  - [Bulkhead isolation](#bulkhead-isolation)
+  - [Circuit breaker](#circuit-breaker)
+  - [Typed results](#typed-results)
+  - [Error handling](#error-handling)
+  - [Cancellation](#cancellation)
+  - [Tickets](#tickets)
+  - [Middleware](#middleware)
+  - [Custom fetch](#custom-fetch)
+  - [Lifecycle events](#lifecycle-events)
+  - [Metrics](#metrics)
+- [Design philosophy](#design-philosophy)
+- [Documentation](#documentation)
+- [Versioning and support](#versioning-and-support)
+- [Contributing](#contributing)
+- [Why the name?](#why-the-name)
+- [License](#license)
 
 ## Why Vereda?
 
