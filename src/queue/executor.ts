@@ -109,7 +109,7 @@ export async function executeRequest(req: ExecuteRequest, middleware: Middleware
 	sources.push(timeoutController.signal);
 	const attemptSignal = AbortSignal.any(sources);
 	const timeoutId = hasAttemptTimeout ? setTimeout(() => timeoutController.abort(), timeoutMs) : undefined;
-	timeoutId?.unref();
+	timeoutId?.unref?.();
 
 	// A fresh Headers instance per attempt: middleware (e.g. defaultHeaders)
 	// mutates ctx.headers in place, and that must never leak into the next
@@ -286,7 +286,7 @@ export async function executeRequest(req: ExecuteRequest, middleware: Middleware
 				const bodyReadTimer = setTimeout(() => {
 					timeoutController.abort(reason);
 				}, delay);
-				bodyReadTimer.unref();
+				bodyReadTimer.unref?.();
 			}
 		}
 	}

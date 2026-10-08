@@ -216,11 +216,48 @@ jobs:
         env:
           EXPECTED_RUNTIME: bun
 
+  # Portability gate (#146): loads the built dist/ into workerd with no
+  # compatibility flags (so no `nodejs_compat`) and drives every package entry
+  # point through scripts/smoke/runtime.mjs. A `node:` import, or an
+  # un-imported Node global, fails to load here. Deno isn't a job: it resolves
+  # `node:` builtins natively, so it passed on the pre-#146 build too.
+  # Miniflare is installed in this job only, exact-pinned, so the ~40MB
+  # workerd download stays out of bun.lock and every other install; bump the
+  # pin by hand.
+  smoke-workers:
+    name: smoke (Cloudflare Workers)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build
+        run: npm run build
+
+      - name: Install Miniflare
+        run: npm install --no-save miniflare@4.20260730.0
+
+      - name: Run the smoke test in workerd
+        run: node scripts/smoke/workers.mjs
+
   ci:
     if: always()
-    needs: [lint, test, test-bun]
+    needs: [lint, test, test-bun, smoke-workers]
     runs-on: ubuntu-latest
     steps:
       - name: Check job results
-        if: needs.lint.result != 'success' || needs.test.result != 'success' || needs['test-bun'].result != 'success'
+        if: needs.lint.result != 'success' || needs.test.result != 'success' || needs['test-bun'].result != 'success' || needs['smoke-workers'].result != 'success'
         run: exit 1

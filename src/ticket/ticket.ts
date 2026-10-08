@@ -1,7 +1,6 @@
-import { EventEmitter } from "node:events";
 import type { AppError } from "../core/errors.ts";
 import { CancelledError } from "../core/errors.ts";
-import { emitIsolated } from "../core/listeners.ts";
+import { Emitter } from "../core/listeners.ts";
 import type { Result } from "../core/types.ts";
 
 export type TicketStatus =
@@ -55,7 +54,7 @@ export interface TicketController<T> {
 export class Ticket<T> {
 	public readonly id: string;
 
-	private readonly emitter = new EventEmitter();
+	private readonly emitter = new Emitter();
 	private _status: TicketStatus = { state: "pending" };
 	private _cancelled = false;
 	private _abortController = new AbortController();
@@ -68,8 +67,6 @@ export class Ticket<T> {
 		this._promise = new Promise<Result<T>>((resolve) => {
 			this._resolve = resolve;
 		});
-		// Prevent Node from throwing on unhandled "error" events
-		this.emitter.on("error", () => {});
 	}
 
 	get status(): TicketStatus {
@@ -98,8 +95,7 @@ export class Ticket<T> {
 	on(event: "update", listener: (update: TicketUpdate) => void): this;
 	// biome-ignore lint/suspicious/noExplicitAny: overload implementation signature must accept every declared overload; callers only see the typed overloads.
 	on(event: string, listener: (...args: any[]) => void): this {
-		// biome-ignore lint/suspicious/noExplicitAny: EventEmitter's own listener signature.
-		this.emitter.on(event, listener as (...args: any[]) => void);
+		this.emitter.on(event, listener);
 		return this;
 	}
 
@@ -108,8 +104,7 @@ export class Ticket<T> {
 	off(event: "update", listener: (update: TicketUpdate) => void): this;
 	// biome-ignore lint/suspicious/noExplicitAny: overload implementation signature must accept every declared overload; callers only see the typed overloads.
 	off(event: string, listener: (...args: any[]) => void): this {
-		// biome-ignore lint/suspicious/noExplicitAny: EventEmitter's own listener signature.
-		this.emitter.off(event, listener as (...args: any[]) => void);
+		this.emitter.off(event, listener);
 		return this;
 	}
 
@@ -122,9 +117,9 @@ export class Ticket<T> {
 		this._cancelled = true;
 		this._abortController.abort();
 		const result: Result<T> = { success: false, error: new CancelledError() };
-		emitIsolated(this.emitter, "update", { type: "cancelled" } as TicketUpdate);
-		emitIsolated(this.emitter, "done", result);
-		emitIsolated(this.emitter, "error", result.error);
+		this.emitter.emit("update", { type: "cancelled" } as TicketUpdate);
+		this.emitter.emit("done", result);
+		this.emitter.emit("error", result.error);
 		this._resolve(result);
 	}
 
@@ -192,13 +187,13 @@ export class Ticket<T> {
 	// biome-ignore lint/correctness/noUnusedPrivateClassMembers: reached via bracket notation from createTicket(); Biome cannot see that access.
 	private markQueued(): void {
 		if (!this.applyTransition({ state: "queued" })) return;
-		emitIsolated(this.emitter, "update", { type: "queued" } as TicketUpdate);
+		this.emitter.emit("update", { type: "queued" } as TicketUpdate);
 	}
 
 	// biome-ignore lint/correctness/noUnusedPrivateClassMembers: reached via bracket notation from createTicket(); Biome cannot see that access.
 	private markRetrying(attempt: number, delayMs: number): void {
 		if (!this.applyTransition({ state: "retrying", attempt })) return;
-		emitIsolated(this.emitter, "update", {
+		this.emitter.emit("update", {
 			type: "retrying",
 			attempt,
 			delayMs,
@@ -208,10 +203,10 @@ export class Ticket<T> {
 	// biome-ignore lint/correctness/noUnusedPrivateClassMembers: reached via bracket notation from createTicket(); Biome cannot see that access.
 	private markDone(result: Result<T>): void {
 		if (!this.applyTransition({ state: "done", result })) return;
-		emitIsolated(this.emitter, "update", { type: "done", result } as TicketUpdate);
-		emitIsolated(this.emitter, "done", result);
+		this.emitter.emit("update", { type: "done", result } as TicketUpdate);
+		this.emitter.emit("done", result);
 		if (result.success === false) {
-			emitIsolated(this.emitter, "error", result.error);
+			this.emitter.emit("error", result.error);
 		}
 		this._resolve(result);
 	}

@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A retry whose delay (backoff or capped `Retry-After`) would run to or past `timeout.totalMs` is no longer slept on: the ticket fails right away with `DeadlineExceededError`, whose `cause` is the last attempt's error. Before, it slept until the deadline and then failed with the same error. `DeadlineExceededError` can therefore arrive before `totalMs` has elapsed (#143).
 
+### Changed
+
+- No more `node:events` or `node:crypto` imports, and timers are `unref()`'d only where the runtime supports it, so the package loads on Cloudflare Workers without `nodejs_compat`, and on other runtimes without Node builtins. Lifecycle and ticket events now use a small internal emitter that keeps the same behavior (a listener added twice runs twice, `off` removes the most recent registration, and a throwing listener can't break the others). A CI smoke test runs the built package in workerd (#146).
+
 ### Documentation
 
 - README documents the `fetch` client option, with a security note: automatic redirects bypass dispatcher-level DNS guards for IP-literal targets, so SSRF-sensitive callers should use `redirect: "manual"` and follow hops themselves.
