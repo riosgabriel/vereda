@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An attempt whose transport ignores the abort signal (a custom `fetch` that drops `init.signal`, or middleware that swaps `ctx.signal`) now ends as soon as the attempt is cancelled or times out. Before, `await fetch` never returned: `cancel()` resolved the ticket but no `cancelled` event fired, and `attemptMs`/`totalMs` never resolved the ticket at all. A response that arrives after the attempt was abandoned has its body cancelled (#181).
 - Reject forbidden HTTP methods (`TRACE`, `CONNECT`, `TRACK`) up front with a `ConfigurationError` during request validation instead of letting them enter the retry loop client-side (#139).
 
 ### Changed
