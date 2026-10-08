@@ -43,6 +43,15 @@ const snapshots = client.partitions();
 
 One entry per partition that has handled at least one retry. `running` and `queued` are point-in-time counts of retry traffic only (first attempts never appear here, by design). Poll this on an interval and feed it into your metrics sink's gauges, or check it directly when debugging why a specific host's requests seem stuck — `queued` near `maxQueueSize` means that partition is saturated and new retries for it will start failing with `QueueFullError`.
 
+## Reading `circuits()`
+
+```typescript
+const circuits = client.circuits();
+// [{ partition: "api.example.com", state: "open", failures: 5, openedAt: 1767225600000, nextAttemptAt: 1767225630000 }, ...]
+```
+
+One entry per partition with an enabled circuit breaker that has seen a request; `[]` when no breaker is configured. Pair it with the `circuitOpen`/`circuitClose` events: the events tell you when a circuit changes, and the snapshot tells you where every circuit is right now (useful for a health endpoint). An `open` entry whose `nextAttemptAt` is in the past hasn't had a request since its reset timeout ran out. The next request becomes the half-open trial.
+
 ## Wiring a metrics sink
 
 Implement `MetricsSink` (`counter`, `histogram`, `gauge` — all synchronous, non-blocking) and pass it as `metrics` in `ClientConfig`. Vereda emits the series in `METRICS` (`src/core/metrics.ts`), exported so you don't have to hardcode the string names:

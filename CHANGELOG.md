@@ -10,7 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `defaultPartition` client option: a `PartitionConfig` for every partition not listed in `partitions`, so many hosts can be tuned without listing each one. Merge order stays client → partition → request; a listed partition does not inherit from `defaultPartition`. Unset fields keep the built-in `concurrency: 5`, `maxQueueSize: 100` (#141).
+- `client.circuits()` returns a `CircuitSnapshot` for each enabled circuit breaker: its `partition`, `state` (`"closed"` | `"open"` | `"half_open"`), `failures`, and, unless closed, `openedAt`/`nextAttemptAt`. It's `[]` when no breaker is configured. Reading it never changes the breaker's state or keeps an idle partition alive (#140).
 - `redirect` client option (`"follow"` | `"manual"`, default `"follow"`), set on every attempt's fetch init and exposed to middleware as `ctx.redirect`. fetch's `"error"` mode is rejected: its `TypeError` on a 3xx is indistinguishable from a network failure, so redirects would be retried and counted against the circuit breaker. With `"manual"`, a 3xx comes back as an `HttpError` whose `response` carries the `Location` header, so callers can vet each hop themselves.
+- Re-export `BulkheadSnapshot` from the public entry point `@vereda/http` (#138).
+
+### Fixed
+
+- Reject forbidden HTTP methods (`TRACE`, `CONNECT`, `TRACK`) up front with a `ConfigurationError` during request validation instead of letting them enter the retry loop client-side (#139).
 
 ### Documentation
 

@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+	ConfigurationError,
 	HttpClient,
 	HttpError,
 	MaxRetriesExceededError,
@@ -42,6 +43,7 @@ const TERMINAL_KIND: Record<string, string> = {
 	http: "http",
 	validation: "validation",
 	retryable_status: "retryable_status",
+	configuration: "configuration",
 };
 
 /** Response mode: destroy the socket (network error), return a status code, or
@@ -74,29 +76,22 @@ if (expectedRuntime && expectedRuntime !== RUNTIME) {
 	throw new Error(`EXPECTED_RUNTIME=${expectedRuntime} but the suite is running under ${RUNTIME}.`);
 }
 
-// A: Q4 method set over a network error (socket destroyed).
-// CONNECT is classified non-idempotent at the policy level but undici fetch
-// forbids issuing it, so it's covered in test/queue/policy.test.ts unit tests.
-// TRACE is a forbidden method per the Fetch spec. The retry policy classifies
-// it as idempotent either way, so all 3 attempts run and the terminal error is
-// max_retries — but how many reach the server is runtime-dependent (see the
-// TRACE row below).
 const networkRows: Row[] = ["GET", "HEAD", "OPTIONS", "PUT", "DELETE"].map((method) => ({
 	method,
 	mode: "destroy" as Mode,
 	expectedRequests: 3,
 	expectedKind: "max_retries_exceeded",
 }));
-networkRows.push({
-	method: "TRACE",
-	mode: "destroy",
-	// Node/undici throws "'TRACE' HTTP method is unsupported" before opening a
-	// socket, so no attempt reaches the server. Bun issues the request, so each
-	// of the 3 idempotent attempts lands and is destroyed. Same retry behaviour,
-	// different fetch implementation.
-	expectedRequests: IS_BUN ? 3 : 0,
-	expectedKind: "max_retries_exceeded",
-});
+// TRACE and CONNECT are forbidden methods per the Fetch spec, rejected
+// client-side with a ConfigurationError up front (zero server hits, no retry cycle).
+for (const method of ["TRACE", "CONNECT"]) {
+	networkRows.push({
+		method,
+		mode: "destroy",
+		expectedRequests: 0,
+		expectedKind: "configuration",
+	});
+}
 for (const method of ["POST", "PATCH"]) {
 	networkRows.push({
 		method,
@@ -249,6 +244,9 @@ describe("retry behavior matrix", () => {
 					break;
 				case "network":
 					expect(result.error).toBeInstanceOf(NetworkError);
+					break;
+				case "configuration":
+					expect(result.error).toBeInstanceOf(ConfigurationError);
 					break;
 			}
 		}

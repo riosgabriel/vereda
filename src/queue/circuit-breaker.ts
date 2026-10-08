@@ -13,6 +13,21 @@ import { RETRIABLE_KINDS } from "./policy.ts";
 
 type CircuitState = "closed" | "open" | "half-open";
 
+/** Point-in-time view of one partition's circuit breaker, as returned by
+ *  `client.circuits()`. A plain copy: mutating it doesn't affect the breaker. */
+export interface CircuitSnapshot {
+	partition: string;
+	/** An `open` circuit whose `nextAttemptAt` has passed stays `open` until
+	 *  the next request arrives; that request is admitted as the half-open trial. */
+	state: "closed" | "open" | "half_open";
+	/** Consecutive failures, or failures in the rolling window when `window` is set. */
+	failures: number;
+	/** Epoch ms when the circuit last opened. Absent while closed. */
+	openedAt?: number;
+	/** Epoch ms when an open circuit admits its next trial (`openedAt + resetTimeoutMs`). Absent while closed. */
+	nextAttemptAt?: number;
+}
+
 /** Error kinds that mean the attempt never left the process — no request was
  *  ever dispatched, so the host's health is untouched. Currently only a body
  *  factory (`RequestOptions.body` as a function) that threw before `fetch`
@@ -54,6 +69,11 @@ class RollingWindow {
 		const bucket = this.currentBucket(now);
 		bucket.total++;
 		bucket.failures++;
+	}
+
+	failureCount(now: number = Date.now()): number {
+		this.prune(now);
+		return this.buckets.reduce((sum, b) => sum + b.failures, 0);
 	}
 
 	totalRequests(now: number = Date.now()): number {
@@ -148,6 +168,27 @@ export class CircuitBreaker {
 		if (this.activeTickets > 0) return false;
 		if (this.state === "closed") return true;
 		return now - this.openedAt >= (this.config.resetTimeoutMs ?? DEFAULT_RESET_TIMEOUT_MS);
+	}
+
+	/** Whether this breaker is enabled; a disabled one is never reported by `circuits()`. */
+	get enabled(): boolean {
+		return this.config.enabled === true;
+	}
+
+	/** Read-only view of the current state. Unlike `canRequest()`, it never
+	 *  performs the lazy open -> half-open transition. */
+	snapshot(): CircuitSnapshot {
+		const failures = this.window ? this.window.failureCount() : this.consecutiveFailures;
+		const snapshot: CircuitSnapshot = {
+			partition: this.partition,
+			state: this.state === "half-open" ? "half_open" : this.state,
+			failures,
+		};
+		if (this.state !== "closed") {
+			snapshot.openedAt = this.openedAt;
+			snapshot.nextAttemptAt = this.openedAt + (this.config.resetTimeoutMs ?? DEFAULT_RESET_TIMEOUT_MS);
+		}
+		return snapshot;
 	}
 
 	/** Mark a ticket as holding this breaker until the returned function is
@@ -397,5 +438,15 @@ export class CircuitBreakerRegistry {
 
 	delete(partitionName: string): void {
 		this.breakers.delete(partitionName);
+	}
+
+	/** Snapshots of every enabled breaker. Doesn't refresh last-access times,
+	 *  so observing a partition never keeps it from being evicted. */
+	getAll(): CircuitSnapshot[] {
+		const result: CircuitSnapshot[] = [];
+		for (const [, [cb]] of this.breakers) {
+			if (cb.enabled) result.push(cb.snapshot());
+		}
+		return result;
 	}
 }

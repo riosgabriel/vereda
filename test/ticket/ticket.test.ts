@@ -92,6 +92,36 @@ describe("Ticket", () => {
 		expect(updates).toEqual(["queued", "retrying", "done"]);
 	});
 
+	it("subscribe() on an already-done ticket yields one synthetic done update", async () => {
+		const { ticket, controller } = createTicket<{ id: number }>("t1");
+		controller.markDone({
+			success: true,
+			data: { id: 7 },
+			raw: new Response('{"id":7}', { status: 200 }),
+		});
+		const result = await ticket.toPromise();
+
+		const updates = [];
+		for await (const update of ticket.subscribe()) {
+			updates.push(update);
+		}
+
+		expect(updates).toEqual([{ type: "done", result }]);
+	});
+
+	it("subscribe() on an already-cancelled ticket yields one synthetic cancelled update", async () => {
+		const { ticket } = createTicket<string>("t1");
+		ticket.cancel();
+		await ticket.toPromise();
+
+		const updates = [];
+		for await (const update of ticket.subscribe()) {
+			updates.push(update);
+		}
+
+		expect(updates).toEqual([{ type: "cancelled" }]);
+	});
+
 	it("ignores illegal transition (pending -> retrying)", () => {
 		const { ticket, controller } = createTicket("t1");
 		controller.markRetrying(1, 100); // must go through queued first

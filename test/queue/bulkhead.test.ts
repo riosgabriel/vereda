@@ -44,6 +44,38 @@ describe("Bulkhead", () => {
 		await p1;
 	});
 
+	it("reports no running task after a task rejects", async () => {
+		const registry = new BulkheadRegistry({ concurrency: 1 });
+		const error = new Error("task failed");
+
+		await expect(registry.get("test").run(() => Promise.reject(error))).rejects.toBe(error);
+		expect(registry.getAll()).toMatchObject([{ name: "test", running: 0, queued: 0 }]);
+	});
+
+	it("releases a rejected task's slot and runs the queued task", async () => {
+		const registry = new BulkheadRegistry({ concurrency: 1 });
+		const bh = registry.get("test");
+		const error = new Error("task failed");
+		let rejectTask!: (reason: Error) => void;
+		let finishQueuedTask!: (value: string) => void;
+		const first = bh.run(() => new Promise<never>((_, reject) => (rejectTask = reject)));
+		const rejection = expect(first).rejects.toBe(error);
+		const queuedTask = vi.fn(() => new Promise<string>((resolve) => (finishQueuedTask = resolve)));
+		const second = bh.run(queuedTask);
+
+		expect(registry.getAll()).toMatchObject([{ name: "test", running: 1, queued: 1 }]);
+		expect(queuedTask).not.toHaveBeenCalled();
+
+		rejectTask(error);
+		await rejection;
+		expect(queuedTask).toHaveBeenCalledOnce();
+		expect(registry.getAll()).toMatchObject([{ name: "test", running: 1, queued: 0 }]);
+
+		finishQueuedTask("next task");
+		await expect(second).resolves.toBe("next task");
+		expect(registry.getAll()).toMatchObject([{ name: "test", running: 0, queued: 0 }]);
+	});
+
 	it("reports queue size for callers waiting on run() (regression: was reading the dead schedule() queue)", async () => {
 		const bh = new Bulkhead("test", { concurrency: 1 });
 		const slow = () => new Promise<void>((r) => setTimeout(r, 50));

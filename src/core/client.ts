@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { BulkheadRegistry, type BulkheadSnapshot, DEFAULT_PARTITION_TTL_MS } from "../queue/bulkhead.ts";
-import { type CircuitBreaker, CircuitBreakerRegistry } from "../queue/circuit-breaker.ts";
+import { type CircuitBreaker, CircuitBreakerRegistry, type CircuitSnapshot } from "../queue/circuit-breaker.ts";
 import { executeRequest, type MiddlewareFn } from "../queue/executor.ts";
 import { type RetryPolicyContext, shouldRetry } from "../queue/policy.ts";
 import { runRetryLoop } from "../queue/retry.ts";
@@ -905,6 +905,12 @@ export class HttpClient {
 	 *  and configured concurrency/maxQueueSize limits. */
 	partitions(): BulkheadSnapshot[] {
 		return this.bulkheads.getAll();
+	}
+
+	/** Return a snapshot of every partition's circuit breaker that is enabled
+	 *  and has seen a request. Empty when no breaker is configured. */
+	circuits(): CircuitSnapshot[] {
+		return this.circuitBreakers.getAll();
 	}
 
 	// ---------------------------------------------------------------------------

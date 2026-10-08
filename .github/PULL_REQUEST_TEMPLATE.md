@@ -15,3 +15,9 @@ Note anything that needs manual verification or isn't covered by tests.
 
 <!-- Delete this section if not applicable -->
 - [ ] Public API or behavior changes are documented (README / ONBOARDING / docs)
+
+## AI assistance
+
+<!-- See "AI-assisted and automated contributions" in CONTRIBUTING.md -->
+- [ ] An AI tool wrote a substantial part of this PR (that's fine — just tell us)
+- [ ] I've read the full diff and will respond to review myself
