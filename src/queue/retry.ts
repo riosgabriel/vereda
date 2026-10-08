@@ -374,7 +374,7 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 			signal?.removeEventListener("abort", onAbort);
 			resolve();
 		}, ms);
-		timer.unref();
+		timer.unref?.();
 		const onAbort = () => {
 			clearTimeout(timer);
 			reject(signal?.reason);

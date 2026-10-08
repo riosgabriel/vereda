@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `defaultPartition` client option: a `PartitionConfig` for every partition not listed in `partitions`, so many hosts can be tuned without listing each one. Merge order stays client → partition → request; a listed partition does not inherit from `defaultPartition`. Unset fields keep the built-in `concurrency: 5`, `maxQueueSize: 100` (#141).
 - `client.circuits()` returns a `CircuitSnapshot` for each enabled circuit breaker: its `partition`, `state` (`"closed"` | `"open"` | `"half_open"`), `failures`, and, unless closed, `openedAt`/`nextAttemptAt`. It's `[]` when no breaker is configured. Reading it never changes the breaker's state or keeps an idle partition alive (#140).
+- `@vereda/http/otel` entry point: `instrumentTracing(client, { tracer })` records one span per ticket and one child `CLIENT` span per attempt using the HTTP semantic conventions, injects `traceparent` into outgoing requests (`propagate: false` to opt out), and keeps credentials and, by default, query values out of `url.full`. `otelMetricsSink(meter)` records vereda's metrics as OpenTelemetry counters, a histogram and observable gauges. `@opentelemetry/api` is an optional peer dependency that only this entry point imports (#147).
 - `redirect` client option (`"follow"` | `"manual"`, default `"follow"`), set on every attempt's fetch init and exposed to middleware as `ctx.redirect`. fetch's `"error"` mode is rejected: its `TypeError` on a 3xx is indistinguishable from a network failure, so redirects would be retried and counted against the circuit breaker. With `"manual"`, a 3xx comes back as an `HttpError` whose `response` carries the `Location` header, so callers can vet each hop themselves.
 - Re-export `BulkheadSnapshot` from the public entry point `@vereda/http` (#138).
 
@@ -21,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - A retry whose delay (backoff or capped `Retry-After`) would run to or past `timeout.totalMs` is no longer slept on: the ticket fails right away with `DeadlineExceededError`, whose `cause` is the last attempt's error. Before, it slept until the deadline and then failed with the same error. `DeadlineExceededError` can therefore arrive before `totalMs` has elapsed (#143).
+
+### Changed
+
+- No more `node:events` or `node:crypto` imports, and timers are `unref()`'d only where the runtime supports it, so the package loads on Cloudflare Workers without `nodejs_compat`, and on other runtimes without Node builtins. Lifecycle and ticket events now use a small internal emitter that keeps the same behavior (a listener added twice runs twice, `off` removes the most recent registration, and a throwing listener can't break the others). A CI smoke test runs the built package in workerd (#146).
 
 ### Documentation
 
