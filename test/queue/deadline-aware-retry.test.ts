@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { HttpClient } from "../../src/core/client.ts";
 import { DeadlineExceededError, RetryableStatusError } from "../../src/core/errors.ts";
 import type { LifecycleEventMap } from "../../src/core/types.ts";
@@ -66,5 +66,61 @@ describe("deadline-aware retries (#143)", () => {
 
 		expect(result.success).toBe(true);
 		expect(fetchMock).toHaveBeenCalledTimes(2);
+	});
+
+	describe("when the deadline fires mid-retry", () => {
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		it("during a retry attempt, resolves DeadlineExceededError", async () => {
+			let calls = 0;
+			const fetchMock = vi.fn((_url: string, init: RequestInit) => {
+				calls++;
+				if (calls === 1) return Promise.resolve(busy());
+				return new Promise<Response>((_, reject) =>
+					init.signal?.addEventListener("abort", () => reject(init.signal?.reason)),
+				);
+			});
+			const client = HttpClient.create({
+				timeout: { attemptMs: 5_000, totalMs: 100 },
+				retry: { backoff: { baseDelayMs: 1, jitter: false } },
+				fetch: fetchMock as unknown as typeof globalThis.fetch,
+			});
+			const failures: LifecycleEventMap["failure"][] = [];
+			client.on("failure", (e) => failures.push(e));
+
+			const result = await client.get("http://example.test/hang").toPromise();
+
+			expect(fetchMock).toHaveBeenCalledTimes(2);
+			expect(!result.success && result.error).toBeInstanceOf(DeadlineExceededError);
+			expect(failures.map((e) => [e.error.kind, e.attempts])).toEqual([["deadline", 2]]);
+		});
+
+		it("during the backoff sleep, resolves DeadlineExceededError", async () => {
+			// The pre-sleep check compares against Date.now(), but the deadline is
+			// a timer. Timers can run late or tie, so the deadline timer can still
+			// win against a sleep the check let through. Faking only the timers
+			// reproduces that: the first attempt takes 900ms of timer time and no
+			// clock time, so the check sees 500ms of backoff fitting in 1s, while
+			// the sleep ends at 1400ms, after the deadline timer at 1000ms.
+			vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+			const fetchMock = vi.fn(() => new Promise<Response>((resolve) => setTimeout(() => resolve(busy()), 900)));
+			const client = HttpClient.create({
+				timeout: { attemptMs: 5_000, totalMs: 1_000 },
+				retry: { backoff: { baseDelayMs: 500, jitter: false } },
+				fetch: fetchMock as unknown as typeof globalThis.fetch,
+			});
+			const retries: LifecycleEventMap["retry"][] = [];
+			client.on("retry", (e) => retries.push(e));
+
+			const pending = client.get("http://example.test/slow").toPromise();
+			await vi.advanceTimersByTimeAsync(1_000);
+			const result = await pending;
+
+			expect(retries).toHaveLength(1);
+			expect(fetchMock).toHaveBeenCalledTimes(1);
+			expect(!result.success && result.error).toBeInstanceOf(DeadlineExceededError);
+		});
 	});
 });
