@@ -44,7 +44,7 @@ A dropped connection, a timeout, or a `503` on that request is retried up to thr
 | --- | --- | --- | --- |
 | [Why Vereda?](#why-vereda) | [Retries and backoff](#retries-and-backoff) | [Typed results](#typed-results) | [Design philosophy](#design-philosophy) |
 | [Quick start](#quick-start) | [Timeouts](#timeouts) | [Error handling](#error-handling) | [Documentation](#documentation) |
-| [Example: one failing dependency](#example-one-failing-dependency) | [Bulkhead isolation](#bulkhead-isolation) | [Middleware](#middleware) | [Versioning and support](#versioning-and-support) |
+| [Example](#example-one-failing-dependency) | [Bulkhead isolation](#bulkhead-isolation) | [Middleware](#middleware) | [Versioning](#versioning-and-support) |
 | [How it works](#how-it-works) | [Circuit breaker](#circuit-breaker) | [Custom fetch](#custom-fetch) | [Contributing](#contributing) |
 |  | [Cancellation](#cancellation) | [Lifecycle events](#lifecycle-events) | [Why the name?](#why-the-name) |
 |  | [Tickets](#tickets) | [Metrics](#metrics) | [License](#license) |
