@@ -40,29 +40,20 @@ A dropped connection, a timeout, or a `503` on that request is retried up to thr
 
 ## Contents
 
-- [Why Vereda?](#why-vereda)
-- [Quick start](#quick-start)
-- [Example: one failing dependency](#example-one-failing-dependency)
-- [How it works](#how-it-works)
-- [Features](#features)
-  - [Retries and backoff](#retries-and-backoff)
-  - [Timeouts](#timeouts)
-  - [Bulkhead isolation](#bulkhead-isolation)
-  - [Circuit breaker](#circuit-breaker)
-  - [Typed results](#typed-results)
-  - [Error handling](#error-handling)
-  - [Cancellation](#cancellation)
-  - [Tickets](#tickets)
-  - [Middleware](#middleware)
-  - [Custom fetch](#custom-fetch)
-  - [Lifecycle events](#lifecycle-events)
-  - [Metrics](#metrics)
-- [Design philosophy](#design-philosophy)
-- [Documentation](#documentation)
-- [Versioning and support](#versioning-and-support)
-- [Contributing](#contributing)
-- [Why the name?](#why-the-name)
-- [License](#license)
+| 🚀 Getting started | 🛡️ [Features](#features) | 📦 Project |
+| --- | --- | --- |
+| [Why Vereda?](#why-vereda) | [Retries and backoff](#retries-and-backoff) | [Design philosophy](#design-philosophy) |
+| [Quick start](#quick-start) | [Timeouts](#timeouts) | [Documentation](#documentation) |
+| [Example](#example-one-failing-dependency) | [Bulkhead isolation](#bulkhead-isolation) | [Versioning and support](#versioning-and-support) |
+| [How it works](#how-it-works) | [Circuit breaker](#circuit-breaker) | [Contributing](#contributing) |
+|  | [Typed results](#typed-results) | [Why the name?](#why-the-name) |
+|  | [Error handling](#error-handling) | [License](#license) |
+|  | [Cancellation](#cancellation) |  |
+|  | [Tickets](#tickets) |  |
+|  | [Middleware](#middleware) |  |
+|  | [Custom fetch](#custom-fetch) |  |
+|  | [Lifecycle events](#lifecycle-events) |  |
+|  | [Metrics](#metrics) |  |
 
 ## Why Vereda?
 
