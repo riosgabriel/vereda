@@ -77,6 +77,7 @@ Checks that found Vereda's real bugs (B1–B17 in the 1.0 review). Apply them to
 
 - **One terminal event, matching the result.** On every path (success, failure, cancel, deadline, `close()`, a throw inside the attempt), exactly one of `success`/`failure`/`cancelled` fires and agrees with the ticket's `Result` (B7).
 - **Every exit releases what it took.** Bulkhead/semaphore slots, circuit-breaker half-open slots, timers, abort listeners and an unconsumed `response.body` are released on cancel/deadline/timeout paths too, not just on success (B1, B9, B13).
+- **An attempt ends when its signal aborts**, even if the transport ignores the signal: `settleOnAbort` in `src/queue/executor.ts` stops waiting on `fetch`/middleware, and cancels the body of a Response that arrives afterwards. Without it, cancel/`attemptMs`/`totalMs` would wait on the transport, and the ticket's terminal event would never fire (#181).
 - **User callbacks can't change outcomes.** A throwing `ticket.on(...)`, `client.on(...)` listener or `MetricsSink` must not turn a success into a failure or leave `toPromise()` unsettled (B2, B3). Route them through `emit()`/`reportCallbackError`.
 - **URLs are redacted before leaving the client.** Anything that reaches events, logs or error messages goes through `logUrl()`/`redactUrl()` (B5).
 - **Sample state where it changes.** A gauge or snapshot read at emit time sees different values depending on whether the call site ran `cleanup()` first (B15); report it where the state mutates.

@@ -128,7 +128,7 @@ export async function executeRequest(req: ExecuteRequest, middleware: Middleware
 
 	let response: Response;
 	try {
-		response = await composed(ctx);
+		response = await settleOnAbort(composed(ctx), attemptSignal);
 		// An abort may land after fetch resolves but before this check runs
 		// (e.g. while middleware post-processes the response). The attempt is
 		// abandoned, so release its body: a transport that ignores the signal
@@ -357,6 +357,50 @@ export function parseRetryAfter(header: string | null): number | undefined {
 	const parsed = Date.parse(trimmed);
 	if (Number.isNaN(parsed)) return undefined;
 	return Math.max(0, parsed - Date.now());
+}
+
+/** `pending`, but it rejects with `signal.reason` as soon as `signal` aborts.
+ *  Ending the attempt relies on the transport honoring the signal otherwise:
+ *  a custom `fetch` or middleware that drops it would leave the attempt
+ *  pending forever, past `attemptMs`, `totalMs` and `cancel()`, so the ticket's
+ *  terminal event would never fire (#181). The abandoned promise is left to
+ *  settle on its own; a Response it resolves to later has its body cancelled,
+ *  so the connection is released (B13). */
+function settleOnAbort(pending: Promise<Response>, signal: AbortSignal): Promise<Response> {
+	const release = () => {
+		void discard(pending);
+	};
+	if (signal.aborted) {
+		release();
+		return Promise.reject(signal.reason);
+	}
+	return new Promise((resolve, reject) => {
+		const onAbort = () => {
+			release();
+			reject(signal.reason);
+		};
+		signal.addEventListener("abort", onAbort, { once: true });
+		pending.then(
+			(response) => {
+				signal.removeEventListener("abort", onAbort);
+				resolve(response);
+			},
+			(err: unknown) => {
+				signal.removeEventListener("abort", onAbort);
+				reject(err);
+			},
+		);
+	});
+}
+
+/** Waits out an abandoned fetch: cancels the body of a Response it resolves
+ *  to, and swallows a rejection nobody is listening for anymore. */
+async function discard(pending: Promise<Response>): Promise<void> {
+	try {
+		await (await pending).body?.cancel();
+	} catch {
+		// Abandoned: a late failure or a failed cancel has no one to report to.
+	}
 }
 
 /** `response.json()`, but the read stops when `signal` aborts. `json()` alone
