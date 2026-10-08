@@ -40,14 +40,15 @@ A dropped connection, a timeout, or a `503` on that request is retried up to thr
 
 ## Contents
 
-| 🚀 Start | 🛡️ Resilience | 🔌 API & observability | 📦 Project |
-| --- | --- | --- | --- |
-| [Why Vereda?](#why-vereda) | [Retries and backoff](#retries-and-backoff) | [Typed results](#typed-results) | [Design philosophy](#design-philosophy) |
-| [Quick start](#quick-start) | [Timeouts](#timeouts) | [Error handling](#error-handling) | [Documentation](#documentation) |
-| [Example](#example-one-failing-dependency) | [Bulkhead isolation](#bulkhead-isolation) | [Middleware](#middleware) | [Versioning](#versioning-and-support) |
-| [How it works](#how-it-works) | [Circuit breaker](#circuit-breaker) | [Custom fetch](#custom-fetch) | [Contributing](#contributing) |
-|  | [Cancellation](#cancellation) | [Lifecycle events](#lifecycle-events) | [Why the name?](#why-the-name) |
-|  | [Tickets](#tickets) | [Metrics](#metrics) | [License](#license) |
+| | | |
+| --- | --- | --- |
+| **[Retries and backoff](#retries-and-backoff)**<br>Jittered exponential retries for transient failures | **[Timeouts](#timeouts)**<br>Per-attempt timeout plus an optional total deadline | **[Bulkhead isolation](#bulkhead-isolation)**<br>A concurrency limit and queue per host |
+| **[Circuit breaker](#circuit-breaker)**<br>Stop calling a host that is clearly failing | **[Cancellation](#cancellation)**<br>Cancel from the ticket or an `AbortSignal` | **[Tickets](#tickets)**<br>Await, subscribe to, or cancel a request |
+| **[Typed results](#typed-results)**<br>Validate the body with any `parse` function | **[Error handling](#error-handling)**<br>A closed error hierarchy with a literal `kind` | **[Middleware](#middleware)**<br>Onion-style hooks around every attempt |
+| **[Custom fetch](#custom-fetch)**<br>Swap `globalThis.fetch` for your own | **[Lifecycle events](#lifecycle-events)**<br>Typed client-wide events for logging | **[Metrics](#metrics)**<br>Counters, histograms and gauges to any sink |
+
+**Start:** [Why Vereda?](#why-vereda) · [Quick start](#quick-start) · [Example](#example-one-failing-dependency) · [How it works](#how-it-works)  
+**Project:** [Design philosophy](#design-philosophy) · [Documentation](#documentation) · [Versioning](#versioning-and-support) · [Contributing](#contributing) · [Why the name?](#why-the-name) · [License](#license)
 
 ## Why Vereda?
 
