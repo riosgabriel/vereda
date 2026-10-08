@@ -112,6 +112,24 @@ describe("a transport that ignores the abort signal (#181)", () => {
 		expect(bodyCancelled).toBe(true);
 	});
 
+	it("ends an attempt whose signal aborted before the transport returned", async () => {
+		const controller = new AbortController();
+		const client = HttpClient.create({ timeout: { attemptMs: 60_000 }, fetch: deafFetch });
+		// Aborts synchronously, so the signal is already aborted by the time
+		// the pending transport promise is handed back to the executor.
+		client.use(async (ctx, next) => {
+			controller.abort();
+			return next(ctx);
+		});
+		const events = trackEvents(client);
+
+		const result = await client.get("https://api.example.com/slow", { signal: controller.signal }).toPromise();
+		await tick(5);
+
+		expect(!result.success && result.error).toBeInstanceOf(CancelledError);
+		expect(events).toEqual(["request", "cancelled"]);
+	});
+
 	it("doesn't surface a late rejection as unhandled", async () => {
 		let fail!: (err: Error) => void;
 		const fetch = (() => new Promise<Response>((_, reject) => (fail = reject))) as typeof globalThis.fetch;
