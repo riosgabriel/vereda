@@ -11,13 +11,13 @@ export type RetryPolicy = (error: AppError, attempt: number, ctx: RetryPolicyCon
 
 export const RETRIABLE_KINDS: ReadonlySet<AppError["kind"]> = new Set(["network", "timeout", "retryable_status"]);
 
-const IDEMPOTENT_METHODS = new Set(["GET", "HEAD", "OPTIONS", "PUT", "DELETE", "TRACE"]);
+const IDEMPOTENT_METHODS = new Set(["GET", "HEAD", "OPTIONS", "PUT", "DELETE"]);
 
 /**
  * The default retry policy (decision D3). An attempt is retried iff all hold:
  * 1. attempts so far < maxRetries + 1 (enforced by the retry loop bounds)
  * 2. error `kind` ∈ {network, timeout, retryable_status}
- * 3. method is idempotent (GET HEAD OPTIONS PUT DELETE TRACE) OR
+ * 3. method is idempotent (GET HEAD OPTIONS PUT DELETE) OR
  *    `ctx.idempotent === true` OR the request has an `Idempotency-Key` header
  * 4. user `retryWhen` (consulted separately via `shouldRetry`) returns true
  * 5. the request is not cancelled / past its deadline (handled elsewhere)

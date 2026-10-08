@@ -1,3 +1,4 @@
+export type { BulkheadSnapshot } from "../queue/bulkhead.ts";
 export type { RetryPolicy, RetryPolicyContext } from "../queue/policy.ts";
 export { defaultRetryPolicy } from "../queue/policy.ts";
 export type { TicketStatus, TicketUpdate } from "../ticket/ticket.ts";

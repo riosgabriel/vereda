@@ -64,15 +64,22 @@ export function validateConfig(config: ClientConfig): void {
 	}
 }
 
-/** Validates a single request's own `timeout`/`retry` options — the raw
+const FORBIDDEN_METHODS = new Set(["TRACE", "CONNECT", "TRACK"]);
+
+/** Validates a single request's method and `timeout`/`retry` options — the raw
  *  values passed to `client.get()`/`.post()`/etc., before they're merged onto
- *  partition/client defaults. Reuses the same rules as `validateConfig`, so
- *  an invalid request-level value (e.g. `timeout: { attemptMs: -5 }`) is
- *  rejected the same way an invalid client config is, just surfaced as a
- *  ticket `ConfigurationError` instead of a throw from `create()`. Omitted
- *  fields stay valid (inherit the client/partition default), and `Infinity`
- *  stays a legal explicit `attemptMs`/`totalMs`. */
-export function validateRequestOptions(options: Pick<RequestOptions, "timeout" | "retry">): void {
+ *  partition/client defaults. Rejects forbidden HTTP methods (`TRACE`, `CONNECT`,
+ *  `TRACK`), and reuses the same rules as `validateConfig`, so an invalid request-level
+ *  value (e.g. `timeout: { attemptMs: -5 }`) is rejected the same way an invalid client
+ *  config is, just surfaced as a ticket `ConfigurationError` instead of a throw from
+ *  `create()`. Omitted fields stay valid (inherit the client/partition default), and
+ *  `Infinity` stays a legal explicit `attemptMs`/`totalMs`. */
+export function validateRequestOptions(options: Pick<RequestOptions, "timeout" | "retry" | "method">): void {
+	if (options.method && FORBIDDEN_METHODS.has(options.method.toUpperCase())) {
+		throw new ConfigurationError(
+			`HTTP method '${options.method.toUpperCase()}' is forbidden by the Fetch specification`,
+		);
+	}
 	validateTimeoutConfig(options.timeout, "request.timeout");
 	validateRetryConfig(options.retry, "request.retry");
 }
