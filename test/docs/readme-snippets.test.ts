@@ -130,6 +130,7 @@ function writeTsconfig(dir: string): string {
 				"@vereda/http": [path.join(repoRoot, "src/core/index.ts")],
 				"@vereda/http/middleware": [path.join(repoRoot, "src/middleware/index.ts")],
 				"@vereda/http/zod": [path.join(repoRoot, "src/adapters/zod.ts")],
+				"@vereda/http/otel": [path.join(repoRoot, "src/otel/index.ts")],
 			},
 		},
 		include: ["*.ts"],

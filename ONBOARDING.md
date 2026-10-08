@@ -73,6 +73,7 @@ The ticket settles with a `Result`, and the client emits `success`/`failure` lif
 | --- | --- |
 | Add or change middleware | `src/middleware/index.ts` (`defaultHeaders`, `requestLogger`) + `composeMiddleware` in `src/queue/executor.ts` |
 | Add a schema-validation adapter | `src/adapters/zod.ts` (`withZod`) + the `parse` path in `src/queue/executor.ts` |
+| Change OpenTelemetry tracing or metrics | `src/otel/index.ts` (`instrumentTracing`, `otelMetricsSink`), built on lifecycle events, middleware, and `MetricsSink` |
 | Understand observability | `client.on`/`off`/`emit` in `src/core/client.ts`; `Ticket.subscribe()` in `src/ticket/ticket.ts` |
 | See expected behavior | The tests — `test/core/client.integration.test.ts` is the best end-to-end read |
 | See the public API surface | `src/core/index.ts` |

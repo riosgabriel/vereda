@@ -34,6 +34,7 @@ logger in `src/middleware/index.ts`. Both sites carry `biome-ignore` comments ex
 - **Everything outside `src/` is typechecked separately**: `tsconfig.json` drives the `dist/` build, so it covers `src/` only — tests must not ship in `dist/`, and neither must examples. `npm run typecheck` therefore runs three legs: `tsconfig.json` (src), `tsconfig.test.json` (src + test + `scripts/` + `vitest.config.ts`), and `examples/tsconfig.json`. Adding a top-level directory of `.ts` files without adding a leg means nothing typechecks it.
 - **Editors need a `tsconfig.json` they can find**: they look only for the nearest file with that exact name, never `tsconfig.test.json`. A file outside every project lands in an inferred one with no `types: ["node"]`, which shows up as `node:` imports failing to resolve. `test/tsconfig.json` exists solely to point editors at the right project; `examples/tsconfig.json` doubles as the CI leg.
 - **Zod boundary**: zod is an optional peer dependency. Only `src/adapters/zod.ts` may import it; `src/core/` must stay zod-free.
+- **OpenTelemetry boundary**: `@opentelemetry/api` is an optional peer dependency. Only `src/otel/` may import it; `src/core/` must stay OTel-free.
 - **`typescript` is pinned to `^6.0.0`, not the current major.** TypeScript 7 removed the classic `require("typescript")` compiler-API surface (only `version`/`versionMajorMinor` remain), which breaks TypeDoc and likely other tooling that introspects the AST. The `src/` code itself already typechecks clean under 7 — CI's `typecheck-next` job tracks that on every push, `continue-on-error`, uninvolved in the `ci` gate — so bump the pin once the doc-tooling ecosystem catches up, not before.
 - **`dist/` is a gitignored** build artifact — never edit `dist/`.
 - **`bun.lock` is the only lockfile.** Install with `bun install`; CI uses `bun install --frozen-lockfile`. Do not run `npm install` — it ignores `bun.lock` and writes a `package-lock.json` (now gitignored). There is no `prepare` script — installing does not build `dist/` or set up git hooks; run `npm run build` and `npx husky` yourself (see CONTRIBUTING.md).
@@ -43,13 +44,14 @@ logger in `src/middleware/index.ts`. Both sites carry `biome-ignore` comments ex
 
 ## Architecture
 
-Three public entry points, mirrored by `package.json` `exports`:
+Four public entry points, mirrored by `package.json` `exports`:
 
 | Export | Source | Notes |
 | --- | --- | --- |
 | `.` | `src/core/index.ts` | `HttpClient`, `Ticket`, error classes, types |
 | `/middleware` | `src/middleware/index.ts` | onion middleware helpers |
 | `/zod` | `src/adapters/zod.ts` | `withZod` adapter (only zod import site) |
+| `/otel` | `src/otel/index.ts` | `instrumentTracing`, `otelMetricsSink` (only `@opentelemetry/api` import site) |
 
 Request flow: `client.get()` returns a `Ticket` synchronously → first attempt fires **outside** the bulkhead → only retries go through the per-host partition bulkhead (`src/queue/`). Behavioral invariants — preserve these when touching retry/queue logic:
 
@@ -117,3 +119,4 @@ An LLM can stand in for a library's docs website: interactively walk a new contr
 - Ticket ID generation: `src/core/nanoid.ts`
 - Middleware helpers: `src/middleware/index.ts`
 - Zod adapter (only zod import site): `src/adapters/zod.ts`
+- OpenTelemetry adapter (only `@opentelemetry/api` import site): `src/otel/index.ts`

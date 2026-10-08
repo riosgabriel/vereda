@@ -11,7 +11,8 @@
 		"paths": {
 			"@vereda/http": ["../src/core/index.ts"],
 			"@vereda/http/middleware": ["../src/middleware/index.ts"],
-			"@vereda/http/zod": ["../src/adapters/zod.ts"]
+			"@vereda/http/zod": ["../src/adapters/zod.ts"],
+			"@vereda/http/otel": ["../src/otel/index.ts"]
 		}
 	},
 	"include": ["**/*"]

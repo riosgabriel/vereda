@@ -2,11 +2,14 @@
 // through retry, events, ids, cancellation and the total deadline. It uses
 // only web-standard APIs and an injected fetch (no server), so the same file
 // runs on every runtime a host script loads it into.
-// One import per package entry point ("." "./middleware" "./zod"), so a
-// non-portable import in any of them fails here.
+// One import per package entry point ("." "./middleware" "./zod" "./otel"),
+// so a non-portable import in any of them fails here. The OTel entry also
+// loads its optional peer, @opentelemetry/api.
+import { metrics, trace } from "@opentelemetry/api";
 import { withZod } from "../../dist/adapters/zod.js";
 import { CancelledError, DeadlineExceededError, HttpClient } from "../../dist/core/index.js";
 import { defaultHeaders } from "../../dist/middleware/index.js";
+import { instrumentTracing, otelMetricsSink } from "../../dist/otel/index.js";
 
 /** First call per path answers 503, later calls 200 `{ ok: true }`; `/hang`
  *  never answers and rejects once the attempt's signal aborts. Records the
@@ -32,10 +35,14 @@ export async function smoke() {
 	const client = HttpClient.create({
 		baseUrl: "http://smoke.test",
 		fetch: fakeFetch(headersSeen),
+		// No SDK is registered, so these are OTel's no-op meter and tracer:
+		// enough to run the adapters' code paths without exporting anything.
+		metrics: otelMetricsSink(metrics.getMeter("smoke")),
 		timeout: { attemptMs: 2_000 },
 		retry: { backoff: { baseDelayMs: 10, jitter: false } },
 	});
 	client.use(defaultHeaders({ "x-smoke": "1" }));
+	instrumentTracing(client, { tracer: trace.getTracer("smoke") });
 	const events = [];
 	for (const name of ["request", "retry", "success", "failure", "cancelled"]) {
 		client.on(name, () => events.push(name));

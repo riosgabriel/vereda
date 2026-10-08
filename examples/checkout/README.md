@@ -36,7 +36,7 @@ the breaker opened those calls failed instantly.
   reporting to the metrics sink it's given.
 - `metrics.ts` — a small in-memory `MetricsSink` that groups counters and
   durations by their `partition` tag, plus the table printer. It shows how
-  little a sink takes; `examples/otel.ts` is the production-shaped version.
+  little a sink takes; `examples/otel.ts` wires the ready-made OpenTelemetry sink and tracing from `@vereda/http/otel`.
 - `index.ts` — the driver and entry point. Starts everything in-process,
   fires a handful of checkouts at the real HTTP endpoint, prints what
   happened, then asserts the claims above and exits non-zero if any fail.
