@@ -40,33 +40,14 @@ A dropped connection, a timeout, or a `503` on that request is retried up to thr
 
 ## Contents
 
-| Section | What it covers |
-| --- | --- |
-| **🚀 Getting started** | |
-| [Why Vereda?](#why-vereda) | What plain `fetch` leaves for you to write |
-| [Quick start](#quick-start) | Install and make your first resilient request |
-| [Example: one failing dependency](#example-one-failing-dependency) | One host returning `503`s while the others keep working |
-| [How it works](#how-it-works) | The path a request takes through breaker, backoff and bulkhead |
-| **[🛡️ Features](#features)** | |
-| [Retries and backoff](#retries-and-backoff) | Transient failures on idempotent requests, retried with jittered exponential backoff |
-| [Timeouts](#timeouts) | A per-attempt timeout plus an optional deadline across all attempts |
-| [Bulkhead isolation](#bulkhead-isolation) | A concurrency limit and queue per host, so one slow host can't starve the rest |
-| [Circuit breaker](#circuit-breaker) | Opt-in, per host: stop calling a host that is clearly failing |
-| [Typed results](#typed-results) | Validate and type the response body with any `parse` function, such as Zod |
-| [Error handling](#error-handling) | A closed error hierarchy with a literal `kind` to switch on |
-| [Cancellation](#cancellation) | Cancel from the ticket or with your own `AbortSignal` |
-| [Tickets](#tickets) | The handle every request returns: await it, subscribe to it, cancel it |
-| [Middleware](#middleware) | Onion-style hooks around every attempt, retries included |
-| [Custom fetch](#custom-fetch) | Swap `globalThis.fetch` for your own function |
-| [Lifecycle events](#lifecycle-events) | Typed client-wide events for logging and alerting |
-| [Metrics](#metrics) | Counters, histograms and gauges for OpenTelemetry, StatsD, Prometheus and others |
-| **📦 Project** | |
-| [Design philosophy](#design-philosophy) | The trade-offs behind the defaults |
-| [Documentation](#documentation) | Operations guide and API reference |
-| [Versioning and support](#versioning-and-support) | SemVer policy and supported Node versions |
-| [Contributing](#contributing) | How to get started on the codebase |
-| [Why the name?](#why-the-name) | Where "Vereda" comes from |
-| [License](#license) | MIT |
+| 🚀 Start | 🛡️ Resilience | 🔌 API & observability | 📦 Project |
+| --- | --- | --- | --- |
+| [Why Vereda?](#why-vereda) | [Retries and backoff](#retries-and-backoff) | [Typed results](#typed-results) | [Design philosophy](#design-philosophy) |
+| [Quick start](#quick-start) | [Timeouts](#timeouts) | [Error handling](#error-handling) | [Documentation](#documentation) |
+| [Example](#example-one-failing-dependency) | [Bulkhead isolation](#bulkhead-isolation) | [Middleware](#middleware) | [Versioning](#versioning-and-support) |
+| [How it works](#how-it-works) | [Circuit breaker](#circuit-breaker) | [Custom fetch](#custom-fetch) | [Contributing](#contributing) |
+|  | [Cancellation](#cancellation) | [Lifecycle events](#lifecycle-events) | [Why the name?](#why-the-name) |
+|  | [Tickets](#tickets) | [Metrics](#metrics) | [License](#license) |
 
 ## Why Vereda?
 
