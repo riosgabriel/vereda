@@ -1,108 +1,32 @@
-import { HttpClient, type MetricsSink, type MetricTags } from "@vereda/http";
+import { metrics, trace } from "@opentelemetry/api";
+import { HttpClient } from "@vereda/http";
+import { instrumentTracing, otelMetricsSink } from "@vereda/http/otel";
 
 // ---------------------------------------------------------------------------
-// Example: wiring vereda metrics into OpenTelemetry
+// Example: wiring vereda into OpenTelemetry with @vereda/http/otel
 // ---------------------------------------------------------------------------
-
-/**
- * Adapts vereda's MetricsSink to OpenTelemetry meters.
- *
- * Usage:
- *   import { metrics } from "@opentelemetry/api"
- *   const sink = createOtelMetricsSink(metrics)
- *   const client = HttpClient.create({ timeout: { attemptMs: 5_000 }, metrics: sink })
- */
-export function createOtelMetricsSink(otelMeter?: {
-	createCounter: (
-		name: string,
-		opts?: { description?: string },
-	) => {
-		add: (value: number, attrs?: Record<string, string>) => void;
-	};
-	createHistogram: (
-		name: string,
-		opts?: { description?: string; unit?: string },
-	) => {
-		record: (value: number, attrs?: Record<string, string>) => void;
-	};
-	createObservableGauge: (
-		name: string,
-		opts?: { description?: string },
-	) => {
-		addCallback: (cb: (gauge: { observe: (attrs?: Record<string, string>) => number }) => void) => void;
-	};
-}): MetricsSink {
-	if (!otelMeter) {
-		// Return a no-op sink if no meter is provided
-		return {
-			counter() {},
-			histogram() {},
-			gauge() {},
-		};
-	}
-
-	const requestCounter = otelMeter.createCounter("vereda.requests", {
-		description: "Total vereda requests initiated",
-	});
-	const retryCounter = otelMeter.createCounter("vereda.retries", {
-		description: "Total vereda retries executed",
-	});
-	const durationHistogram = otelMeter.createHistogram("vereda.duration_ms", {
-		description: "Request duration in milliseconds",
-		unit: "ms",
-	});
-
-	return {
-		counter(name: string, value: number, tags?: MetricTags) {
-			if (name === "vereda.requests") {
-				requestCounter.add(value, tags);
-			} else if (name === "vereda.retries") {
-				retryCounter.add(value, tags);
-			}
-		},
-		histogram(name: string, value: number, tags?: MetricTags) {
-			if (name === "vereda.duration_ms") {
-				durationHistogram.record(value, tags);
-			}
-		},
-		gauge(_name: string, _value: number, _tags?: MetricTags) {
-			// Gauges (in_flight, queue_depth) require observable gauges in OTel,
-			// which need a callback registration pattern — skipped for simplicity.
-		},
-	};
-}
-
-// ---------------------------------------------------------------------------
-// Minimal usage example
-// ---------------------------------------------------------------------------
+//
+// Register an OpenTelemetry SDK (tracer and meter providers, a propagator and
+// exporters) the usual way before this runs. Without one, `trace` and
+// `metrics` hand back no-op implementations, so this example runs as-is and
+// simply records nothing.
 
 async function main() {
-	const sink: MetricsSink = {
-		counter(name, value, tags) {
-			console.log(`[counter] ${name} +${value}`, tags);
-		},
-		histogram(name, value, tags) {
-			console.log(`[histogram] ${name} ${value}ms`, tags);
-		},
-		gauge(name, value, tags) {
-			console.log(`[gauge] ${name} = ${value}`, tags);
-		},
-	};
-
 	const client = HttpClient.create({
 		baseUrl: "https://httpbin.org",
 		timeout: { attemptMs: 5_000 },
-		metrics: sink,
 		retry: { maxRetries: 1 },
+		metrics: otelMetricsSink(metrics.getMeter("vereda-example")),
 	});
 
-	const result = await client.get("/get").toPromise();
-	if (result.success) {
-		console.log("Status:", result.raw.status);
-	} else {
-		console.error("Error:", result.error.kind);
-	}
+	// Register after any client.use() middleware of your own, so each attempt
+	// span times the request itself and traceparent is injected last.
+	const stop = instrumentTracing(client, { tracer: trace.getTracer("vereda-example") });
 
+	const result = await client.get("/get").toPromise();
+	console.log(result.success ? `Status: ${result.raw.status}` : `Error: ${result.error.kind}`);
+
+	stop();
 	await client.close();
 }
 

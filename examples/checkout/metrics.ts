@@ -8,7 +8,8 @@ import { METRICS, type MetricsSink, type MetricTags } from "@vereda/http";
 // metric name, a value, and tags. This one just keeps counters and histogram
 // samples in memory, keyed by the `partition` tag, so the driver can print a
 // per-dependency table at the end. In production you'd forward the same calls
-// to OpenTelemetry, StatsD, Prometheus… — see examples/otel.ts for an adapter.
+// to OpenTelemetry, StatsD, Prometheus… — for OpenTelemetry, see examples/otel.ts
+// and the ready-made sink in @vereda/http/otel.
 
 export interface PartitionStats {
 	requests: number;

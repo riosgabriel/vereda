@@ -1,6 +1,6 @@
 {
 	"$schema": "https://typedoc.org/schema.json",
-	"entryPoints": ["src/core/index.ts", "src/middleware/index.ts", "src/adapters/zod.ts"],
+	"entryPoints": ["src/core/index.ts", "src/middleware/index.ts", "src/adapters/zod.ts", "src/otel/index.ts"],
 	"out": "docs-site",
 	"name": "Vereda",
 	"readme": "README.md",

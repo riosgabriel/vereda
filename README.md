@@ -645,7 +645,32 @@ const client = HttpClient.create({ timeout: { attemptMs: 5_000 }, metrics });
 | `vereda.queue_depth` | gauge | `partition` |
 | `vereda.in_flight`, `vereda.global_queue_depth` | gauge | none |
 
-Because everything that concerns a single dependency is tagged with `partition` (its host, unless you set one), one struggling upstream gets its own line on a graph instead of being averaged into all the others. [`examples/otel.ts`](examples/otel.ts) is an OpenTelemetry adapter, and the [operations guide](docs/operations.md#wiring-a-metrics-sink) covers each metric in detail and how to read the queue-depth gauges.
+Because everything that concerns a single dependency is tagged with `partition` (its host, unless you set one), one struggling upstream gets its own line on a graph instead of being averaged into all the others. For OpenTelemetry, use the ready-made sink below. The [operations guide](docs/operations.md#wiring-a-metrics-sink) covers each metric in detail and how to read the queue-depth gauges.
+
+### OpenTelemetry
+
+`@vereda/http/otel` connects a client to OpenTelemetry. It needs `@opentelemetry/api` (an optional peer dependency; only this entry point imports it) and an SDK you set up as usual:
+
+```typescript
+import { metrics, trace } from "@opentelemetry/api";
+import { HttpClient } from "@vereda/http";
+import { instrumentTracing, otelMetricsSink } from "@vereda/http/otel";
+
+const client = HttpClient.create({
+  timeout: { attemptMs: 5_000 },
+  metrics: otelMetricsSink(metrics.getMeter("checkout")),
+});
+
+// After your own client.use() calls, so the attempt span sits closest to fetch.
+const stop = instrumentTracing(client, { tracer: trace.getTracer("checkout") });
+```
+
+- **Traces:** one span per ticket covering queueing, every attempt and backoff, with a child `CLIENT` span per attempt. Attributes follow the HTTP semantic conventions (`http.request.method`, `url.full`, `http.response.status_code`, `http.request.resend_count` on retries, `error.type`), and each retry adds a `vereda.retry` event to the ticket span. A cancelled ticket keeps an unset status.
+- **Propagation:** each attempt's `traceparent` (through your registered propagator) is injected into the request headers, so downstream services join the trace. Turn it off with `propagate: false`.
+- **Redaction:** `url.full` never contains credentials, and query values are replaced with `[redacted]` unless you pass `redactQuery: false`. Attempt errors are recorded by type only, since an error message can contain a URL.
+- **Metrics:** `otelMetricsSink` records the [metrics above](#metrics) as OpenTelemetry counters, a histogram (unit `ms`) and observable gauges.
+
+`stop()` ends any open ticket spans and stops recording. The attempt middleware stays registered, since middleware can't be removed, but it no longer records anything.
 
 ## Design philosophy
 
@@ -666,7 +691,7 @@ Because everything that concerns a single dependency is tagged with `partition` 
 
 ## Versioning and support
 
-Vereda follows [Semantic Versioning](https://semver.org/) from `1.0.0` onward: breaking changes land only in a major version, and anything scheduled for removal is deprecated in a minor release first and noted in [CHANGELOG.md](CHANGELOG.md) before it goes. The public surface is exactly what `src/core/index.ts`, `src/middleware/index.ts`, and `src/adapters/zod.ts` export — anything under `src/queue/` and `src/ticket/` that those entry points don't re-export is internal, even though it's readable source.
+Vereda follows [Semantic Versioning](https://semver.org/) from `1.0.0` onward: breaking changes land only in a major version, and anything scheduled for removal is deprecated in a minor release first and noted in [CHANGELOG.md](CHANGELOG.md) before it goes. The public surface is exactly what `src/core/index.ts`, `src/middleware/index.ts`, `src/adapters/zod.ts`, and `src/otel/index.ts` export — anything under `src/queue/` and `src/ticket/` that those entry points don't re-export is internal, even though it's readable source.
 
 **Node support:** the currently supported line is whatever `engines.node` in `package.json` declares (`>=22` today); CI runs the full suite against Node 22 and 24 on every change, so those two are the versions actually verified. The floor moves only in a major release.
 
@@ -676,7 +701,7 @@ Vereda follows [Semantic Versioning](https://semver.org/) from `1.0.0` onward: b
 | --- | --- | --- |
 | Node 22, 24 | Supported | Full test suite in CI |
 | Bun | Supported | Full test suite in CI |
-| Cloudflare Workers | Supported, no `nodejs_compat` needed | CI smoke test loads the built package into workerd and drives every entry point ([`scripts/smoke/`](scripts/smoke/)) |
+| Cloudflare Workers | Supported, no `nodejs_compat` needed | CI smoke test loads the built package into workerd and drives every entry point ([`scripts/smoke/workers.mjs`](scripts/smoke/workers.mjs)) |
 | Deno | Expected to work | Manual smoke test (`deno run scripts/smoke/deno.mjs`); not in CI |
 | Browsers | Expected to work | Not tested |
 

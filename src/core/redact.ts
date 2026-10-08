@@ -17,8 +17,14 @@ const USERINFO = /^([a-zA-Z][a-zA-Z\d+.-]*:\/\/)[^/?#]*@/;
  * URLs with neither are returned unchanged.
  */
 export function redactUrl(url: string): string {
-	const withoutUserinfo = url.replace(USERINFO, "$1[redacted]@");
-	return redactQueryValues(withoutUserinfo);
+	return redactQueryValues(redactUserinfo(url));
+}
+
+/** Replaces only userinfo credentials with `[redacted]`, leaving the query
+ *  intact — for callers that opted out of query redaction but must still
+ *  never expose credentials. */
+export function redactUserinfo(url: string): string {
+	return url.replace(USERINFO, "$1[redacted]@");
 }
 
 function redactQueryValues(url: string): string {
