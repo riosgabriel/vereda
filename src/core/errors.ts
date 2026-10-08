@@ -92,8 +92,8 @@ export class DeadlineExceededError extends RequestError {
 	public readonly url: string;
 	public readonly totalMs: number;
 
-	constructor(url: string, totalMs: number) {
-		super("deadline", `Request to ${url} exceeded total deadline of ${totalMs}ms`);
+	constructor(url: string, totalMs: number, cause?: unknown) {
+		super("deadline", `Request to ${url} exceeded total deadline of ${totalMs}ms`, cause);
 		this.url = url;
 		this.totalMs = totalMs;
 	}

@@ -167,6 +167,19 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 
 			// All retries get backoff. Every retry is gated by the policy check above.
 			const delayMs = resolveRetryDelay(lastError, backoffFn, attempt, backoffCap);
+
+			// A delay that runs to or past the whole-ticket deadline can only end
+			// in DeadlineExceededError, so fail now instead of sleeping first.
+			// Only the delay is compared, not delay + attemptMs: attemptMs is an
+			// upper bound, and a retry that answers quickly can still fit.
+			if (deadlineAt !== undefined && isBoundedMs(timeoutConfig.totalMs) && Date.now() + delayMs >= deadlineAt) {
+				onCleanup?.();
+				const error = new DeadlineExceededError(displayUrl, timeoutConfig.totalMs, lastError);
+				onFailure?.(error, totalAttempts, totalQueuedMs);
+				controller.markDone({ success: false, error } as never);
+				return;
+			}
+
 			onRetry?.(attempt, delayMs, lastError);
 			controller.markRetrying(attempt, delayMs);
 

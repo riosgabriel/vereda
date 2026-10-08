@@ -308,7 +308,7 @@ client.get("/reports/slow", { timeout: { attemptMs: 15_000 } });
 ```
 
 - `attemptMs` — a hard per-attempt timeout. The attempt is aborted with a `TimeoutError`, which is retryable. Required on the client-level `timeout` config — pass `Infinity` to explicitly opt out of a cap. Partition- and request-level `timeout` stay optional and inherit the client default.
-- `totalMs` — a deadline for the whole ticket, across every attempt and backoff delay. On expiry the in-flight attempt is aborted and the ticket resolves with a `DeadlineExceededError` (a `failure` event, not `cancelled`), which is terminal. Omit it (or pass `Infinity`) for no deadline.
+- `totalMs` — a deadline for the whole ticket, across every attempt and backoff delay. On expiry the in-flight attempt is aborted and the ticket resolves with a `DeadlineExceededError` (a `failure` event, not `cancelled`), which is terminal. When the next retry's delay (backoff or `Retry-After`) would run to or past the deadline, the ticket fails with that error right away instead of sleeping first, and `cause` holds the last attempt's error. Omit `totalMs` (or pass `Infinity`) for no deadline.
 
 The [operations guide](docs/operations.md) covers how to choose the two together.
 
@@ -448,7 +448,7 @@ Errors are a closed hierarchy under `RequestError`, and `AppError` is the union 
 | `HttpError` | `"http"` | Non-2xx response outside `retry.retryOnStatus` (e.g. `404`) | `statusCode`, `response` |
 | `RetryableStatusError` | `"retryable_status"` | Non-2xx response matching `retry.retryOnStatus` (e.g. `503`) | `statusCode`, `response` (status and headers only; its body was cancelled), `retryAfterMs?` |
 | `TimeoutError` | `"timeout"` | Attempt exceeded `timeout.attemptMs` | `url`, `timeoutMs` |
-| `DeadlineExceededError` | `"deadline"` | Ticket exceeded `timeout.totalMs` (terminal — not retried) | `url`, `totalMs` |
+| `DeadlineExceededError` | `"deadline"` | Ticket exceeded `timeout.totalMs`, or its next retry delay wouldn't fit before it (terminal — not retried) | `url`, `totalMs`, `cause` (last attempt's error, when a retry was skipped) |
 | `ValidationError` | `"validation"` | Response body failed `parse` or isn't valid JSON (terminal — never retried) | `issues`, `cause` |
 | `CancelledError` | `"cancelled"` | Ticket cancelled or signal aborted (terminal) | — |
 | `QueueFullError` | `"queue_full"` | A partition's retry queue, or the global queue (`partition: "global"`), was full (terminal) | `partition`, `queueSize`, `maxQueueSize` |

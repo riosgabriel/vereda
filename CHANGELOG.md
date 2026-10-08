@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Reject forbidden HTTP methods (`TRACE`, `CONNECT`, `TRACK`) up front with a `ConfigurationError` during request validation instead of letting them enter the retry loop client-side (#139).
 
+### Changed
+
+- A retry whose delay (backoff or capped `Retry-After`) would run to or past `timeout.totalMs` is no longer slept on: the ticket fails right away with `DeadlineExceededError`, whose `cause` is the last attempt's error. Before, it slept until the deadline and then failed with the same error. `DeadlineExceededError` can therefore arrive before `totalMs` has elapsed (#143).
+
 ### Documentation
 
 - README documents the `fetch` client option, with a security note: automatic redirects bypass dispatcher-level DNS guards for IP-literal targets, so SSRF-sensitive callers should use `redirect: "manual"` and follow hops themselves.
