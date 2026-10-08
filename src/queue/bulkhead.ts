@@ -1,5 +1,11 @@
 import { CancelledError, QueueFullError } from "../core/errors.ts";
-import { DEFAULT_CONCURRENCY, DEFAULT_MAX_QUEUE_SIZE, type PartitionConfig } from "../core/types.ts";
+import {
+	DEFAULT_CONCURRENCY,
+	DEFAULT_MAX_QUEUE_SIZE,
+	type PartitionConfig,
+	type PartitionLookup,
+	partitionLookup,
+} from "../core/types.ts";
 import type { Semaphore } from "./semaphore.ts";
 
 /** Default TTL (ms) before an idle partition registry entry (bulkhead or
@@ -191,20 +197,21 @@ export class BulkheadRegistry {
 	private readonly bulkheads = new Map<string, BulkheadEntry>();
 	private readonly ttlMs: number;
 	private readonly globalConfig: PartitionConfig;
-	private readonly partitionConfigs: Record<string, PartitionConfig>;
+	private readonly partitionConfig: PartitionLookup;
 	private readonly sweepInterval: number;
 	private readonly semaphore?: Semaphore;
 	private callCounter = 0;
 
 	constructor(
 		globalConfig: PartitionConfig = {},
-		partitionConfigs: Record<string, PartitionConfig> = {},
+		partitionConfigs: Record<string, PartitionConfig> | PartitionLookup = {},
 		ttlMs: number = DEFAULT_PARTITION_TTL_MS,
 		semaphore?: Semaphore,
 	) {
 		this.ttlMs = ttlMs;
 		this.globalConfig = globalConfig;
-		this.partitionConfigs = partitionConfigs;
+		this.partitionConfig =
+			typeof partitionConfigs === "function" ? partitionConfigs : partitionLookup(partitionConfigs);
 		this.sweepInterval = 10;
 		this.semaphore = semaphore;
 	}
@@ -213,7 +220,7 @@ export class BulkheadRegistry {
 		this.callCounter++;
 
 		if (!this.bulkheads.has(partitionName)) {
-			const partitionConfig = this.partitionConfigs[partitionName] ?? {};
+			const partitionConfig = this.partitionConfig(partitionName) ?? {};
 			const merged: PartitionConfig = {
 				...this.globalConfig,
 				...partitionConfig,

@@ -188,6 +188,22 @@ describe("validateRequestOptions", () => {
 			/request\.retry\.retryOnStatus must contain only integer HTTP error status codes/,
 		);
 	});
+
+	it("rejects forbidden HTTP methods (TRACE, CONNECT, TRACK)", () => {
+		expect(() => validateRequestOptions({ method: "TRACE" })).toThrow(ConfigurationError);
+		expect(() => validateRequestOptions({ method: "trace" })).toThrow(
+			/HTTP method 'TRACE' is forbidden by the Fetch specification/,
+		);
+		expect(() => validateRequestOptions({ method: "CONNECT" })).toThrow(ConfigurationError);
+		expect(() => validateRequestOptions({ method: "TRACK" })).toThrow(ConfigurationError);
+	});
+
+	it("accepts standard HTTP methods", () => {
+		expect(() => validateRequestOptions({ method: "GET" })).not.toThrow();
+		expect(() => validateRequestOptions({ method: "POST" })).not.toThrow();
+		expect(() => validateRequestOptions({ method: "PUT" })).not.toThrow();
+		expect(() => validateRequestOptions({ method: "DELETE" })).not.toThrow();
+	});
 });
 
 describe("validateConfig rejects NaN and non-integers (B11)", () => {

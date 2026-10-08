@@ -38,6 +38,18 @@ if (result.success) {
 
 A dropped connection, a timeout, or a `503` on that request is retried up to three times with jittered exponential backoff before your code sees an error. Reading `result.raw` afterwards is bounded too: the body read has to finish within the same `attemptMs` (counted from when the attempt started) and `totalMs` limits, or the read rejects with Vereda's own `TimeoutError` (attempt bound) or `DeadlineExceededError` (`totalMs` bound).
 
+## Contents
+
+| | | |
+| --- | --- | --- |
+| **[Retries and backoff](#retries-and-backoff)**<br>Jittered exponential retries for transient failures | **[Timeouts](#timeouts)**<br>Per-attempt timeout plus an optional total deadline | **[Bulkhead isolation](#bulkhead-isolation)**<br>A concurrency limit and queue per host |
+| **[Circuit breaker](#circuit-breaker)**<br>Stop calling a host that is clearly failing | **[Cancellation](#cancellation)**<br>Cancel from the ticket or an `AbortSignal` | **[Tickets](#tickets)**<br>Await, subscribe to, or cancel a request |
+| **[Typed results](#typed-results)**<br>Validate the body with any `parse` function | **[Error handling](#error-handling)**<br>A closed error hierarchy with a literal `kind` | **[Middleware](#middleware)**<br>Onion-style hooks around every attempt |
+| **[Custom fetch](#custom-fetch)**<br>Swap `globalThis.fetch` for your own | **[Lifecycle events](#lifecycle-events)**<br>Typed client-wide events for logging | **[Metrics](#metrics)**<br>Counters, histograms and gauges to any sink |
+
+**Start:** [Why Vereda?](#why-vereda) · [Quick start](#quick-start) · [Example](#example-one-failing-dependency) · [How it works](#how-it-works)  
+**Project:** [Design philosophy](#design-philosophy) · [Documentation](#documentation) · [Versioning](#versioning-and-support) · [Contributing](#contributing) · [Why the name?](#why-the-name) · [License](#license)
+
 ## Why Vereda?
 
 `fetch` makes one attempt. Everything after that is yours to write:
@@ -224,7 +236,7 @@ By default, a failed attempt is retried only when the error is transient **and**
 | Circuit open | `circuit_open` | Never |
 | Invalid configuration | `configuration` | Never |
 
-Idempotent means `GET`, `HEAD`, `OPTIONS`, `PUT`, `DELETE`, or `TRACE`. Non-idempotent methods (`POST`, `PATCH`, `CONNECT`) are not retried, since blindly repeating them could duplicate a side effect; opt in with `retry: { idempotent: true }` or by sending an `Idempotency-Key` header. The busy-status list is `retry.retryOnStatus`, and the underlying `defaultRetryPolicy` is exported for inspection, or to call from inside `retryWhen`.
+Idempotent means `GET`, `HEAD`, `OPTIONS`, `PUT`, or `DELETE`. Non-idempotent methods (`POST`, `PATCH`) are not retried, since blindly repeating them could duplicate a side effect; opt in with `retry: { idempotent: true }` or by sending an `Idempotency-Key` header. The busy-status list is `retry.retryOnStatus`, and the underlying `defaultRetryPolicy` is exported for inspection, or to call from inside `retryWhen`.
 
 `maxRetries: 0` disables retries entirely — a failed request resolves with its own error, unwrapped. When retries run out and the last failure was still transient, the ticket resolves with a `MaxRetriesExceededError` carrying the attempt count and the last underlying error. If an attempt fails with a non-retryable error, that error is returned as is.
 
@@ -319,6 +331,18 @@ const client = HttpClient.create({
 });
 ```
 
+A partition not listed under `partitions` uses `defaultPartition`, which takes the same fields. Use it to tune every other host at once. A listed partition doesn't inherit from it:
+
+```typescript
+import { HttpClient } from "@vereda/http";
+
+const client = HttpClient.create({
+  timeout: { attemptMs: 5_000 },
+  defaultPartition: { concurrency: 3, retry: { maxRetries: 1 } }, // every unlisted host
+  partitions: { "api.internal.com": { concurrency: 20 } }, // gets none of defaultPartition
+});
+```
+
 You can assign a partition explicitly, to isolate a group of requests (its own retry bulkhead, breaker, and `partitions[name]` config) or to group hosts. It doesn't prioritize anything:
 
 ```typescript
@@ -359,6 +383,21 @@ const client = HttpClient.create({
   },
 });
 ```
+
+`client.circuits()` returns a snapshot of every enabled breaker that has seen a request, and `[]` when none is configured. Each entry is a copy, so changing it has no effect on the breaker:
+
+```typescript
+import { HttpClient } from "@vereda/http";
+
+const client = HttpClient.create({ timeout: { attemptMs: 5_000 }, circuitBreaker: { enabled: true } });
+
+for (const { partition, state, failures, nextAttemptAt } of client.circuits()) {
+  // state: "closed" | "open" | "half_open"; openedAt/nextAttemptAt are set unless closed
+  console.log(partition, state, failures, nextAttemptAt);
+}
+```
+
+`failures` counts consecutive failures, or failures inside the rolling window when `window` is set. The move from open to half-open happens when a request arrives, so a breaker with no traffic stays `open` after `nextAttemptAt` has passed. The next request it admits becomes the half-open trial.
 
 ### Typed results
 
@@ -622,7 +661,7 @@ Because everything that concerns a single dependency is tagged with `partition` 
 
 ## Documentation
 
-- **[Operations guide](docs/operations.md)** — sizing concurrency and queues, `attemptMs` vs. `totalMs`, reading `partitions()`, wiring a metrics sink, the shutdown sequence, and log redaction.
+- **[Operations guide](docs/operations.md)** — sizing concurrency and queues, `attemptMs` vs. `totalMs`, reading `partitions()` and `circuits()`, wiring a metrics sink, the shutdown sequence, and log redaction.
 - **[API reference](https://riosgabriel.github.io/vereda/)** — generated from source via TypeDoc on every push to `main`; every public option documents its default.
 
 ## Versioning and support

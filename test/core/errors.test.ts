@@ -9,6 +9,7 @@ import {
 	isAppError,
 	MaxRetriesExceededError,
 	NetworkError,
+	NO_TIMEOUT_CONFIGURED,
 	QueueFullError,
 	RequestError,
 	RetryableStatusError,
@@ -39,6 +40,21 @@ describe("Error classes", () => {
 		const err = new TimeoutError("http://x", 500);
 		expect(err.kind).toBe("timeout");
 		expect(err).toBeInstanceOf(RequestError);
+	});
+
+	it("TimeoutError with NO_TIMEOUT_CONFIGURED says so and keeps the fields", () => {
+		const err = new TimeoutError("http://x", NO_TIMEOUT_CONFIGURED);
+		expect(err.message).toBe("Request to http://x timed out (no timeout configured)");
+		expect(err.kind).toBe("timeout");
+		expect(err.timeoutMs).toBe(NO_TIMEOUT_CONFIGURED);
+		expect(err.url).toBe("http://x");
+	});
+
+	it("TimeoutError with a positive timeout reports the ms value", () => {
+		const err = new TimeoutError("http://x", 500);
+		expect(err.message).toBe("Request to http://x timed out after 500ms");
+		expect(err.timeoutMs).toBe(500);
+		expect(err.url).toBe("http://x");
 	});
 
 	it("ValidationError has kind 'validation'", () => {

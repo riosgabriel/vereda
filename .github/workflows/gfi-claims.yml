@@ -1,0 +1,78 @@
+# Enforces the "claim before you PR" rule for good first issues
+# (CONTRIBUTING.md → "AI-assisted and automated contributions").
+#
+# SECURITY: this runs on `pull_request_target`, so it gets a write token even
+# for PRs from forks. That is only safe because it NEVER checks out or executes
+# the PR's code — it reads PR/issue metadata through the API and nothing else.
+# Do not add `actions/checkout` (or anything that runs repo code) to this job.
+name: good-first-issue claims
+
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  issues: read
+  pull-requests: write
+
+jobs:
+  check-claim:
+    # Maintainers and collaborators are exempt; so are first-party bots like Dependabot.
+    if: >-
+      !contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
+      && github.event.pull_request.user.type != 'Bot'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v9
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const author = pr.user.login;
+
+            // Issues the PR will close — covers "Fixes #N" in the body and
+            // issues linked through the sidebar.
+            const { repository } = await github.graphql(
+              `query($owner: String!, $repo: String!, $number: Int!) {
+                repository(owner: $owner, name: $repo) {
+                  pullRequest(number: $number) {
+                    closingIssuesReferences(first: 10) {
+                      nodes {
+                        number
+                        labels(first: 20) { nodes { name } }
+                        assignees(first: 10) { nodes { login } }
+                      }
+                    }
+                  }
+                }
+              }`,
+              { owner: context.repo.owner, repo: context.repo.repo, number: pr.number },
+            );
+
+            const gfiIssues = repository.pullRequest.closingIssuesReferences.nodes
+              .filter((i) => i.labels.nodes.some((l) => l.name === "good first issue"))
+              .map((i) => ({ number: i.number, assignees: i.assignees.nodes.map((a) => a.login) }));
+
+            // Unclaimed = the author isn't among the issue's assignees (logins are
+            // case-insensitive). Covers unassigned issues and ones claimed by someone
+            // else; being any one of several assignees counts. Stale claims (7+ days,
+            // no PR) are lifted by a maintainer unassigning, not decided here.
+            const me = author.toLowerCase();
+            const unclaimed = gfiIssues.filter((i) => !i.assignees.some((a) => a.toLowerCase() === me));
+
+            if (unclaimed.length === 0) {
+              core.info(`#${pr.number}: no unclaimed good first issues linked`);
+              return;
+            }
+
+            const refs = unclaimed.map((i) => `#${i.number}`).join(", ");
+            await github.rest.issues.createComment({
+              ...context.repo,
+              issue_number: pr.number,
+              body: [
+                `Thanks for the PR! ${refs} ${unclaimed.length === 1 ? "is a" : "are"} \`good first issue\`, and those need to be claimed before a PR is opened, so this one is being closed automatically.`,
+                "",
+                `To pick it up: comment on the issue asking for it, wait to be assigned, then open a new PR (or ask us to reopen this one). See [CONTRIBUTING.md](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/blob/main/CONTRIBUTING.md#ai-assisted-and-automated-contributions) for why.`,
+              ].join("\n"),
+            });
+            await github.rest.pulls.update({ ...context.repo, pull_number: pr.number, state: "closed" });
+            core.notice(`Closed #${pr.number} by @${author}: unclaimed ${refs}`);

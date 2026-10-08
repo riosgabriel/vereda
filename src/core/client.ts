@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { BulkheadRegistry, type BulkheadSnapshot, DEFAULT_PARTITION_TTL_MS } from "../queue/bulkhead.ts";
-import { type CircuitBreaker, CircuitBreakerRegistry } from "../queue/circuit-breaker.ts";
+import { type CircuitBreaker, CircuitBreakerRegistry, type CircuitSnapshot } from "../queue/circuit-breaker.ts";
 import { executeRequest, type MiddlewareFn } from "../queue/executor.ts";
 import { type RetryPolicyContext, shouldRetry } from "../queue/policy.ts";
 import { runRetryLoop } from "../queue/retry.ts";
@@ -28,14 +28,20 @@ import type {
 	Logger,
 	ParsedRequestOptions,
 	ParseFn,
-	PartitionConfig,
+	PartitionLookup,
 	RedirectMode,
 	RequestOptions,
 	RetryConfig,
 	TimeoutConfig,
 	UnparsedRequestOptions,
 } from "./types.ts";
-import { DEFAULT_GLOBAL_CONCURRENCY, DEFAULT_GLOBAL_QUEUE_SIZE, DEFAULT_MAX_RETRIES, isBoundedMs } from "./types.ts";
+import {
+	DEFAULT_GLOBAL_CONCURRENCY,
+	DEFAULT_GLOBAL_QUEUE_SIZE,
+	DEFAULT_MAX_RETRIES,
+	isBoundedMs,
+	partitionLookup,
+} from "./types.ts";
 import { validateConfig, validateRequestBody, validateRequestOptions } from "./validate.ts";
 
 /** Pairs an in-flight ticket with its cleanup function so that
@@ -54,7 +60,7 @@ export class HttpClient {
 	private readonly middlewares: MiddlewareFn[] = [];
 	private readonly bulkheads: BulkheadRegistry;
 	private readonly circuitBreakers: CircuitBreakerRegistry;
-	private readonly partitionConfigs: Record<string, PartitionConfig>;
+	private readonly partitionConfig: PartitionLookup;
 	private readonly logger: Logger | undefined;
 	private readonly metrics: MetricsSink | undefined;
 	private readonly redactQuery: boolean;
@@ -71,15 +77,15 @@ export class HttpClient {
 		this.redactQuery = config.redactQuery !== false;
 		this.customFetch = config.fetch;
 		this.redirect = config.redirect;
-		this.partitionConfigs = config.partitions ?? {};
+		this.partitionConfig = partitionLookup(config.partitions, config.defaultPartition);
 		const semaphore = new Semaphore(
 			config.concurrency ?? DEFAULT_GLOBAL_CONCURRENCY,
 			config.maxQueueSize ?? DEFAULT_GLOBAL_QUEUE_SIZE,
 		);
-		this.bulkheads = new BulkheadRegistry({}, this.partitionConfigs, DEFAULT_PARTITION_TTL_MS, semaphore);
+		this.bulkheads = new BulkheadRegistry({}, this.partitionConfig, DEFAULT_PARTITION_TTL_MS, semaphore);
 		this.circuitBreakers = new CircuitBreakerRegistry(
 			config.circuitBreaker ?? {},
-			this.partitionConfigs,
+			this.partitionConfig,
 			DEFAULT_PARTITION_TTL_MS,
 			(partition, state) => {
 				if (state === "open") {
@@ -901,6 +907,12 @@ export class HttpClient {
 		return this.bulkheads.getAll();
 	}
 
+	/** Return a snapshot of every partition's circuit breaker that is enabled
+	 *  and has seen a request. Empty when no breaker is configured. */
+	circuits(): CircuitSnapshot[] {
+		return this.circuitBreakers.getAll();
+	}
+
 	// ---------------------------------------------------------------------------
 	// Graceful shutdown
 	// ---------------------------------------------------------------------------
@@ -984,7 +996,7 @@ export class HttpClient {
 	}
 
 	private mergeTimeout(options: RequestOptions<unknown>, partitionName?: string): TimeoutConfig {
-		const partitionConfig = partitionName ? this.partitionConfigs[partitionName] : undefined;
+		const partitionConfig = partitionName ? this.partitionConfig(partitionName) : undefined;
 		return {
 			...this.config.timeout,
 			...partitionConfig?.timeout,
@@ -993,7 +1005,7 @@ export class HttpClient {
 	}
 
 	private mergeRetry(options: RequestOptions<unknown>, partitionName?: string): RetryConfig {
-		const partitionConfig = partitionName ? this.partitionConfigs[partitionName] : undefined;
+		const partitionConfig = partitionName ? this.partitionConfig(partitionName) : undefined;
 		return {
 			...this.config.retry,
 			...partitionConfig?.retry,
