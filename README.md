@@ -609,7 +609,7 @@ client.on("failure",   ({ ticketId, url, partition, attempts, durationMs, queued
 client.on("cancelled", ({ ticketId, url, partition, attempts, durationMs, queuedMs }) => {});
 ```
 
-`retry`'s `attempt` is a zero-based retry index (`0` = the first retry, after the initial attempt). `off(event, listener)` removes a listener with the same signature as `on`. A listener (or `metrics` sink) that throws never affects the request: every other listener still runs, and the error is rethrown on a microtask, so it surfaces through `process.on("uncaughtException")` the same way a throwing `EventEmitter` listener would.
+`retry`'s `attempt` is a zero-based retry index (`0` = the first retry, after the initial attempt). `off(event, listener)` removes a listener with the same signature as `on`. A listener (or `metrics` sink) that throws never affects the request: every other listener still runs, and the error is rethrown on a microtask, so it surfaces as an uncaught error: `process.on("uncaughtException")` on Node, the global `error` event on runtimes that have one.
 
 `queuedMs` is the total time this ticket spent waiting for a bulkhead/global-semaphore permit, summed across every attempt — it's `0` when a request never had to wait (the default global cap is 50 concurrent, so most single-service consumers never hit it). A consistently nonzero `queuedMs` relative to `durationMs` means you're throttled by `concurrency`/a partition's `concurrency`, not by downstream latency; see [Wiring a metrics sink](docs/operations.md#wiring-a-metrics-sink) for the companion `vereda.queue_depth` / `vereda.global_queue_depth` gauges.
 
@@ -669,6 +669,16 @@ Because everything that concerns a single dependency is tagged with `partition` 
 Vereda follows [Semantic Versioning](https://semver.org/) from `1.0.0` onward: breaking changes land only in a major version, and anything scheduled for removal is deprecated in a minor release first and noted in [CHANGELOG.md](CHANGELOG.md) before it goes. The public surface is exactly what `src/core/index.ts`, `src/middleware/index.ts`, and `src/adapters/zod.ts` export — anything under `src/queue/` and `src/ticket/` that those entry points don't re-export is internal, even though it's readable source.
 
 **Node support:** the currently supported line is whatever `engines.node` in `package.json` declares (`>=22` today); CI runs the full suite against Node 22 and 24 on every change, so those two are the versions actually verified. The floor moves only in a major release.
+
+**Other runtimes:** the library imports no Node builtins and uses only web-standard APIs (`fetch`, `AbortController`, `crypto.getRandomValues`, timers). Each row below says how that's checked:
+
+| Runtime | Status | How it's verified |
+| --- | --- | --- |
+| Node 22, 24 | Supported | Full test suite in CI |
+| Bun | Supported | Full test suite in CI |
+| Cloudflare Workers | Supported, no `nodejs_compat` needed | CI smoke test loads the built package into workerd and drives every entry point ([`scripts/smoke/`](scripts/smoke/)) |
+| Deno | Expected to work | Manual smoke test (`deno run scripts/smoke/deno.mjs`); not in CI |
+| Browsers | Expected to work | Not tested |
 
 ## Contributing
 

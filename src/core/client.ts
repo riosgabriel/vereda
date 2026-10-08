@@ -1,4 +1,3 @@
-import { EventEmitter } from "node:events";
 import { BulkheadRegistry, type BulkheadSnapshot, DEFAULT_PARTITION_TTL_MS } from "../queue/bulkhead.ts";
 import { type CircuitBreaker, CircuitBreakerRegistry, type CircuitSnapshot } from "../queue/circuit-breaker.ts";
 import { executeRequest, type MiddlewareFn } from "../queue/executor.ts";
@@ -17,7 +16,7 @@ import {
 	NO_TIMEOUT_CONFIGURED,
 	TimeoutError,
 } from "./errors.ts";
-import { emitIsolated, reportCallbackError } from "./listeners.ts";
+import { Emitter, reportCallbackError } from "./listeners.ts";
 import { METRICS, type MetricsSink } from "./metrics.ts";
 import { nanoid } from "./nanoid.ts";
 import { redactUrl } from "./redact.ts";
@@ -56,7 +55,7 @@ interface InflightTicket {
 
 export class HttpClient {
 	private readonly config: ClientConfig;
-	private readonly emitter = new EventEmitter();
+	private readonly emitter = new Emitter();
 	private readonly middlewares: MiddlewareFn[] = [];
 	private readonly bulkheads: BulkheadRegistry;
 	private readonly circuitBreakers: CircuitBreakerRegistry;
@@ -187,7 +186,7 @@ export class HttpClient {
 			deadlineTimer = setTimeout(() => {
 				controller.abortSignal();
 			}, timeoutConfig.totalMs);
-			deadlineTimer.unref();
+			deadlineTimer.unref?.();
 		}
 
 		// Track this ticket for graceful shutdown. Store the entry so cleanup
@@ -957,7 +956,7 @@ export class HttpClient {
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		const timeout = new Promise<void>((resolve) => {
 			timer = setTimeout(resolve, timeoutMs);
-			timer.unref();
+			timer.unref?.();
 		});
 		await Promise.race([done, timeout]);
 		// Cancel any remaining in-flight tickets and cleanup
@@ -1021,7 +1020,7 @@ export class HttpClient {
 	/** Never throws: listener and metrics-sink errors are isolated (B3), since
 	 *  callers emit mid-transition — e.g. `success` right before `markDone`. */
 	private emit<K extends keyof LifecycleEventMap>(event: K, data: LifecycleEventMap[K]): void {
-		emitIsolated(this.emitter, event, data);
+		this.emitter.emit(event, data);
 		try {
 			this.emitMetrics(event, data);
 		} catch (err) {
