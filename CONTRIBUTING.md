@@ -75,6 +75,16 @@ gh api -X PUT repos/riosgabriel/vereda/pages -f build_type=workflow
 - Zod is an optional peer dependency. Only `src/adapters/zod.ts` may import it; `src/core/` must stay zod-free.
 - CI runs `bun run ci` (`biome ci --error-on-warnings`) over the whole tree — run `bun run check` before pushing.
 
+## AI-assisted and automated contributions
+
+Using AI tools to write code is fine — the bundled `guide-me` skill exists for exactly that. What we ask:
+
+- **A human is accountable for the PR.** You've read the diff, you understand it, and you'll answer review comments yourself.
+- **Say so in the PR description** if a tool wrote most of it. It doesn't change how the PR is judged; it helps the reviewer know where to look.
+- **Good first issues are for people.** They exist to onboard contributors who'll stick around. Please don't point an agent at the `good first issue` label and open PRs in bulk.
+
+PRs from accounts that look fully automated (bulk drive-by PRs across many repositories, no engagement in review) may be closed without review, or merged on their merits at the maintainer's discretion. Either way, the account may not get further good-first-issue PRs reviewed.
+
 ## Code Style
 
 [Biome](https://biomejs.dev) is the single source of truth for both formatting and linting — there is no
