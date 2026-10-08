@@ -16,6 +16,7 @@ Ballpark sizing:
 - Set per-partition `concurrency` close to what the downstream service can actually sustain concurrently (its own connection pool, rate limit, or known capacity). Too high and a struggling host's retries pile pressure back onto it; too low and legitimate retry traffic queues behind slow ones unnecessarily.
 - Set `maxQueueSize` based on how much retry backlog is acceptable before you'd rather fail fast. A small queue (`10`–`50`) surfaces backpressure quickly; a large one absorbs bursts but risks stale-by-the-time-they-run retries.
 - Set the global `concurrency` as a process-wide ceiling — the sum of what you're willing to have in flight across all partitions at once, informed by your own outbound connection limits or memory budget, not by any single downstream's capacity.
+- With many hosts, set `defaultPartition` instead of listing each one. It applies to every partition not named in `partitions`, with the same fields (`concurrency`, `maxQueueSize`, `retry`, `timeout`, `circuitBreaker`, `limitFirstAttempts`). A listed partition doesn't inherit from it, so a listed entry is the whole config for that host on top of the client-level settings.
 - Turn on `partition.limitFirstAttempts: true` only if a partition's downstream is fragile enough that *even first attempts* need throttling (R6). Off by default because it changes latency for fresh traffic, not just retries.
 
 When a partition fills up, `client.partitions()` (below) is how you observe it before it becomes an incident.

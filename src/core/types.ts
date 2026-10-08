@@ -96,6 +96,19 @@ export interface PartitionConfig {
 	circuitBreaker?: CircuitBreakerConfig;
 }
 
+/** Resolves the config that applies to a partition: its `partitions` entry
+ *  when listed, otherwise `defaultPartition`. */
+export type PartitionLookup = (partitionName: string) => PartitionConfig | undefined;
+
+/** Own-property lookup, so a partition named after an `Object.prototype`
+ *  member (`constructor`, `toString`…) still falls through to the fallback. */
+export function partitionLookup(
+	partitions: Record<string, PartitionConfig> = {},
+	fallback?: PartitionConfig,
+): PartitionLookup {
+	return (partitionName) => (Object.hasOwn(partitions, partitionName) ? partitions[partitionName] : fallback);
+}
+
 // ---------------------------------------------------------------------------
 // Circuit breaker config
 // ---------------------------------------------------------------------------
@@ -288,9 +301,15 @@ export interface ClientConfig {
 	 *  @default {@link DEFAULT_GLOBAL_QUEUE_SIZE} */
 	maxQueueSize?: number;
 	/** Per-partition overrides. Partitions not listed here use
-	 *  `{ concurrency: 5, maxQueueSize: 100 }`.
+	 *  `defaultPartition`. A listed partition does not inherit from it.
 	 *  @default {} */
 	partitions?: Record<string, PartitionConfig>;
+	/** Config for every partition not listed in `partitions`, merged the same
+	 *  way a listed entry is: client → partition → request. Fields left unset
+	 *  keep their defaults (`concurrency` {@link DEFAULT_CONCURRENCY},
+	 *  `maxQueueSize` {@link DEFAULT_MAX_QUEUE_SIZE}).
+	 *  @default {} */
+	defaultPartition?: PartitionConfig;
 	/** Default circuit breaker config. Opt-in — inert unless `enabled: true`. */
 	circuitBreaker?: CircuitBreakerConfig;
 	/** Optional structured logger */

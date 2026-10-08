@@ -5,6 +5,8 @@ import {
 	DEFAULT_HALF_OPEN_MAX_ATTEMPTS,
 	DEFAULT_RESET_TIMEOUT_MS,
 	type PartitionConfig,
+	type PartitionLookup,
+	partitionLookup,
 } from "../core/types.ts";
 import { DEFAULT_PARTITION_TTL_MS } from "./bulkhead.ts";
 import { RETRIABLE_KINDS } from "./policy.ts";
@@ -381,20 +383,21 @@ export class CircuitBreakerRegistry {
 	private readonly breakers = new Map<string, CircuitBreakerEntry>();
 	private readonly ttlMs: number;
 	private readonly globalConfig: CircuitBreakerConfig;
-	private readonly partitionConfigs: Record<string, PartitionConfig>;
+	private readonly partitionConfig: PartitionLookup;
 	private readonly sweepInterval: number;
 	private readonly onStateChange?: (partition: string, state: "open" | "closed") => void;
 	private callCounter = 0;
 
 	constructor(
 		globalConfig: CircuitBreakerConfig = {},
-		partitionConfigs: Record<string, PartitionConfig> = {},
+		partitionConfigs: Record<string, PartitionConfig> | PartitionLookup = {},
 		ttlMs: number = DEFAULT_PARTITION_TTL_MS,
 		onStateChange?: (partition: string, state: "open" | "closed") => void,
 	) {
 		this.ttlMs = ttlMs;
 		this.globalConfig = globalConfig;
-		this.partitionConfigs = partitionConfigs;
+		this.partitionConfig =
+			typeof partitionConfigs === "function" ? partitionConfigs : partitionLookup(partitionConfigs);
 		this.sweepInterval = 10;
 		this.onStateChange = onStateChange;
 	}
@@ -403,7 +406,7 @@ export class CircuitBreakerRegistry {
 		this.callCounter++;
 
 		if (!this.breakers.has(partitionName)) {
-			const partitionConfig = this.partitionConfigs[partitionName]?.circuitBreaker ?? {};
+			const partitionConfig = this.partitionConfig(partitionName)?.circuitBreaker ?? {};
 			const merged: CircuitBreakerConfig = {
 				...this.globalConfig,
 				...partitionConfig,

@@ -57,6 +57,7 @@ export function validateConfig(config: ClientConfig): void {
 	validateRetryConfig(config.retry, "retry");
 	validateCircuitBreakerConfig(config.circuitBreaker, "circuitBreaker");
 	validatePartitions(config.partitions);
+	validatePartitionConfig(config.defaultPartition, "defaultPartition");
 	if (config.redirect !== undefined && !REDIRECT_MODES.has(config.redirect)) {
 		throw new ConfigurationError(
 			'redirect must be "follow" or "manual" (use "manual" to reject redirects: a 3xx comes back as an HttpError)',
@@ -130,16 +131,21 @@ function validateRetryConfig(retry: RetryConfig | undefined, prefix: string): vo
 function validatePartitions(partitions: Record<string, PartitionConfig> | undefined): void {
 	if (!partitions) return;
 	for (const [name, config] of Object.entries(partitions)) {
-		if (config.concurrency !== undefined && !isPositiveInteger(config.concurrency)) {
-			throw new ConfigurationError(`partitions.${name}.concurrency must be a positive integer`);
-		}
-		if (config.maxQueueSize !== undefined && !isPositiveInteger(config.maxQueueSize)) {
-			throw new ConfigurationError(`partitions.${name}.maxQueueSize must be a positive integer`);
-		}
-		validateRetryConfig(config.retry, `partitions.${name}.retry`);
-		validateTimeoutConfig(config.timeout, `partitions.${name}.timeout`);
-		validateCircuitBreakerConfig(config.circuitBreaker, `partitions.${name}.circuitBreaker`);
+		validatePartitionConfig(config, `partitions.${name}`);
 	}
+}
+
+function validatePartitionConfig(config: PartitionConfig | undefined, prefix: string): void {
+	if (!config) return;
+	if (config.concurrency !== undefined && !isPositiveInteger(config.concurrency)) {
+		throw new ConfigurationError(`${prefix}.concurrency must be a positive integer`);
+	}
+	if (config.maxQueueSize !== undefined && !isPositiveInteger(config.maxQueueSize)) {
+		throw new ConfigurationError(`${prefix}.maxQueueSize must be a positive integer`);
+	}
+	validateRetryConfig(config.retry, `${prefix}.retry`);
+	validateTimeoutConfig(config.timeout, `${prefix}.timeout`);
+	validateCircuitBreakerConfig(config.circuitBreaker, `${prefix}.circuitBreaker`);
 }
 
 function validateCircuitBreakerConfig(breaker: CircuitBreakerConfig | undefined, prefix: string): void {

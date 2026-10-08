@@ -331,6 +331,18 @@ const client = HttpClient.create({
 });
 ```
 
+A partition not listed under `partitions` uses `defaultPartition`, which takes the same fields. Use it to tune every other host at once. A listed partition doesn't inherit from it:
+
+```typescript
+import { HttpClient } from "@vereda/http";
+
+const client = HttpClient.create({
+  timeout: { attemptMs: 5_000 },
+  defaultPartition: { concurrency: 3, retry: { maxRetries: 1 } }, // every unlisted host
+  partitions: { "api.internal.com": { concurrency: 20 } }, // gets none of defaultPartition
+});
+```
+
 You can assign a partition explicitly, to isolate a group of requests (its own retry bulkhead, breaker, and `partitions[name]` config) or to group hosts. It doesn't prioritize anything:
 
 ```typescript
