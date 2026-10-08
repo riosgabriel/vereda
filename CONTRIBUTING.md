@@ -82,6 +82,7 @@ Using AI tools to write code is fine — the bundled `guide-me` skill exists for
 - **A human is accountable for the PR.** You've read the diff, you understand it, and you'll answer review comments yourself.
 - **Say so in the PR description** if a tool wrote most of it. It doesn't change how the PR is judged; it helps the reviewer know where to look.
 - **Good first issues are for people.** They exist to onboard contributors who'll stick around. Please don't point an agent at the `good first issue` label and open PRs in bulk.
+- **Claim a good first issue before opening a PR.** Comment on the issue asking for it and wait to be assigned. PRs for unassigned `good first issue` tickets are closed, and when two PRs target the same issue, the assignee's is the one reviewed. A claim lapses after 7 days without a PR, so stalled issues go back to the pool.
 
 PRs from accounts that look fully automated (bulk drive-by PRs across many repositories, no engagement in review) may be closed without review, or merged on their merits at the maintainer's discretion. Either way, the account may not get further good-first-issue PRs reviewed.
 
