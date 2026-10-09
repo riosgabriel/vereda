@@ -228,7 +228,11 @@ Each card links into one of four guides: [Resilience](docs/guide/resilience.md) 
 
 ## Documentation
 
-- **Feature guides** — [Resilience](docs/guide/resilience.md) (retries, timeouts, bulkheads, circuit breaker) · [Results and errors](docs/guide/results-and-errors.md) · [Working with requests](docs/guide/requests.md) (cancellation, tickets, middleware, custom fetch) · [Observability](docs/guide/observability.md) (events, metrics, OpenTelemetry).
+- **Feature guides**
+  - [Resilience](docs/guide/resilience.md) — retries and backoff, timeouts, bulkhead isolation, circuit breaker.
+  - [Results and errors](docs/guide/results-and-errors.md) — typed results, the Zod adapter, error handling.
+  - [Working with requests](docs/guide/requests.md) — cancellation, tickets, middleware, custom fetch.
+  - [Observability](docs/guide/observability.md) — lifecycle events, metrics, OpenTelemetry.
 - **[Operations guide](docs/operations.md)** — sizing concurrency and queues, `attemptMs` vs. `totalMs`, reading `partitions()` and `circuits()`, wiring a metrics sink, the shutdown sequence, and log redaction.
 - **[API reference](https://riosgabriel.github.io/vereda/)** — generated from source via TypeDoc on every push to `main`; every public option documents its default.
 
