@@ -2,16 +2,16 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_RETRY_ON_STATUS } from "../../src/core/types.ts";
 
-const README = readFileSync(new URL("../../README.md", import.meta.url), "utf8");
+const GUIDE = readFileSync(new URL("../../docs/guide/resilience.md", import.meta.url), "utf8");
 
-describe("README retry table", () => {
+describe("resilience guide retry table", () => {
 	it("documents what gets retried and matches DEFAULT_RETRY_ON_STATUS", () => {
-		const heading = "#### What gets retried";
-		expect(README).toContain(heading);
+		const heading = "### What gets retried";
+		expect(GUIDE).toContain(heading);
 
 		// Slice from the heading to the next line starting with a heading marker
-		const headingIndex = README.indexOf(heading);
-		const rest = README.slice(headingIndex);
+		const headingIndex = GUIDE.indexOf(heading);
+		const rest = GUIDE.slice(headingIndex);
 		const nextHeading = rest.search(/\n#/);
 		const section = nextHeading === -1 ? rest : rest.slice(0, nextHeading);
 
