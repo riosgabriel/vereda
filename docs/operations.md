@@ -1,6 +1,6 @@
 # Operations guide
 
-This guide is for running Vereda in production: sizing its knobs, reading its runtime state, and shutting it down cleanly. For the API itself, see the [README](../README.md) and the [API reference](https://riosgabriel.github.io/vereda/).
+This guide is for running Vereda in production: sizing its knobs, reading its runtime state, and shutting it down cleanly. For the API itself, see the [README](../README.md), the [feature guides](guide/resilience.md), and the [API reference](https://riosgabriel.github.io/vereda/).
 
 ## Sizing concurrency and queues
 
@@ -66,7 +66,7 @@ Implement `MetricsSink` (`counter`, `histogram`, `gauge` — all synchronous, no
 | `METRICS.IN_FLIGHT` (`vereda.in_flight`) | gauge | — | Tickets started but not yet finished, across all partitions. Reported when a ticket starts and when it finishes, so it returns to `0` when the client is idle |
 | `METRICS.CIRCUIT_OPEN` (`vereda.circuit_open`) | counter | `partition` | One per circuit breaker trip to open (opt-in feature; silent unless `circuitBreaker.enabled`) |
 
-For OpenTelemetry, `otelMetricsSink` from `@vereda/http/otel` is a ready-made `MetricsSink`: counters and the duration histogram map directly, and gauges become observable gauges reporting the latest value per tag set. See the README's [OpenTelemetry](../README.md#opentelemetry) section, which also covers tracing. Lifecycle events (`client.on("request" | "retry" | "success" | "failure" | "cancelled" | "circuitOpen" | "circuitClose", ...)`) are the complementary hook for structured logging or alerting rather than metrics — see the README's [Lifecycle events](../README.md#lifecycle-events) section.
+For OpenTelemetry, `otelMetricsSink` from `@vereda/http/otel` is a ready-made `MetricsSink`: counters and the duration histogram map directly, and gauges become observable gauges reporting the latest value per tag set. See the [OpenTelemetry](guide/observability.md#opentelemetry) section of the Observability guide, which also covers tracing. Lifecycle events (`client.on("request" | "retry" | "success" | "failure" | "cancelled" | "circuitOpen" | "circuitClose", ...)`) are the complementary hook for structured logging or alerting rather than metrics — see [Lifecycle events](guide/observability.md#lifecycle-events).
 
 **`QUEUE_DEPTH`/`GLOBAL_QUEUE_DEPTH` are polled, not pushed on change** — they're read at request-start and at each ticket's terminal event, not at the moment a caller actually joins or leaves the wait queue. That reliably shows a *sustained* backlog (a dashboard/alert on "depth > N for 5 minutes" works as expected), but a single request that's briefly queued and released between those two polling points can be invisible to the gauge. For guaranteed per-request visibility regardless of backlog size, use `queuedMs` on the lifecycle events instead — it's measured at the point of acquisition, not polled.
 

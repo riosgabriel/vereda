@@ -14,7 +14,14 @@ import { describe, expect, it } from "vitest";
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 
 /** Repo-relative Markdown files whose code blocks are checked. */
-const DOCS = ["README.md", "docs/operations.md"];
+const DOCS = [
+	"README.md",
+	"docs/operations.md",
+	"docs/guide/resilience.md",
+	"docs/guide/results-and-errors.md",
+	"docs/guide/requests.md",
+	"docs/guide/observability.md",
+];
 
 interface CodeBlock {
 	/** Repo-relative path of the Markdown file the block came from. */

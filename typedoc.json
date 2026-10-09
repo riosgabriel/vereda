@@ -4,6 +4,7 @@
 	"out": "docs-site",
 	"name": "Vereda",
 	"readme": "README.md",
+	"projectDocuments": ["docs/guide/*.md", "docs/operations.md"],
 	"excludeInternal": true,
 	"excludePrivate": true,
 	"excludeProtected": true,

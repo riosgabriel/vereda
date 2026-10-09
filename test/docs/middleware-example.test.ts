@@ -5,20 +5,20 @@ import { HttpClient } from "../../src/core/client.ts";
 import { defaultHeaders, requestLogger } from "../../src/middleware/index.ts";
 
 /**
- * Runs the README's "Middleware" example and checks the behavior its prose
+ * Runs the requests guide's "Middleware" example and checks the behavior its prose
  * claims (middleware can read and rewrite ctx.url).
  */
 
-const README = readFileSync(new URL("../../README.md", import.meta.url), "utf8");
+const GUIDE = readFileSync(new URL("../../docs/guide/requests.md", import.meta.url), "utf8");
 const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as new (
 	...args: string[]
 ) => (...params: unknown[]) => Promise<void>;
 
-/** The first code block under README's "### Middleware", minus its import line. */
+/** The first code block under the requests guide's "## Middleware", minus its import line. */
 function readmeMiddlewareBody(): string {
-	const section = README.slice(README.indexOf("### Middleware"));
+	const section = GUIDE.slice(GUIDE.indexOf("## Middleware"));
 	const block = section.match(/```typescript\n([\s\S]*?)```/)?.[1];
-	if (!block) throw new Error("README has no typescript block under ### Middleware");
+	if (!block) throw new Error("requests guide has no typescript block under ## Middleware");
 	const importLine = /^import \{([^}]*)\} from "@vereda\/http\/middleware";\n/m;
 	const imported = block
 		.match(importLine)?.[1]
@@ -26,14 +26,14 @@ function readmeMiddlewareBody(): string {
 		.map((name) => name.trim());
 	// The body runs as plain JavaScript with these names injected, so the
 	// block must import exactly them and carry no TypeScript-only syntax.
-	expect(imported, "README Middleware block must import exactly { defaultHeaders, requestLogger }").toEqual([
+	expect(imported, "Middleware block must import exactly { defaultHeaders, requestLogger }").toEqual([
 		"defaultHeaders",
 		"requestLogger",
 	]);
 	return block.replace(importLine, "");
 }
 
-describe("README middleware example", () => {
+describe("requests guide middleware example", () => {
 	let server: Server;
 	let url: string;
 	let received: { headers: IncomingMessage["headers"]; url?: string };
@@ -55,13 +55,13 @@ describe("README middleware example", () => {
 		await new Promise((resolve) => server.close(resolve));
 	});
 
-	it("runs the README's Middleware block verbatim against a real server", async () => {
+	it("runs the guide's Middleware block verbatim against a real server", async () => {
 		const client = HttpClient.create({ baseUrl: url, timeout: { attemptMs: 5_000 } });
 		const logs: unknown[][] = [];
 		const recordingConsole = { log: (...args: unknown[]) => logs.push(args) };
 
-		// Execute the README block itself (not a copy), so editing the example
-		// in the README is what this test checks. The snippet typecheck covers
+		// Execute the guide block itself (not a copy), so editing the example
+		// in the guide is what this test checks. The snippet typecheck covers
 		// its types; this covers what it does.
 		const run = new AsyncFunction("client", "defaultHeaders", "requestLogger", "console", readmeMiddlewareBody());
 		await run(client, defaultHeaders, requestLogger, recordingConsole);
