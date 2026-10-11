@@ -120,12 +120,24 @@ export class CancelledError extends RequestError {
 
 export class QueueFullError extends RequestError {
 	declare readonly kind: "queue_full";
+	/** Which queue was full: a partition's retry queue, or the global queue
+	 *  for a `concurrency` permit. Check this rather than `partition`, since a
+	 *  partition may itself be named `"global"`. */
+	public readonly scope: "partition" | "global";
+	/** The partition's name, or `"global"` for the global queue.
+	 *  In 2.0, `partition` is absent when `scope` is `"global"`. */
 	public readonly partition: string;
 	public readonly queueSize: number;
 	public readonly maxQueueSize: number;
 
-	constructor(partition: string, queueSize: number, maxQueueSize: number) {
-		super("queue_full", `Queue for partition '${partition}' is full (${queueSize}/${maxQueueSize})`);
+	constructor(partition: string, queueSize: number, maxQueueSize: number, scope: "partition" | "global" = "partition") {
+		super(
+			"queue_full",
+			scope === "global"
+				? `Global queue is full (${queueSize}/${maxQueueSize})`
+				: `Queue for partition '${partition}' is full (${queueSize}/${maxQueueSize})`,
+		);
+		this.scope = scope;
 		this.partition = partition;
 		this.queueSize = queueSize;
 		this.maxQueueSize = maxQueueSize;

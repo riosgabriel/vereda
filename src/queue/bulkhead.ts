@@ -234,6 +234,9 @@ export class Bulkhead {
 // ---------------------------------------------------------------------------
 
 export interface BulkheadSnapshot {
+	/** The partition this snapshot describes, named as in `CircuitSnapshot`. */
+	partition: string;
+	/** @deprecated Use `partition`; same value. Removed in 2.0. */
 	name: string;
 	running: number;
 	queued: number;
@@ -312,6 +315,7 @@ export class BulkheadRegistry {
 		const result: BulkheadSnapshot[] = [];
 		for (const [, [bh]] of this.bulkheads) {
 			const snapshot: BulkheadSnapshot = {
+				partition: bh.name,
 				name: bh.name,
 				running: bh.runningCount,
 				queued: bh.queueSize,
