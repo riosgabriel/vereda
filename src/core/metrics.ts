@@ -39,4 +39,6 @@ export const METRICS = {
 	GLOBAL_QUEUE_DEPTH: "vereda.global_queue_depth",
 	/** Total circuit breaker trips to open. Tags: partition. */
 	CIRCUIT_OPEN: "vereda.circuit_open",
+	/** Retries refused because the partition's retry budget was spent. Tags: partition. */
+	RETRY_BUDGET_EXHAUSTED: "vereda.retry_budget_exhausted",
 } as const;

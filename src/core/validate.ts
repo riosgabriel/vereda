@@ -6,6 +6,7 @@ import type {
 	RedirectMode,
 	RequestOptions,
 	ResponseType,
+	RetryBudgetConfig,
 	RetryConfig,
 	TimeoutConfig,
 } from "./types.ts";
@@ -57,6 +58,7 @@ export function validateConfig(config: ClientConfig): void {
 	validateTimeoutConfig(config.timeout, "timeout");
 	validateRetryConfig(config.retry, "retry");
 	validateCircuitBreakerConfig(config.circuitBreaker, "circuitBreaker");
+	validateRetryBudgetConfig(config.retryBudget, "retryBudget");
 	validatePartitions(config.partitions);
 	validatePartitionConfig(config.defaultPartition, "defaultPartition");
 	if (config.redirect !== undefined && !REDIRECT_MODES.has(config.redirect)) {
@@ -154,6 +156,24 @@ function validatePartitionConfig(config: PartitionConfig | undefined, prefix: st
 	validateRetryConfig(config.retry, `${prefix}.retry`);
 	validateTimeoutConfig(config.timeout, `${prefix}.timeout`);
 	validateCircuitBreakerConfig(config.circuitBreaker, `${prefix}.circuitBreaker`);
+	validateRetryBudgetConfig(config.retryBudget, `${prefix}.retryBudget`);
+}
+
+function validateRetryBudgetConfig(budget: RetryBudgetConfig | undefined, prefix: string): void {
+	if (!budget) return;
+	// 0 is legal: only the minRetriesPerSec floor is left.
+	if (!(Number.isFinite(budget.ratio) && budget.ratio >= 0)) {
+		throw new ConfigurationError(`${prefix}.ratio must be a non-negative finite number`);
+	}
+	if (!(Number.isFinite(budget.windowMs) && budget.windowMs > 0)) {
+		throw new ConfigurationError(`${prefix}.windowMs must be a positive finite number`);
+	}
+	if (
+		budget.minRetriesPerSec !== undefined &&
+		!(Number.isFinite(budget.minRetriesPerSec) && budget.minRetriesPerSec >= 0)
+	) {
+		throw new ConfigurationError(`${prefix}.minRetriesPerSec must be a non-negative finite number`);
+	}
 }
 
 function validateCircuitBreakerConfig(breaker: CircuitBreakerConfig | undefined, prefix: string): void {
