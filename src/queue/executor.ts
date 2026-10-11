@@ -9,7 +9,7 @@ import {
 	TimeoutError,
 	ValidationError,
 } from "../core/errors.ts";
-import type { RedirectMode, RequestOptions, Result, RetryConfig, TimeoutConfig } from "../core/types.ts";
+import type { RedirectMode, RequestOptions, ResponseType, Result, RetryConfig, TimeoutConfig } from "../core/types.ts";
 import { DEFAULT_RETRY_ON_STATUS, isBoundedMs } from "../core/types.ts";
 import { isReadableStream } from "../core/validate.ts";
 
@@ -128,7 +128,10 @@ export async function executeRequest(req: ExecuteRequest, middleware: Middleware
 
 	let response: Response;
 	try {
-		response = await settleOnAbort(composed(ctx), attemptSignal);
+		const pending = composed(ctx);
+		response = await settleOnAbort(pending, attemptSignal, () => {
+			void discard(pending);
+		});
 		// An abort may land after fetch resolves but before this check runs
 		// (e.g. while middleware post-processes the response). The attempt is
 		// abandoned, so release its body: a transport that ignores the signal
@@ -170,16 +173,18 @@ export async function executeRequest(req: ExecuteRequest, middleware: Middleware
 			};
 		}
 
-		// Parse body — the timeout is still active so a slow body read is
-		// covered by the per-attempt deadline (#9).
-		if (options.parse) {
+		// Read the body (and run `parse`) inside the attempt — the timeout is
+		// still active, so a slow read or a hung async parse is covered by the
+		// per-attempt deadline (#9, #142).
+		const responseType = options.responseType ?? (options.parse ? "json" : undefined);
+		if (responseType !== undefined) {
 			let raw: unknown;
 			try {
-				raw = await readJson(response, attemptSignal);
+				raw = await readBody(response, responseType, attemptSignal);
 			} catch (err) {
-				// Check timeout first — if our timer fired during response.json(),
-				// that is the cause regardless of whether the external signal also
-				// aborted (cancellation vs timeout precedence).
+				// Check timeout first — if our timer fired during the read, that is
+				// the cause regardless of whether the external signal also aborted
+				// (cancellation vs timeout precedence).
 				if (timeoutController.signal.aborted) {
 					return { kind: "timeout" };
 				}
@@ -198,19 +203,34 @@ export async function executeRequest(req: ExecuteRequest, middleware: Middleware
 				}
 				return {
 					kind: "error",
-					error: new NetworkError("Failed to parse response body as JSON", {
+					error: new NetworkError("Failed to read response body", {
 						cause: err,
 					}),
 				};
 			}
 
+			const parse = options.parse;
+			if (!parse) {
+				return { kind: "success", result: { success: true, data: raw, raw: response } };
+			}
 			try {
-				const data = options.parse(raw);
+				// `then` turns a sync throw into a rejection, so both paths land in
+				// the catch below.
+				const data = await settleOnAbort(Promise.resolve(raw).then(parse), attemptSignal);
 				return {
 					kind: "success",
 					result: { success: true, data, raw: response },
 				};
 			} catch (err) {
+				// An abort that lands mid-parse ends the attempt like one mid-read:
+				// the deadline bounds every await in an attempt. Only a parse that
+				// actually threw or rejected is a validation failure.
+				if (timeoutController.signal.aborted) {
+					return { kind: "timeout" };
+				}
+				if (signal.aborted || options.signal?.aborted) {
+					return { kind: "cancelled" };
+				}
 				const issues = extractIssues(err);
 				return {
 					kind: "error",
@@ -363,13 +383,18 @@ export function parseRetryAfter(header: string | null): number | undefined {
  *  Ending the attempt relies on the transport honoring the signal otherwise:
  *  a custom `fetch` or middleware that drops it would leave the attempt
  *  pending forever, past `attemptMs`, `totalMs` and `cancel()`, so the ticket's
- *  terminal event would never fire (#181). The abandoned promise is left to
- *  settle on its own; a Response it resolves to later has its body cancelled,
- *  so the connection is released (B13). */
-function settleOnAbort(pending: Promise<Response>, signal: AbortSignal): Promise<Response> {
-	const release = () => {
-		void discard(pending);
-	};
+ *  terminal event would never fire (#181). The same holds for an async
+ *  `parse`, which has no signal at all. The abandoned promise is left to
+ *  settle on its own; `release` cleans up after it (by default, it swallows a
+ *  late rejection; for fetch, it cancels the late Response's body so the
+ *  connection is released, B13). */
+function settleOnAbort<T>(
+	pending: Promise<T>,
+	signal: AbortSignal,
+	release: () => void = () => {
+		pending.catch(() => {});
+	},
+): Promise<T> {
 	if (signal.aborted) {
 		release();
 		return Promise.reject(signal.reason);
@@ -381,9 +406,9 @@ function settleOnAbort(pending: Promise<Response>, signal: AbortSignal): Promise
 		};
 		signal.addEventListener("abort", onAbort, { once: true });
 		pending.then(
-			(response) => {
+			(value) => {
 				signal.removeEventListener("abort", onAbort);
-				resolve(response);
+				resolve(value);
 			},
 			(err: unknown) => {
 				signal.removeEventListener("abort", onAbort);
@@ -403,15 +428,34 @@ async function discard(pending: Promise<Response>): Promise<void> {
 	}
 }
 
-/** `response.json()`, but the read stops when `signal` aborts. `json()` alone
- *  relies on the transport tying the body to the fetch signal; a custom
- *  `fetch` or middleware that drops the signal would leave it reading forever,
- *  past `attemptMs`/`totalMs` (B13). `json()` holds the reader lock, so
- *  `body.cancel()` can't stop it — owning the reader can. Decoding and
- *  `JSON.parse` match `json()`: UTF-8, leading BOM stripped, `SyntaxError` on
- *  malformed or empty input (B6 relies on that). */
-async function readJson(response: Response, signal: AbortSignal): Promise<unknown> {
-	if (!response.body) return response.json();
+/** Reads the body as `responseType`, stopping when `signal` aborts. The
+ *  built-in readers (`json()`, `text()`, …) rely on the transport tying the
+ *  body to the fetch signal; a custom `fetch` or middleware that drops the
+ *  signal would leave them reading forever, past `attemptMs`/`totalMs` (B13).
+ *  They also hold the reader lock, so `body.cancel()` can't stop them — owning
+ *  the reader can. Decoding matches the built-ins: UTF-8 with a leading BOM
+ *  stripped, and `"json"` throws `SyntaxError` on malformed or empty input
+ *  (B6 relies on that). `"none"` cancels the body unread. */
+async function readBody(response: Response, responseType: ResponseType, signal: AbortSignal): Promise<unknown> {
+	if (responseType === "none") {
+		response.body?.cancel().catch(() => {});
+		return undefined;
+	}
+	const bytes = await readBytes(response, signal);
+	switch (responseType) {
+		case "json":
+			return JSON.parse(new TextDecoder().decode(bytes));
+		case "text":
+			return new TextDecoder().decode(bytes);
+		case "arrayBuffer":
+			return bytes.buffer;
+		case "blob":
+			return new Blob([bytes], { type: response.headers.get("content-type") ?? "" });
+	}
+}
+
+async function readBytes(response: Response, signal: AbortSignal): Promise<Uint8Array<ArrayBuffer>> {
+	if (!response.body) return new Uint8Array(0);
 	const reader = response.body.getReader();
 	const onAbort = () => {
 		reader.cancel(signal.reason).catch(() => {});
@@ -419,16 +463,23 @@ async function readJson(response: Response, signal: AbortSignal): Promise<unknow
 	if (signal.aborted) onAbort();
 	else signal.addEventListener("abort", onAbort, { once: true });
 	try {
-		const decoder = new TextDecoder();
-		let text = "";
+		const chunks: Uint8Array[] = [];
+		let length = 0;
 		for (;;) {
 			const { done, value } = await reader.read();
 			if (done) break;
-			text += decoder.decode(value, { stream: true });
+			chunks.push(value);
+			length += value.byteLength;
 		}
 		// A cancelled reader reports `done` rather than rejecting.
 		if (signal.aborted) throw signal.reason;
-		return JSON.parse(text + decoder.decode());
+		const bytes = new Uint8Array(length);
+		let offset = 0;
+		for (const chunk of chunks) {
+			bytes.set(chunk, offset);
+			offset += chunk.byteLength;
+		}
+		return bytes;
 	} finally {
 		signal.removeEventListener("abort", onAbort);
 	}
