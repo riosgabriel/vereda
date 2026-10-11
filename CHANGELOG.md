@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `@vereda/http/otel` entry point: `instrumentTracing(client, { tracer })` records one span per ticket and one child `CLIENT` span per attempt using the HTTP semantic conventions, injects `traceparent` into outgoing requests (`propagate: false` to opt out), and keeps credentials and, by default, query values out of `url.full`. `otelMetricsSink(meter)` records vereda's metrics as OpenTelemetry counters, a histogram and observable gauges. `@opentelemetry/api` is an optional peer dependency that only this entry point imports (#147).
 - `redirect` client option (`"follow"` | `"manual"`, default `"follow"`), set on every attempt's fetch init and exposed to middleware as `ctx.redirect`. fetch's `"error"` mode is rejected: its `TypeError` on a 3xx is indistinguishable from a network failure, so redirects would be retried and counted against the circuit breaker. With `"manual"`, a 3xx comes back as an `HttpError` whose `response` carries the `Location` header, so callers can vet each hop themselves.
 - Re-export `BulkheadSnapshot` from the public entry point `@vereda/http` (#138).
+- `parse` may be async: `ParseFn<T>` is now `(data: unknown) => T | Promise<T>`. A thrown error or rejected promise becomes a `ValidationError` and is never retried. The wait for `parse` counts against `attemptMs`/`totalMs`, so a parse that never settles ends as a timeout, and `cancel()` ends it too (#142).
+- `responseType` request option (`"json"` | `"text"` | `"arrayBuffer"` | `"blob"` | `"none"`): how the body is read inside the attempt before `parse` sees it. It defaults to `"json"` when `parse` is set. Without `parse`, `data` is the body read that way, typed as `unknown`, `string`, `ArrayBuffer`, `Blob` or `undefined`. `"none"` cancels the body unread. With neither option set, the body is still handed back unread on `raw`. An unknown value fails the ticket with a `ConfigurationError` (#142).
 
 ### Fixed
 
@@ -22,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `withZod` validates with `parseAsync`, so schemas with async refinements or transforms work. Calling the returned function directly now gives `T | Promise<T>` (#142).
+- A body stream that fails mid-read is now reported as `NetworkError("Failed to read response body")` instead of `"Failed to parse response body as JSON"`, since the body is no longer always read as JSON (#142).
 - A retry whose delay (backoff or capped `Retry-After`) would run to or past `timeout.totalMs` is no longer slept on: the ticket fails right away with `DeadlineExceededError`, whose `cause` is the last attempt's error. Before, it slept until the deadline and then failed with the same error. `DeadlineExceededError` can therefore arrive before `totalMs` has elapsed (#143).
 
 ### Changed
