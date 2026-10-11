@@ -187,6 +187,8 @@ The limit is set on the client (applying to each partition separately) or per pa
 
 Opt-in, per-partition. Once a host is clearly failing, stop sending it requests instead of retrying into it. Disabled by default; enable it for every partition at the client level, or for specific hosts under `partitions`.
 
+In 1.x the breaker stays off until `enabled: true`, even when other `circuitBreaker` fields are set. That changes in 2.0: setting `circuitBreaker` will turn it on, as setting `retryBudget` or `rateLimit` does today, and only `enabled: false` will turn it off. To keep your behavior across the upgrade, either pass `enabled` explicitly or remove a `circuitBreaker` config you don't mean to use.
+
 ```typescript
 import { HttpClient } from "@vereda/http";
 
