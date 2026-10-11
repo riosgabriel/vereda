@@ -332,9 +332,11 @@ export class BulkheadRegistry {
 
 /** Partition fields override the client-level ones one by one. */
 function mergeRateLimit(
-	global: RateLimitConfig | undefined,
-	partition: RateLimitConfig | undefined,
+	global: RateLimitConfig | false | undefined,
+	partition: RateLimitConfig | false | undefined,
 ): RateLimitConfig | undefined {
+	// `false` opts the partition out; spreading it would keep the client's limit.
+	if (partition === false || global === false) return undefined;
 	if (!global && !partition) return undefined;
 	return { ...global, ...partition } as RateLimitConfig;
 }

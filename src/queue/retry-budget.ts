@@ -156,10 +156,13 @@ export class RetryBudgetRegistry {
 		let entry = this.budgets.get(partitionName);
 		if (!entry) {
 			const partitionConfig = this.partitionConfig(partitionName)?.retryBudget;
+			// `false` opts the partition out; spreading it would keep the client's budget.
 			const merged =
-				this.globalConfig || partitionConfig
-					? ({ ...this.globalConfig, ...partitionConfig } as RetryBudgetConfig)
-					: undefined;
+				partitionConfig === false
+					? undefined
+					: this.globalConfig || partitionConfig
+						? ({ ...this.globalConfig, ...partitionConfig } as RetryBudgetConfig)
+						: undefined;
 			entry = [new RetryBudget(merged), Date.now()];
 			this.budgets.set(partitionName, entry);
 		}
