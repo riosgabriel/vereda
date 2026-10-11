@@ -99,7 +99,7 @@ const client = HttpClient.create({
 
 A retry is allowed only while the partition's retries over the last `windowMs` stay below `max(minRetriesPerSec * windowMs / 1000, ratio * requests)`, where `requests` counts first attempts. With `ratio: 0.1`, a failing host sees at most about 1.1 times its normal load. `minRetriesPerSec` (default `10`) is a floor, so a partition with little traffic can still retry. Once the budget is spent, a ticket that would have retried fails right away with its last error, without waiting out the backoff, and a `retryBudgetExhausted` event fires before its `failure` event. Retries that run free up budget again as they slide out of the window.
 
-The budget is set on the client or per partition, never per request. A partition's `retryBudget` overrides the client's field by field. With neither set, retries are limited only by `maxRetries`.
+The budget is set on the client or per partition, never per request. A partition's `retryBudget` overrides the client's field by field, and `retryBudget: false` turns the client's budget off for that partition (or, on `defaultPartition`, for every unlisted one), e.g. for an internal host where retries are cheap. With no budget set, retries are limited only by `maxRetries`.
 
 The budget and the [circuit breaker](#circuit-breaker) work together. The budget limits **retries** while a host is degraded, and first attempts still go through. The breaker blocks **every** attempt once the host is clearly down. A budget keeps a retry storm from building in the first place, and the breaker stops traffic to a host that is down outright.
 
@@ -181,7 +181,7 @@ Every attempt to the partition takes a token before it is sent, first attempts a
 
 The wait ends early on `cancel()` or at `timeout.totalMs`, and the unused token goes back to the bucket. Without `maxWaitMs`, those are the only limits on the wait. With it, an attempt that would wait longer fails at once with a `RateLimitedError` (`kind: "rate_limited"`), which carries the `waitMs` it would have needed and is never retried. A retry that hits it fails the ticket the same way.
 
-The limit is set on the client (applying to each partition separately) or per partition, never per request. A partition's `rateLimit` overrides the client's field by field. A `429`'s `Retry-After` doesn't change the bucket: it still delays only the retry of the ticket that received it.
+The limit is set on the client (applying to each partition separately) or per partition, never per request. A partition's `rateLimit` overrides the client's field by field, and `rateLimit: false` turns the client's limit off for that partition. A `429`'s `Retry-After` doesn't change the bucket: it still delays only the retry of the ticket that received it.
 
 ## Circuit breaker
 
