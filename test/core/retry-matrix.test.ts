@@ -61,16 +61,14 @@ interface Row {
 	expectedKind: string;
 }
 
-/** Bun's fetch does not enforce the Fetch spec's forbidden-method list, so a
- *  TRACE request is issued for real; Node/undici rejects it client-side. */
 const IS_BUN = typeof (globalThis as { Bun?: unknown }).Bun !== "undefined";
 const RUNTIME = IS_BUN ? "bun" : "node";
 
 // CI pins the runtime per leg so the bun leg cannot silently degrade into a
 // fourth Node run. `bun run --bun` forcing Bun into vitest's worker processes
-// is undocumented behaviour; if a future Bun drops it, IS_BUN flips false, the
-// TRACE row below quietly takes the Node branch, and the suite stays green
-// while exercising nothing new. Unset locally, where either runtime is fine.
+// is undocumented behaviour; if a future Bun drops it, the "bun" leg quietly
+// runs under Node and stays green while exercising nothing new. Unset locally,
+// where either runtime is fine.
 const expectedRuntime = process.env.EXPECTED_RUNTIME;
 if (expectedRuntime && expectedRuntime !== RUNTIME) {
 	throw new Error(`EXPECTED_RUNTIME=${expectedRuntime} but the suite is running under ${RUNTIME}.`);
