@@ -7,6 +7,7 @@ import {
 	MaxRetriesExceededError,
 	NO_TIMEOUT_CONFIGURED,
 	QueueFullError,
+	RateLimitedError,
 	RetryableStatusError,
 	TimeoutError,
 } from "../core/errors.ts";
@@ -241,6 +242,16 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 			// The global semaphore is acquired after the partition slot (D4).
 			let result: Awaited<ReturnType<typeof executeRequest>>;
 			try {
+				// The rate-limit token comes first, as on the first attempt, so a
+				// retry waiting for its token holds no slot or permit.
+				const tokenWait = bulkhead.takeToken(ticket.signal);
+				if (tokenWait !== undefined) {
+					const waitStart = Date.now();
+					totalQueuedMs += await tokenWait.catch((err: unknown) => {
+						totalQueuedMs += Date.now() - waitStart;
+						throw err;
+					});
+				}
 				result = await bulkhead.run(
 					() =>
 						executeRequest(
@@ -273,10 +284,11 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 					// totalAttempts++ and let the "cancelled" case settle it.
 					totalAttempts--;
 					result = { kind: "cancelled" };
-				} else if (err instanceof QueueFullError) {
-					// Queue is at capacity — bulkhead.run() rejected before task()
-					// ever ran, so this iteration's optimistic totalAttempts++ above
-					// must be backed out; it reports attempts actually dispatched.
+				} else if (err instanceof QueueFullError || err instanceof RateLimitedError) {
+					// Queue is at capacity, or the token is further off than
+					// maxWaitMs — rejected before task() ever ran, so this
+					// iteration's optimistic totalAttempts++ above must be backed
+					// out; it reports attempts actually dispatched.
 					const attemptsMade = totalAttempts - 1;
 					onCleanup?.();
 					if (ticket.isCancelled) {

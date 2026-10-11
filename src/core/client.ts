@@ -15,6 +15,7 @@ import {
 	isAppError,
 	NetworkError,
 	NO_TIMEOUT_CONFIGURED,
+	RateLimitedError,
 	TimeoutError,
 } from "./errors.ts";
 import { Emitter, reportCallbackError } from "./listeners.ts";
@@ -85,7 +86,12 @@ export class HttpClient {
 			config.concurrency ?? DEFAULT_GLOBAL_CONCURRENCY,
 			config.maxQueueSize ?? DEFAULT_GLOBAL_QUEUE_SIZE,
 		);
-		this.bulkheads = new BulkheadRegistry({}, this.partitionConfig, DEFAULT_PARTITION_TTL_MS, semaphore);
+		this.bulkheads = new BulkheadRegistry(
+			{ rateLimit: config.rateLimit },
+			this.partitionConfig,
+			DEFAULT_PARTITION_TTL_MS,
+			semaphore,
+		);
 		this.circuitBreakers = new CircuitBreakerRegistry(
 			config.circuitBreaker ?? {},
 			this.partitionConfig,
@@ -450,31 +456,71 @@ export class HttpClient {
 				if (err instanceof CancelledError) return { kind: "cancelled" };
 				throw err;
 			};
-			if (usePartitionBulkhead) {
-				result = await bulkhead
-					.run(
-						execute,
-						semaphore,
-						(ms) => {
-							queuedMs = ms;
+			// Takes the partition slot (when limitFirstAttempts) and the global
+			// permit, then runs the attempt. queuedMs adds up every wait.
+			const dispatch = (): Promise<Awaited<ReturnType<typeof execute>>> => {
+				if (usePartitionBulkhead) {
+					return bulkhead
+						.run(
+							execute,
+							semaphore,
+							(ms) => {
+								queuedMs += ms;
+							},
+							ticket.signal,
+						)
+						.catch(cancelledWhileQueued);
+				}
+				if (semaphore) {
+					const enqueuedAt = Date.now();
+					return semaphore.acquire(ticket.signal).then(
+						(release) => {
+							queuedMs += Date.now() - enqueuedAt;
+							return execute().finally(release);
 						},
-						ticket.signal,
-					)
-					.catch(cancelledWhileQueued);
-			} else if (semaphore) {
-				const enqueuedAt = Date.now();
-				result = await semaphore.acquire(ticket.signal).then(
-					(release) => {
-						queuedMs = Date.now() - enqueuedAt;
-						return execute().finally(release);
+						(err: unknown) => {
+							queuedMs += Date.now() - enqueuedAt;
+							return cancelledWhileQueued(err);
+						},
+					);
+				}
+				return execute();
+			};
+
+			// The rate-limit token comes before any slot or permit, so an attempt
+			// waiting for its token never holds concurrency another one could use.
+			let tokenWait: Promise<number> | undefined;
+			try {
+				tokenWait = bulkhead.takeToken(ticket.signal);
+			} catch (err) {
+				if (!(err instanceof RateLimitedError)) throw err;
+				this.emit("failure", {
+					ticketId: ticket.id,
+					url: displayUrl,
+					partition: partitionName,
+					attempts: 1,
+					durationMs: Date.now() - startTime,
+					queuedMs: 0,
+					error: err,
+				});
+				controller.markDone({ success: false, error: err } as never);
+				cleanup();
+				return;
+			}
+			if (tokenWait !== undefined) {
+				const waitStart = Date.now();
+				result = await tokenWait.then(
+					(ms) => {
+						queuedMs += ms;
+						return dispatch();
 					},
 					(err: unknown) => {
-						queuedMs = Date.now() - enqueuedAt;
+						queuedMs += Date.now() - waitStart;
 						return cancelledWhileQueued(err);
 					},
 				);
 			} else {
-				result = await execute();
+				result = await dispatch();
 			}
 
 			switch (result.kind) {

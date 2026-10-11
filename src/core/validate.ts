@@ -3,6 +3,7 @@ import type {
 	CircuitBreakerConfig,
 	ClientConfig,
 	PartitionConfig,
+	RateLimitConfig,
 	RedirectMode,
 	RequestOptions,
 	ResponseType,
@@ -59,6 +60,7 @@ export function validateConfig(config: ClientConfig): void {
 	validateRetryConfig(config.retry, "retry");
 	validateCircuitBreakerConfig(config.circuitBreaker, "circuitBreaker");
 	validateRetryBudgetConfig(config.retryBudget, "retryBudget");
+	validateRateLimitConfig(config.rateLimit, "rateLimit");
 	validatePartitions(config.partitions);
 	validatePartitionConfig(config.defaultPartition, "defaultPartition");
 	if (config.redirect !== undefined && !REDIRECT_MODES.has(config.redirect)) {
@@ -157,6 +159,22 @@ function validatePartitionConfig(config: PartitionConfig | undefined, prefix: st
 	validateTimeoutConfig(config.timeout, `${prefix}.timeout`);
 	validateCircuitBreakerConfig(config.circuitBreaker, `${prefix}.circuitBreaker`);
 	validateRetryBudgetConfig(config.retryBudget, `${prefix}.retryBudget`);
+	validateRateLimitConfig(config.rateLimit, `${prefix}.rateLimit`);
+}
+
+function validateRateLimitConfig(rateLimit: RateLimitConfig | undefined, prefix: string): void {
+	if (!rateLimit) return;
+	if (!(Number.isFinite(rateLimit.tokensPerSec) && rateLimit.tokensPerSec > 0)) {
+		throw new ConfigurationError(`${prefix}.tokensPerSec must be a positive finite number`);
+	}
+	// Below 1, the bucket could never hold the whole token an attempt needs.
+	if (rateLimit.burst !== undefined && !(Number.isFinite(rateLimit.burst) && rateLimit.burst >= 1)) {
+		throw new ConfigurationError(`${prefix}.burst must be a finite number of at least 1`);
+	}
+	// 0 is legal (never wait); Infinity is the same as omitting it.
+	if (rateLimit.maxWaitMs !== undefined && !(rateLimit.maxWaitMs >= 0)) {
+		throw new ConfigurationError(`${prefix}.maxWaitMs must be non-negative`);
+	}
 }
 
 function validateRetryBudgetConfig(budget: RetryBudgetConfig | undefined, prefix: string): void {

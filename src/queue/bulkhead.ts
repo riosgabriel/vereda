@@ -1,11 +1,13 @@
-import { CancelledError, QueueFullError } from "../core/errors.ts";
+import { CancelledError, QueueFullError, RateLimitedError } from "../core/errors.ts";
 import {
 	DEFAULT_CONCURRENCY,
 	DEFAULT_MAX_QUEUE_SIZE,
 	type PartitionConfig,
 	type PartitionLookup,
 	partitionLookup,
+	type RateLimitConfig,
 } from "../core/types.ts";
+import { TokenBucket } from "./rate-limiter.ts";
 import type { Semaphore } from "./semaphore.ts";
 
 /** Default TTL (ms) before an idle partition registry entry (bulkhead or
@@ -21,12 +23,14 @@ export class Bulkhead {
 	private running = 0;
 	private activeTickets = 0;
 	private readonly _waitQueue: Array<() => void> = [];
+	private readonly bucket?: TokenBucket;
 
 	constructor(name: string, config: PartitionConfig = {}) {
 		this.name = name;
 		this.concurrency = config.concurrency ?? DEFAULT_CONCURRENCY;
 		this.maxQueueSize = config.maxQueueSize ?? DEFAULT_MAX_QUEUE_SIZE;
 		this._limitFirstAttempts = config.limitFirstAttempts ?? false;
+		if (config.rateLimit) this.bucket = new TokenBucket(config.rateLimit);
 	}
 
 	get queueSize(): number {
@@ -53,7 +57,53 @@ export class Bulkhead {
 	 *  reference, so the bulkhead can be discarded without changing the
 	 *  effective concurrency cap. */
 	get isIdle(): boolean {
-		return this.activeTickets === 0 && this.running === 0 && this._waitQueue.length === 0;
+		return (
+			this.activeTickets === 0 &&
+			this.running === 0 &&
+			this._waitQueue.length === 0 &&
+			// A drained bucket must outlive its tickets: a fresh one starts full
+			// and would let a burst through that the rate limit forbids.
+			(this.bucket === undefined || this.bucket.isFull())
+		);
+	}
+
+	/** Tokens free right now, or undefined when the partition has no rate limit. */
+	get tokensAvailable(): number | undefined {
+		return this.bucket?.available();
+	}
+
+	/** Take a rate-limit token for one attempt. Returns undefined when the
+	 *  attempt may go now (a token was free, or there is no rate limit);
+	 *  otherwise a promise that resolves with the ms waited once the token is
+	 *  due. If `signal` aborts first, the token is handed back and the promise
+	 *  rejects with `CancelledError` (B9). Throws `RateLimitedError`, reserving
+	 *  nothing, when the wait would exceed `maxWaitMs`. */
+	takeToken(signal?: AbortSignal): Promise<number> | undefined {
+		const bucket = this.bucket;
+		if (!bucket) return undefined;
+		const waitMs = bucket.reserve();
+		if (waitMs === null) {
+			throw new RateLimitedError(this.name, bucket.nextWaitMs(), bucket.maxWaitMs ?? Number.POSITIVE_INFINITY);
+		}
+		if (waitMs === 0) return undefined;
+		return new Promise<number>((resolve, reject) => {
+			if (signal?.aborted) {
+				bucket.refund();
+				reject(new CancelledError());
+				return;
+			}
+			const timer = setTimeout(() => {
+				signal?.removeEventListener("abort", onAbort);
+				resolve(waitMs);
+			}, waitMs);
+			timer.unref?.();
+			const onAbort = () => {
+				clearTimeout(timer);
+				bucket.refund();
+				reject(new CancelledError());
+			};
+			signal?.addEventListener("abort", onAbort, { once: true });
+		});
 	}
 
 	/** Mark a ticket as holding this bulkhead until the returned function is
@@ -189,6 +239,9 @@ export interface BulkheadSnapshot {
 	queued: number;
 	concurrency: number;
 	maxQueueSize: number;
+	/** Rate-limit tokens free right now. Present only when the partition has a
+	 *  `rateLimit`; `0` while attempts are waiting for theirs. */
+	tokens?: number;
 }
 
 type BulkheadEntry = [Bulkhead, number];
@@ -224,6 +277,7 @@ export class BulkheadRegistry {
 			const merged: PartitionConfig = {
 				...this.globalConfig,
 				...partitionConfig,
+				rateLimit: mergeRateLimit(this.globalConfig.rateLimit, partitionConfig.rateLimit),
 			};
 			this.bulkheads.set(partitionName, [new Bulkhead(partitionName, merged), Date.now()]);
 		}
@@ -257,13 +311,16 @@ export class BulkheadRegistry {
 	getAll(): BulkheadSnapshot[] {
 		const result: BulkheadSnapshot[] = [];
 		for (const [, [bh]] of this.bulkheads) {
-			result.push({
+			const snapshot: BulkheadSnapshot = {
 				name: bh.name,
 				running: bh.runningCount,
 				queued: bh.queueSize,
 				concurrency: bh.concurrencyLimit,
 				maxQueueSize: bh.maxQueueSizeLimit,
-			});
+			};
+			const tokens = bh.tokensAvailable;
+			if (tokens !== undefined) snapshot.tokens = tokens;
+			result.push(snapshot);
 		}
 		return result;
 	}
@@ -271,4 +328,13 @@ export class BulkheadRegistry {
 	getSemaphore(): Semaphore | undefined {
 		return this.semaphore;
 	}
+}
+
+/** Partition fields override the client-level ones one by one. */
+function mergeRateLimit(
+	global: RateLimitConfig | undefined,
+	partition: RateLimitConfig | undefined,
+): RateLimitConfig | undefined {
+	if (!global && !partition) return undefined;
+	return { ...global, ...partition } as RateLimitConfig;
 }
