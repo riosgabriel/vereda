@@ -4,7 +4,7 @@ What a finished request gives you: typed, validated bodies and a closed set of e
 
 ## Typed results
 
-Pass a `parse` function to validate and type the response body. `parse` is just `(data: unknown) => T`, and any validator that throws on failure works. A failed parse resolves the ticket with a `ValidationError` and is never retried. With `parse` set, so does a body that isn't valid JSON, including an empty one (a `204`, or any `HEAD` response): the server answered, and asking again would get the same answer.
+Pass a `parse` function to validate and type the response body. `parse` is just `(data: unknown) => T | Promise<T>`, and any validator that throws (or rejects) on failure works. A failed parse resolves the ticket with a `ValidationError` and is never retried. With `parse` set, so does a body that isn't valid JSON, including an empty one (a `204`, or any `HEAD` response): the server answered, and asking again would get the same answer.
 
 ```typescript
 const ticket = client.get<User>("/users/1", {
@@ -19,9 +19,32 @@ if (result.success) {
 
 `json<T>()` is the built-in, dependency-free version of that cast.
 
+`parse` runs inside the attempt, so waiting for an async `parse` counts against `attemptMs` and `totalMs`. A parse that never settles ends as a timeout, and `cancel()` ends it too.
+
+### Response types
+
+`responseType` sets how the body is read before `parse` sees it. It defaults to `"json"` when `parse` is set. Without `parse`, `data` is the body read that way:
+
+| `responseType` | `data` without `parse` |
+| --- | --- |
+| `"json"` | `unknown` (decoded, not validated) |
+| `"text"` | `string` |
+| `"arrayBuffer"` | `ArrayBuffer` |
+| `"blob"` | `Blob` (typed with the response's `content-type`) |
+| `"none"` | `undefined`; the body is cancelled unread |
+
+```typescript
+const csv = await client.get("/export.csv", { responseType: "text" }).toPromise();
+if (csv.success) csv.data; // string
+
+await client.delete("/users/1", { responseType: "none" }).toPromise(); // 204: nothing to read
+```
+
+The body is read inside the attempt, so `attemptMs` and `totalMs` bound the read. With neither `parse` nor `responseType`, the body is left unread on `result.raw` and `data` is `undefined`.
+
 ### Zod adapter (optional)
 
-Zod is an optional peer dependency. Only the `@vereda/http/zod` entry point imports it; the core has zero dependencies. Vereda ships a Zod adapter for it:
+Zod is an optional peer dependency. Only the `@vereda/http/zod` entry point imports it; the core has zero dependencies. Vereda ships a Zod adapter for it. It validates with `parseAsync`, so async refinements and transforms work:
 
 ```typescript
 import { z } from "zod";

@@ -5,6 +5,7 @@ import type {
 	PartitionConfig,
 	RedirectMode,
 	RequestOptions,
+	ResponseType,
 	RetryConfig,
 	TimeoutConfig,
 } from "./types.ts";
@@ -75,11 +76,18 @@ const FORBIDDEN_METHODS = new Set(["TRACE", "CONNECT", "TRACK"]);
  *  config is, just surfaced as a ticket `ConfigurationError` instead of a throw from
  *  `create()`. Omitted fields stay valid (inherit the client/partition default), and
  *  `Infinity` stays a legal explicit `attemptMs`/`totalMs`. */
-export function validateRequestOptions(options: Pick<RequestOptions, "timeout" | "retry" | "method">): void {
+const RESPONSE_TYPES: ReadonlySet<string> = new Set<ResponseType>(["json", "text", "arrayBuffer", "blob", "none"]);
+
+export function validateRequestOptions(
+	options: Pick<RequestOptions, "timeout" | "retry" | "method" | "responseType">,
+): void {
 	if (options.method && FORBIDDEN_METHODS.has(options.method.toUpperCase())) {
 		throw new ConfigurationError(
 			`HTTP method '${options.method.toUpperCase()}' is forbidden by the Fetch specification`,
 		);
+	}
+	if (options.responseType !== undefined && !RESPONSE_TYPES.has(options.responseType)) {
+		throw new ConfigurationError(`request.responseType must be one of ${[...RESPONSE_TYPES].join(", ")}`);
 	}
 	validateTimeoutConfig(options.timeout, "request.timeout");
 	validateRetryConfig(options.retry, "request.retry");

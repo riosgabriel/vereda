@@ -21,6 +21,7 @@ import { METRICS, type MetricsSink } from "./metrics.ts";
 import { nanoid } from "./nanoid.ts";
 import { redactUrl } from "./redact.ts";
 import type {
+	BodyOf,
 	ClientConfig,
 	CloseOptions,
 	LifecycleEventMap,
@@ -30,6 +31,7 @@ import type {
 	PartitionLookup,
 	RedirectMode,
 	RequestOptions,
+	ResponseType,
 	RetryConfig,
 	TimeoutConfig,
 	UnparsedRequestOptions,
@@ -129,10 +131,14 @@ export class HttpClient {
 	// ---------------------------------------------------------------------------
 
 	/** Send a request. With `parse`, `data` is whatever `parse` returns; without
-	 *  it, the body is left unread on `raw` and `data` is `undefined`. When
+	 *  it, `data` is the body read as `responseType` ({@link BodyOf}), or
+	 *  `undefined` with the body left unread on `raw` when that's unset. When
 	 *  `parse` may or may not be set, `data` is `T | undefined`. */
 	request<T>(url: string, options: ParsedRequestOptions<T>): Ticket<T>;
-	request(url: string, options?: UnparsedRequestOptions): Ticket<undefined>;
+	request<R extends ResponseType | undefined = undefined>(
+		url: string,
+		options?: UnparsedRequestOptions<R>,
+	): Ticket<BodyOf<R>>;
 	request<T>(url: string, options?: RequestOptions<T>): Ticket<T | undefined>;
 	request<T>(url: string, options: RequestOptions<T> = {}): Ticket<T> {
 		return this.send(url, options);
@@ -812,21 +818,30 @@ export class HttpClient {
 
 	/** GET request. */
 	get<T>(url: string, options: Omit<ParsedRequestOptions<T>, "method">): Ticket<T>;
-	get(url: string, options?: Omit<UnparsedRequestOptions, "method">): Ticket<undefined>;
+	get<R extends ResponseType | undefined = undefined>(
+		url: string,
+		options?: Omit<UnparsedRequestOptions<R>, "method">,
+	): Ticket<BodyOf<R>>;
 	get<T>(url: string, options: Omit<RequestOptions<T>, "method"> = {}): Ticket<T> {
 		return this.send(url, { ...options, method: "GET" });
 	}
 
 	/** HEAD request. */
 	head<T>(url: string, options: Omit<ParsedRequestOptions<T>, "method">): Ticket<T>;
-	head(url: string, options?: Omit<UnparsedRequestOptions, "method">): Ticket<undefined>;
+	head<R extends ResponseType | undefined = undefined>(
+		url: string,
+		options?: Omit<UnparsedRequestOptions<R>, "method">,
+	): Ticket<BodyOf<R>>;
 	head<T>(url: string, options: Omit<RequestOptions<T>, "method"> = {}): Ticket<T> {
 		return this.send(url, { ...options, method: "HEAD" });
 	}
 
 	/** OPTIONS request. */
 	options<T>(url: string, options: Omit<ParsedRequestOptions<T>, "method">): Ticket<T>;
-	options(url: string, options?: Omit<UnparsedRequestOptions, "method">): Ticket<undefined>;
+	options<R extends ResponseType | undefined = undefined>(
+		url: string,
+		options?: Omit<UnparsedRequestOptions<R>, "method">,
+	): Ticket<BodyOf<R>>;
 	options<T>(url: string, options: Omit<RequestOptions<T>, "method"> = {}): Ticket<T> {
 		return this.send(url, { ...options, method: "OPTIONS" });
 	}
@@ -837,11 +852,11 @@ export class HttpClient {
 		body: BodyInit | (() => BodyInit) | undefined,
 		options: Omit<ParsedRequestOptions<T>, "method" | "body">,
 	): Ticket<T>;
-	post(
+	post<R extends ResponseType | undefined = undefined>(
 		url: string,
 		body?: BodyInit | (() => BodyInit),
-		options?: Omit<UnparsedRequestOptions, "method" | "body">,
-	): Ticket<undefined>;
+		options?: Omit<UnparsedRequestOptions<R>, "method" | "body">,
+	): Ticket<BodyOf<R>>;
 	post<T>(
 		url: string,
 		body?: BodyInit | (() => BodyInit),
@@ -856,11 +871,11 @@ export class HttpClient {
 		body: BodyInit | (() => BodyInit) | undefined,
 		options: Omit<ParsedRequestOptions<T>, "method" | "body">,
 	): Ticket<T>;
-	put(
+	put<R extends ResponseType | undefined = undefined>(
 		url: string,
 		body?: BodyInit | (() => BodyInit),
-		options?: Omit<UnparsedRequestOptions, "method" | "body">,
-	): Ticket<undefined>;
+		options?: Omit<UnparsedRequestOptions<R>, "method" | "body">,
+	): Ticket<BodyOf<R>>;
 	put<T>(
 		url: string,
 		body?: BodyInit | (() => BodyInit),
@@ -875,11 +890,11 @@ export class HttpClient {
 		body: BodyInit | (() => BodyInit) | undefined,
 		options: Omit<ParsedRequestOptions<T>, "method" | "body">,
 	): Ticket<T>;
-	patch(
+	patch<R extends ResponseType | undefined = undefined>(
 		url: string,
 		body?: BodyInit | (() => BodyInit),
-		options?: Omit<UnparsedRequestOptions, "method" | "body">,
-	): Ticket<undefined>;
+		options?: Omit<UnparsedRequestOptions<R>, "method" | "body">,
+	): Ticket<BodyOf<R>>;
 	patch<T>(
 		url: string,
 		body?: BodyInit | (() => BodyInit),
@@ -890,7 +905,10 @@ export class HttpClient {
 
 	/** DELETE request. */
 	delete<T>(url: string, options: Omit<ParsedRequestOptions<T>, "method">): Ticket<T>;
-	delete(url: string, options?: Omit<UnparsedRequestOptions, "method">): Ticket<undefined>;
+	delete<R extends ResponseType | undefined = undefined>(
+		url: string,
+		options?: Omit<UnparsedRequestOptions<R>, "method">,
+	): Ticket<BodyOf<R>>;
 	delete<T>(url: string, options: Omit<RequestOptions<T>, "method"> = {}): Ticket<T> {
 		return this.send(url, { ...options, method: "DELETE" });
 	}

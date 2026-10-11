@@ -3,6 +3,7 @@ import type { ParseFn } from "../core/types.ts";
 
 /**
  * Wraps a Zod schema into a ParseFn for use with vereda's `parse` option.
+ * Uses `parseAsync`, so schemas with async refinements/transforms work too.
  *
  * @example
  * const UserSchema = z.object({ id: z.number(), name: z.string() });
@@ -12,5 +13,5 @@ import type { ParseFn } from "../core/types.ts";
  * });
  */
 export function withZod<T>(schema: ZodType<T>): ParseFn<T> {
-	return (data: unknown): T => schema.parse(data);
+	return (data: unknown): Promise<T> => schema.parseAsync(data);
 }

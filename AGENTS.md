@@ -60,6 +60,7 @@ Request flow: `client.get()` returns a `Ticket` synchronously → first attempt 
 - Default retry policy — only `network`/`timeout`/`retryable_status` errors on idempotent requests (or `retry.idempotent`/`Idempotency-Key` opt-in) are retried; user `retryWhen` is consulted after it and can only veto.
 - `retryWhen` is consulted after **every** failed attempt that could still be retried, including attempt 0. Not called after the final attempt when no retries remain.
 - `ValidationError` (failed `parse`) resolves immediately and is never retried.
+- The body read (`responseType`) and `parse`, sync or async, run inside the attempt: `attemptMs`/`totalMs` and `cancel()` bound them. A rejected async parse is a `ValidationError`; a parse cut short by the deadline is a timeout.
 - Cancellation wins over timeouts/retries; a cancelled ticket is never retried.
 - Replayable bodies — body may be a factory invoked per attempt; a raw `ReadableStream` is a `ConfigurationError`.
 - Retries honor `Retry-After` (seconds or HTTP-date) capped at `maxDelayMs`; backoff otherwise.

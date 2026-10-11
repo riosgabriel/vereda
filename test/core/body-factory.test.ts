@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { HttpClient } from "../../src/core/client.ts";
 import { ConfigurationError } from "../../src/core/errors.ts";
+import type { Ticket } from "../../src/ticket/ticket.ts";
 
 interface TestServer {
 	url: string;
@@ -100,7 +101,7 @@ describe("replayable bodies", () => {
 
 		const client = HttpClient.create({ timeout: { attemptMs: 5_000 } });
 		// `!`: the expect() callback runs synchronously, so this is assigned before use.
-		let ticket!: ReturnType<HttpClient["post"]>;
+		let ticket!: Ticket<undefined>;
 		expect(() => {
 			ticket = client.post(`${server.url}/raw`, makeStream("hello"));
 		}).not.toThrow();

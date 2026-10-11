@@ -48,9 +48,9 @@ export async function smoke() {
 		client.on(name, () => events.push(name));
 	}
 
-	// A stand-in for a Zod schema: withZod only needs `.parse`.
+	// A stand-in for a Zod schema: withZod only needs `.parseAsync`.
 	const schema = {
-		parse(data) {
+		async parseAsync(data) {
 			if (data?.ok !== true) throw new Error("bad body");
 			return data;
 		},

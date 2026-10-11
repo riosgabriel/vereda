@@ -28,6 +28,7 @@ export { redactUrl } from "./redact.ts";
 export type {
 	BackoffFn,
 	BackoffOptions,
+	BodyOf,
 	CircuitBreakerConfig,
 	ClientConfig,
 	ClientTimeoutConfig,
@@ -39,6 +40,7 @@ export type {
 	PartitionConfig,
 	RedirectMode,
 	RequestOptions,
+	ResponseType,
 	Result,
 	RetryConfig,
 	TimeoutConfig,

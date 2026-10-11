@@ -11,7 +11,31 @@ export type Result<T> = { success: true; data: T; raw: Response } | { success: f
 // Parse function — schema-agnostic
 // ---------------------------------------------------------------------------
 
-export type ParseFn<T> = (data: unknown) => T;
+/** Validates/transforms the decoded body. May be async (e.g. a schema with
+ *  async refinements); a throw or rejection becomes a `ValidationError`. */
+export type ParseFn<T> = (data: unknown) => T | Promise<T>;
+
+// ---------------------------------------------------------------------------
+// Response type — how the body is read before `parse` sees it
+// ---------------------------------------------------------------------------
+
+/** How the response body is read inside the attempt. `"none"` cancels it. */
+export type ResponseType = "json" | "text" | "arrayBuffer" | "blob" | "none";
+
+/** What `data` is when `responseType` is set without `parse`. No
+ *  `responseType` at all leaves the body unread on `raw`: `undefined`. */
+export type BodyOf<R extends ResponseType | undefined> =
+	// "json" without parse is read and decoded but never validated: `unknown`,
+	// so the caller has to narrow it (or pass `parse`) before trusting it.
+	R extends "json"
+		? unknown
+		: R extends "text"
+			? string
+			: R extends "arrayBuffer"
+				? ArrayBuffer
+				: R extends "blob"
+					? Blob
+					: undefined;
 
 // ---------------------------------------------------------------------------
 // Backoff
@@ -253,6 +277,10 @@ export interface RequestOptions<T = unknown> {
 	partition?: string;
 	/** Schema parse function. Use withZod() or custom. */
 	parse?: ParseFn<T>;
+	/** How the body is read; `parse` receives the result. Defaults to `"json"`
+	 *  when `parse` is set; with neither, the body is left unread on `raw`.
+	 *  The read and `parse` both run inside the attempt's timeout. */
+	responseType?: ResponseType;
 	retry?: RetryConfig;
 	timeout?: TimeoutConfig;
 	/** Signal to cancel the request externally */
@@ -262,10 +290,14 @@ export interface RequestOptions<T = unknown> {
 /** Request options with `parse` set: the ticket resolves with `data: T`. */
 export type ParsedRequestOptions<T> = Omit<RequestOptions<T>, "parse"> & { parse: ParseFn<T> };
 
-/** Request options without `parse`: the body is left unread on `raw` and
- *  `data` is `undefined`. `parse: undefined` is accepted so options can be
+/** Request options without `parse`: `data` is the body read as
+ *  `responseType` (see {@link BodyOf}), or `undefined` with the body left
+ *  unread on `raw` when there's no `responseType`. `parse: undefined` is accepted so options can be
  *  built conditionally. */
-export type UnparsedRequestOptions = Omit<RequestOptions, "parse"> & { parse?: undefined };
+export type UnparsedRequestOptions<R extends ResponseType | undefined = undefined> = Omit<
+	RequestOptions,
+	"parse" | "responseType"
+> & { parse?: undefined; responseType?: R };
 
 // ---------------------------------------------------------------------------
 // Client config
