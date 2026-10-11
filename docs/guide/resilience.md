@@ -22,6 +22,8 @@ By default, a failed attempt is retried only when the error is transient **and**
 | Circuit open | `circuit_open` | Never |
 | Invalid configuration | `configuration` | Never |
 
+A [retry budget](#retry-budget), when configured, can also refuse a retry the policy allowed.
+
 Idempotent means `GET`, `HEAD`, `OPTIONS`, `PUT`, or `DELETE`. Non-idempotent methods (`POST`, `PATCH`) are not retried, since blindly repeating them could duplicate a side effect; opt in with `retry: { idempotent: true }` or by sending an `Idempotency-Key` header. The busy-status list is `retry.retryOnStatus`, and the underlying `defaultRetryPolicy` is exported for inspection, or to call from inside `retryWhen`.
 
 `maxRetries: 0` disables retries entirely — a failed request resolves with its own error, unwrapped. When retries run out and the last failure was still transient, the ticket resolves with a `MaxRetriesExceededError` carrying the attempt count and the last underlying error. If an attempt fails with a non-retryable error, that error is returned as is.
@@ -77,6 +79,28 @@ const client = HttpClient.create({
 ```
 
 A request `body` may also be supplied as a factory (`() => BodyInit`); the factory is invoked fresh on every attempt so the payload can be replayed across retries. This is required when the body is a `ReadableStream` — passing a bare stream is a `ConfigurationError`. When a stream body is used, `duplex: "half"` is set on the fetch call automatically.
+
+### Retry budget
+
+`maxRetries` bounds retries per request, not per host: when a host fails every request, each one is still retried up to `maxRetries` times, so the host sees `1 + maxRetries` times its normal load right when it can least take it. A retry budget caps retries to a fraction of the partition's recent traffic instead:
+
+```typescript
+import { HttpClient } from "@vereda/http";
+
+const client = HttpClient.create({
+  timeout: { attemptMs: 5_000 },
+  retryBudget: { ratio: 0.1, windowMs: 10_000, minRetriesPerSec: 10 },
+  partitions: {
+    "payments.internal": { retryBudget: { ratio: 0.2, windowMs: 10_000 } },
+  },
+});
+```
+
+A retry is allowed only while the partition's retries over the last `windowMs` stay below `max(minRetriesPerSec * windowMs / 1000, ratio * requests)`, where `requests` counts first attempts. With `ratio: 0.1`, a failing host sees at most about 1.1 times its normal load. `minRetriesPerSec` (default `10`) is a floor, so a partition with little traffic can still retry. Once the budget is spent, a ticket that would have retried fails right away with its last error, without waiting out the backoff, and a `retryBudgetExhausted` event fires before its `failure` event. Retries that run free up budget again as they slide out of the window.
+
+The budget is set on the client or per partition, never per request. A partition's `retryBudget` overrides the client's field by field. With neither set, retries are limited only by `maxRetries`.
+
+The budget and the [circuit breaker](#circuit-breaker) work together. The budget limits **retries** while a host is degraded, and first attempts still go through. The breaker blocks **every** attempt once the host is clearly down. A budget keeps a retry storm from building in the first place, and the breaker stops traffic to a host that is down outright.
 
 ## Timeouts
 

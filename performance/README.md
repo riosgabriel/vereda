@@ -102,7 +102,7 @@ bun run src/runner.ts bulkhead    # Run bulkhead scenario
 | Test | Description | Purpose |
 |------|-------------|---------|
 | Bulkhead | Two partitions (fast/slow) | Verify isolation |
-| Retry Storm | 80% failure rate | Test backoff effectiveness |
+| Retry Storm | 80% failure rate | Test backoff effectiveness, then rerun with `retryBudget` (`ratio: 0.1`) and check server load stays within ≈ 1.1x |
 | Thundering Herd | Sudden burst after idle | Test queue management |
 
 ## Output Format

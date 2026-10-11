@@ -127,6 +127,7 @@ if (result.success) {
 | First attempts | Skip the per-partition bulkhead (unless `partition.limitFirstAttempts` is set), but still take a global permit |
 | Total deadline | None — set `timeout.totalMs` to cap the whole request |
 | Circuit breaker | Disabled — opt in with `circuitBreaker: { enabled: true }` |
+| Retry budget | None — retries are limited only by `maxRetries` until you set `retryBudget` |
 
 ## Example: one failing dependency
 
@@ -210,7 +211,7 @@ The first attempt skips the partition bulkhead. Only requests that need another 
 | **[Circuit breaker](docs/guide/resilience.md#circuit-breaker)**<br>Stop calling a host that is clearly failing | **[Cancellation](docs/guide/requests.md#cancellation)**<br>Cancel from the ticket or an `AbortSignal` | **[Tickets](docs/guide/requests.md#tickets)**<br>Await, subscribe to, or cancel a request |
 | **[Typed results](docs/guide/results-and-errors.md#typed-results)**<br>Validate the body with any `parse` function | **[Error handling](docs/guide/results-and-errors.md#error-handling)**<br>A closed error hierarchy with a literal `kind` | **[Middleware](docs/guide/requests.md#middleware)**<br>Onion-style hooks around every attempt |
 | **[Custom fetch](docs/guide/requests.md#custom-fetch)**<br>Swap `globalThis.fetch` for your own | **[Lifecycle events](docs/guide/observability.md#lifecycle-events)**<br>Typed client-wide events for logging | **[Metrics](docs/guide/observability.md#metrics)**<br>Counters, histograms and gauges to any sink |
-| **[OpenTelemetry](docs/guide/observability.md#opentelemetry)**<br>Spans per ticket and attempt, plus an OTel metrics sink | | |
+| **[OpenTelemetry](docs/guide/observability.md#opentelemetry)**<br>Spans per ticket and attempt, plus an OTel metrics sink | **[Retry budget](docs/guide/resilience.md#retry-budget)**<br>Cap a host's retries to a fraction of its traffic | |
 
 Each card links into one of four guides: [Resilience](docs/guide/resilience.md) · [Results and errors](docs/guide/results-and-errors.md) · [Working with requests](docs/guide/requests.md) · [Observability](docs/guide/observability.md).
 
@@ -229,7 +230,7 @@ Each card links into one of four guides: [Resilience](docs/guide/resilience.md) 
 ## Documentation
 
 - **Feature guides**
-  - [Resilience](docs/guide/resilience.md) — retries and backoff, timeouts, bulkhead isolation, circuit breaker.
+  - [Resilience](docs/guide/resilience.md) — retries and backoff, retry budget, timeouts, bulkhead isolation, circuit breaker.
   - [Results and errors](docs/guide/results-and-errors.md) — typed results, the Zod adapter, error handling.
   - [Working with requests](docs/guide/requests.md) — cancellation, tickets, middleware, custom fetch.
   - [Observability](docs/guide/observability.md) — lifecycle events, metrics, OpenTelemetry.
