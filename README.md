@@ -69,6 +69,7 @@ Even once that loop is correct, it has no limit on how many retries pile onto a 
 | A retry could duplicate a side effect | retries only idempotent methods unless you opt in or send an `Idempotency-Key` |
 | A request hangs | aborts each attempt at `timeout.attemptMs`; an optional `timeout.totalMs` caps the whole request |
 | One failing host would soak up your retries | caps retry concurrency and queue size per host, so one host's retries can't fill another's queue (all hosts still share the global `concurrency` cap) |
+| A host has a requests-per-second quota | an opt-in token bucket per host spaces attempts out, retries included |
 | A host is down, not just slow | an opt-in circuit breaker fails fast with `CircuitOpenError` until it recovers |
 | The response isn't the shape you expected | validates it with your `parse` function (or Zod); a failed parse is never retried |
 | The caller no longer needs the answer | cancels via the ticket or your `AbortSignal`; a cancelled request is never retried |
@@ -128,6 +129,7 @@ if (result.success) {
 | Total deadline | None — set `timeout.totalMs` to cap the whole request |
 | Circuit breaker | Disabled — opt in with `circuitBreaker: { enabled: true }` |
 | Retry budget | None — retries are limited only by `maxRetries` until you set `retryBudget` |
+| Rate limit | None — opt in with `rateLimit: { tokensPerSec }` |
 
 ## Example: one failing dependency
 
@@ -211,7 +213,7 @@ The first attempt skips the partition bulkhead. Only requests that need another 
 | **[Circuit breaker](docs/guide/resilience.md#circuit-breaker)**<br>Stop calling a host that is clearly failing | **[Cancellation](docs/guide/requests.md#cancellation)**<br>Cancel from the ticket or an `AbortSignal` | **[Tickets](docs/guide/requests.md#tickets)**<br>Await, subscribe to, or cancel a request |
 | **[Typed results](docs/guide/results-and-errors.md#typed-results)**<br>Validate the body with any `parse` function | **[Error handling](docs/guide/results-and-errors.md#error-handling)**<br>A closed error hierarchy with a literal `kind` | **[Middleware](docs/guide/requests.md#middleware)**<br>Onion-style hooks around every attempt |
 | **[Custom fetch](docs/guide/requests.md#custom-fetch)**<br>Swap `globalThis.fetch` for your own | **[Lifecycle events](docs/guide/observability.md#lifecycle-events)**<br>Typed client-wide events for logging | **[Metrics](docs/guide/observability.md#metrics)**<br>Counters, histograms and gauges to any sink |
-| **[OpenTelemetry](docs/guide/observability.md#opentelemetry)**<br>Spans per ticket and attempt, plus an OTel metrics sink | **[Retry budget](docs/guide/resilience.md#retry-budget)**<br>Cap a host's retries to a fraction of its traffic | |
+| **[OpenTelemetry](docs/guide/observability.md#opentelemetry)**<br>Spans per ticket and attempt, plus an OTel metrics sink | **[Retry budget](docs/guide/resilience.md#retry-budget)**<br>Cap a host's retries to a fraction of its traffic | **[Rate limiting](docs/guide/resilience.md#rate-limiting)**<br>A token bucket per host for req/s quotas |
 
 Each card links into one of four guides: [Resilience](docs/guide/resilience.md) · [Results and errors](docs/guide/results-and-errors.md) · [Working with requests](docs/guide/requests.md) · [Observability](docs/guide/observability.md).
 
@@ -230,7 +232,7 @@ Each card links into one of four guides: [Resilience](docs/guide/resilience.md) 
 ## Documentation
 
 - **Feature guides**
-  - [Resilience](docs/guide/resilience.md) — retries and backoff, retry budget, timeouts, bulkhead isolation, circuit breaker.
+  - [Resilience](docs/guide/resilience.md) — retries and backoff, retry budget, timeouts, bulkhead isolation, rate limiting, circuit breaker.
   - [Results and errors](docs/guide/results-and-errors.md) — typed results, the Zod adapter, error handling.
   - [Working with requests](docs/guide/requests.md) — cancellation, tickets, middleware, custom fetch.
   - [Observability](docs/guide/observability.md) — lifecycle events, metrics, OpenTelemetry.

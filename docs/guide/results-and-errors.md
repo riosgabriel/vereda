@@ -79,6 +79,7 @@ Errors are a closed hierarchy under `RequestError`, and `AppError` is the union 
 | `CancelledError` | `"cancelled"` | Ticket cancelled or signal aborted (terminal) | — |
 | `QueueFullError` | `"queue_full"` | A partition's retry queue, or the global queue (`partition: "global"`), was full (terminal) | `partition`, `queueSize`, `maxQueueSize` |
 | `CircuitOpenError` | `"circuit_open"` | The partition's breaker was open when an attempt was due, so it wasn't sent; earlier attempts may have run (terminal) | `partition` |
+| `RateLimitedError` | `"rate_limited"` | The partition's [rate limit](resilience.md#rate-limiting) would have made an attempt wait longer than `maxWaitMs`, so it wasn't sent; earlier attempts may have run (terminal) | `partition`, `waitMs`, `maxWaitMs` |
 | `ConfigurationError` | `"configuration"` | A relative URL with no `baseUrl`, a bare `ReadableStream` body, a body factory that threw, or invalid request-level `timeout`/`retry` options (terminal). Invalid client config throws from `create()` instead | `key` |
 | `MaxRetriesExceededError` | `"max_retries"` | Retries ran out while the failure was still transient (terminal) | `attempts`, `lastError` |
 

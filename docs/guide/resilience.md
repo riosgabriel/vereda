@@ -20,6 +20,7 @@ By default, a failed attempt is retried only when the error is transient **and**
 | Cancelled | `cancelled` | Never |
 | Partition or global queue full | `queue_full` | Never |
 | Circuit open | `circuit_open` | Never |
+| Rate limit wait over `maxWaitMs` | `rate_limited` | Never |
 | Invalid configuration | `configuration` | Never |
 
 A [retry budget](#retry-budget), when configured, can also refuse a retry the policy allowed.
@@ -160,6 +161,27 @@ client.get("/path", { partition: "high-priority" });
 ```
 
 When a partition's queue, or the global queue, is full, the ticket resolves with a `QueueFullError`. That is deliberate backpressure: the alternative is unbounded memory growth.
+
+## Rate limiting
+
+A bulkhead caps how many attempts run at once. A rate limit caps how many start per second, which is what a third-party API with a requests-per-second quota needs. It is a token bucket per partition:
+
+```typescript
+import { HttpClient } from "@vereda/http";
+
+const client = HttpClient.create({
+  timeout: { attemptMs: 5_000, totalMs: 30_000 },
+  partitions: {
+    "api.partner.com": { rateLimit: { tokensPerSec: 10, burst: 20, maxWaitMs: 2_000 } },
+  },
+});
+```
+
+Every attempt to the partition takes a token before it is sent, first attempts and retries alike. The bucket holds up to `burst` tokens (default: one second's worth) and refills at `tokensPerSec`, so after a quiet spell `burst` attempts can go out back to back, and after that one every `1 / tokensPerSec` seconds. When the bucket is empty, an attempt waits its turn, in arrival order. It takes the token before any bulkhead slot or global `concurrency` permit, so it holds no concurrency while it waits. The wait counts toward `queuedMs`.
+
+The wait ends early on `cancel()` or at `timeout.totalMs`, and the unused token goes back to the bucket. Without `maxWaitMs`, those are the only limits on the wait. With it, an attempt that would wait longer fails at once with a `RateLimitedError` (`kind: "rate_limited"`), which carries the `waitMs` it would have needed and is never retried. A retry that hits it fails the ticket the same way.
+
+The limit is set on the client (applying to each partition separately) or per partition, never per request. A partition's `rateLimit` overrides the client's field by field. A `429`'s `Retry-After` doesn't change the bucket: it still delays only the retry of the ticket that received it.
 
 ## Circuit breaker
 
