@@ -264,3 +264,31 @@ describe("validateConfig circuitBreaker", () => {
 		).not.toThrow();
 	});
 });
+
+describe("validateConfig retryBudget", () => {
+	const base = { timeout: { attemptMs: 1_000 } } satisfies ClientConfig;
+	const ok = { ratio: 0.1, windowMs: 10_000 };
+	const cases: Array<[string, NonNullable<ClientConfig["retryBudget"]>, RegExp]> = [
+		["ratio: -0.1", { ...ok, ratio: -0.1 }, /retryBudget\.ratio must be a non-negative finite number/],
+		["ratio: NaN", { ...ok, ratio: Number.NaN }, /retryBudget\.ratio/],
+		["windowMs: 0", { ...ok, windowMs: 0 }, /retryBudget\.windowMs must be a positive finite number/],
+		["windowMs: Infinity", { ...ok, windowMs: Infinity }, /retryBudget\.windowMs/],
+		["minRetriesPerSec: -1", { ...ok, minRetriesPerSec: -1 }, /retryBudget\.minRetriesPerSec/],
+	];
+
+	it.each(cases)("client-level %s", (_label, retryBudget, message) => {
+		expect(() => validateConfig({ ...base, retryBudget })).toThrow(message);
+	});
+
+	it("validates partition-level retryBudget with the partition in the key", () => {
+		expect(() => validateConfig({ ...base, partitions: { api: { retryBudget: { ...ok, windowMs: 0 } } } })).toThrow(
+			/partitions\.api\.retryBudget\.windowMs/,
+		);
+	});
+
+	it("accepts ratio 0 and minRetriesPerSec 0", () => {
+		expect(() =>
+			validateConfig({ ...base, retryBudget: { ratio: 0, windowMs: 1, minRetriesPerSec: 0 } }),
+		).not.toThrow();
+	});
+});

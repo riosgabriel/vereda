@@ -56,7 +56,7 @@ Each partition gets a concurrency limit plus a waiting queue. `schedule()` rejec
 ### Stop 6 — The retry loop
 **Read:** `src/queue/retry.ts` → `runRetryLoop()`
 
-Where retries actually happen. Each attempt: check cancellation, **re-check the circuit breaker** (same gate as Stop 4 — a trip here stops the loop immediately), consult `retryWhen`, back off, and re-run `executeRequest()`. When attempts are exhausted, the ticket resolves with `MaxRetriesExceededError`. It reuses the same executor as the first attempt.
+Where retries actually happen. Each attempt: check cancellation, **re-check the circuit breaker** (same gate as Stop 4 — a trip here stops the loop immediately), consult `retryWhen`, ask the partition's retry budget (`src/queue/retry-budget.ts`, opt-in) for a retry, back off, and re-run `executeRequest()`. When attempts are exhausted, the ticket resolves with `MaxRetriesExceededError`. It reuses the same executor as the first attempt.
 
 ### Stop 7 — The delay
 **Read:** `src/core/backoff.ts` → `buildBackoffFn()`

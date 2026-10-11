@@ -118,6 +118,8 @@ export interface PartitionConfig {
 	retry?: RetryConfig;
 	timeout?: TimeoutConfig;
 	circuitBreaker?: CircuitBreakerConfig;
+	/** Replaces the client-level `retryBudget` for this partition, field by field. */
+	retryBudget?: RetryBudgetConfig;
 }
 
 /** Resolves the config that applies to a partition: its `partitions` entry
@@ -167,6 +169,29 @@ export interface CircuitBreakerConfig {
 	 *  (e.g. a body factory that threw before the request was dispatched) —
 	 *  those are always ignored, since there is no host-health signal to classify. */
 	isFailure?: (error: AppError) => boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Retry budget config
+// ---------------------------------------------------------------------------
+
+/** Default retries per second a partition may always spend, however little
+ *  traffic it sees (Finagle's default). */
+export const DEFAULT_MIN_RETRIES_PER_SEC = 10;
+
+/** Caps retries per partition to a fraction of its recent traffic. A retry is
+ *  allowed only while `retries < max(minRetriesPerSec * windowMs / 1000,
+ *  ratio * requests)` over the last `windowMs`, where `requests` counts first
+ *  attempts. Past that, the ticket fails with its last error instead of
+ *  waiting. Opt-in: no budget applies unless one is configured. */
+export interface RetryBudgetConfig {
+	/** Retries allowed per first attempt in the window, e.g. `0.1` = 10%. */
+	ratio: number;
+	/** Length of the sliding window in ms. */
+	windowMs: number;
+	/** Floor that lets a low-traffic partition retry at all.
+	 *  @default {@link DEFAULT_MIN_RETRIES_PER_SEC} */
+	minRetriesPerSec?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -256,6 +281,9 @@ export type LifecycleEventMap = {
 		durationMs: number;
 		queuedMs: number;
 	};
+	/** A retry was refused because the partition's retry budget is spent;
+	 *  the ticket's `failure` event (with its last error) follows. */
+	retryBudgetExhausted: { ticketId: string; url: string; partition: string };
 	circuitOpen: { partition: string };
 	circuitClose: { partition: string };
 };
@@ -344,6 +372,8 @@ export interface ClientConfig {
 	defaultPartition?: PartitionConfig;
 	/** Default circuit breaker config. Opt-in — inert unless `enabled: true`. */
 	circuitBreaker?: CircuitBreakerConfig;
+	/** Default per-partition retry budget. Opt-in — no budget unless set. */
+	retryBudget?: RetryBudgetConfig;
 	/** Optional structured logger */
 	logger?: Logger;
 	/** Optional metrics sink for counters, histograms, and gauges. */

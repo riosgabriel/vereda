@@ -57,6 +57,7 @@ Request flow: `client.get()` returns a `Ticket` synchronously → first attempt 
 
 - First attempt skips the bulkhead (bulkhead throttles retry traffic only).
 - Per-partition circuit breaker (opt-in, `circuitBreaker` config) gates admission before the first attempt **and is re-checked before every retry** — trips open on consecutive failures or a rolling failure-rate window, rejects with `CircuitOpenError` while open, half-opens after `resetTimeoutMs` to trial recovery.
+- Per-partition retry budget (opt-in, `retryBudget` config) is checked in the retry loop after the deadline check and before the backoff sleep. Each first attempt the breaker admits counts as a request; a retry is counted only when the budget admits it. A refused retry fails the ticket with its last error and emits `retryBudgetExhausted` before `failure`. A budget is never pruned while a ticket holds it or while its window still has counts.
 - Default retry policy — only `network`/`timeout`/`retryable_status` errors on idempotent requests (or `retry.idempotent`/`Idempotency-Key` opt-in) are retried; user `retryWhen` is consulted after it and can only veto.
 - `retryWhen` is consulted after **every** failed attempt that could still be retried, including attempt 0. Not called after the final attempt when no retries remain.
 - `ValidationError` (failed `parse`) resolves immediately and is never retried.
@@ -116,6 +117,7 @@ An LLM can stand in for a library's docs website: interactively walk a new contr
 - Retry policy + `shouldRetry`: `src/queue/policy.ts`
 - Bulkhead + per-host queue: `src/queue/bulkhead.ts`
 - Circuit breaker: `src/queue/circuit-breaker.ts`
+- Retry budget: `src/queue/retry-budget.ts`
 - Backoff: `src/core/backoff.ts`
 - Config validation: `src/core/validate.ts`
 - Ticket ID generation: `src/core/nanoid.ts`

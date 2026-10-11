@@ -117,6 +117,11 @@ const scenarioArb = fc
 		totalMs: fc.option(fc.integer({ min: 20, max: 150 }), { nil: undefined }),
 		partitionConcurrency: fc.integer({ min: 1, max: 3 }),
 		limitFirstAttempts: fc.boolean(),
+		// ratio 0 with no floor refuses every retry; a ratio of 1 admits some.
+		retryBudget: fc.option(
+			fc.record({ ratio: fc.constantFrom(0, 1), windowMs: fc.constant(1_000), minRetriesPerSec: fc.constant(0) }),
+			{ nil: undefined },
+		),
 		throwingClientListener: fc.boolean(),
 		throwingSink: fc.boolean(),
 		close: fc.option(
@@ -186,6 +191,7 @@ async function runScenario(s: Scenario): Promise<void> {
 		metrics: sink,
 		retry: { maxRetries: s.maxRetries, backoff: { baseDelayMs: 1, maxDelayMs: 2, jitter: false } },
 		timeout: { attemptMs: s.attemptMs ?? Number.POSITIVE_INFINITY, totalMs: s.totalMs },
+		retryBudget: s.retryBudget,
 		partitions: { svc: { concurrency: s.partitionConcurrency, limitFirstAttempts: s.limitFirstAttempts } },
 	});
 

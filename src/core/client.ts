@@ -3,6 +3,7 @@ import { type CircuitBreaker, CircuitBreakerRegistry, type CircuitSnapshot } fro
 import { executeRequest, type MiddlewareFn } from "../queue/executor.ts";
 import { type RetryPolicyContext, shouldRetry } from "../queue/policy.ts";
 import { runRetryLoop } from "../queue/retry.ts";
+import { type RetryBudget, RetryBudgetRegistry } from "../queue/retry-budget.ts";
 import { Semaphore } from "../queue/semaphore.ts";
 import { createTicket, type Ticket, type TicketController } from "../ticket/ticket.ts";
 import type { AppError } from "./errors.ts";
@@ -61,6 +62,7 @@ export class HttpClient {
 	private readonly middlewares: MiddlewareFn[] = [];
 	private readonly bulkheads: BulkheadRegistry;
 	private readonly circuitBreakers: CircuitBreakerRegistry;
+	private readonly retryBudgets: RetryBudgetRegistry;
 	private readonly partitionConfig: PartitionLookup;
 	private readonly logger: Logger | undefined;
 	private readonly metrics: MetricsSink | undefined;
@@ -96,6 +98,7 @@ export class HttpClient {
 				}
 			},
 		);
+		this.retryBudgets = new RetryBudgetRegistry(config.retryBudget, this.partitionConfig, DEFAULT_PARTITION_TTL_MS);
 	}
 
 	static create(config: ClientConfig): HttpClient {
@@ -373,9 +376,12 @@ export class HttpClient {
 		const breaker = this.circuitBreakers.get(partitionName);
 		const releaseBulkhead = bulkhead.retain();
 		const releaseBreaker = breaker.retain();
+		const retryBudget = this.retryBudgets.get(partitionName);
+		const releaseBudget = retryBudget.retain();
 		hold(() => {
 			releaseBulkhead();
 			releaseBreaker();
+			releaseBudget();
 		});
 		const permit = breaker.tryAcquire();
 		if (!permit) {
@@ -394,6 +400,10 @@ export class HttpClient {
 			cleanup();
 			return;
 		}
+
+		// Only first attempts the breaker admitted earn retry budget: a rejected
+		// one never reached the host, so it adds no load to spread retries over.
+		retryBudget.recordRequest();
 
 		// The permit must be settled on every exit — including a QueueFullError
 		// thrown by the semaphore below, and cancellation/deadline, which record
@@ -580,6 +590,7 @@ export class HttpClient {
 						partitionName,
 						bulkhead,
 						breaker,
+						retryBudget,
 						result.error,
 						cleanup,
 						startTime,
@@ -641,6 +652,7 @@ export class HttpClient {
 						partitionName,
 						bulkhead,
 						breaker,
+						retryBudget,
 						error,
 						cleanup,
 						startTime,
@@ -702,6 +714,7 @@ export class HttpClient {
 		partitionName: string,
 		bulkhead: ReturnType<BulkheadRegistry["get"]>,
 		breaker: CircuitBreaker,
+		retryBudget: RetryBudget,
 		firstError: AppError,
 		cleanup: () => void,
 		startTime: number,
@@ -730,6 +743,7 @@ export class HttpClient {
 			bulkhead,
 			semaphore: this.bulkheads.getSemaphore(),
 			circuitBreaker: breaker,
+			retryBudget,
 			partition: partitionName,
 			firstError,
 			initialQueuedMs,
@@ -744,6 +758,9 @@ export class HttpClient {
 					delayMs,
 					error,
 				});
+			},
+			onBudgetExhausted: () => {
+				this.emit("retryBudgetExhausted", { ticketId: ticket.id, url: displayUrl, partition: partitionName });
 			},
 			onSuccess: (statusCode, attempts, queuedMs) => {
 				const durationMs = Date.now() - startTime;
@@ -1078,6 +1095,9 @@ export class HttpClient {
 			} else if (e === "circuitOpen") {
 				const d = data as LifecycleEventMap["circuitOpen"];
 				this.metrics.counter(METRICS.CIRCUIT_OPEN, 1, { partition: d.partition });
+			} else if (e === "retryBudgetExhausted") {
+				const d = data as LifecycleEventMap["retryBudgetExhausted"];
+				this.metrics.counter(METRICS.RETRY_BUDGET_EXHAUSTED, 1, { partition: d.partition });
 			}
 		}
 	}

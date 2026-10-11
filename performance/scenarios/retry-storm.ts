@@ -1,25 +1,32 @@
-import { HttpClient } from "@vereda/http";
+import { HttpClient, type RetryBudgetConfig } from "@vereda/http";
 import { type BenchmarkResult, printResults, TestServer } from "../src/utils.ts";
 
 /**
  * Scenario: Retry storm test
  * Simulates a situation where many requests fail simultaneously and retry
- * Tests if Vereda's backoff prevents overwhelming the server
+ * Tests if Vereda's backoff prevents overwhelming the server, then reruns it
+ * with a retry budget to show the load amplification it bounds.
  */
-async function retryStormScenario() {
+async function retryStormScenario(label: string, retryBudget?: RetryBudgetConfig): Promise<number> {
+	let serverHits = 0;
 	const server = new TestServer({
 		baseLatencyMs: 10,
 		jitterMs: 5,
 		failRate: 0.8, // High failure rate to trigger many retries
 		statusCodes: [503],
+		intercept: async () => {
+			serverHits++;
+			return false;
+		},
 	});
 	await server.start();
 
 	try {
-		console.log("=== SCENARIO: RETRY STORM ===");
+		console.log(`=== SCENARIO: RETRY STORM (${label}) ===`);
 		console.log("Simulating 80% failure rate triggering massive retries...\n");
 
 		const client = HttpClient.create({
+			retryBudget,
 			baseUrl: server.baseUrl,
 			retry: {
 				maxRetries: 3,
@@ -83,7 +90,7 @@ async function retryStormScenario() {
 		};
 
 		const result: BenchmarkResult = {
-			name: "Retry Storm Scenario",
+			name: `Retry Storm Scenario (${label})`,
 			totalRequests,
 			successfulRequests: successful,
 			failedRequests: failed,
@@ -126,9 +133,35 @@ async function retryStormScenario() {
 
 		console.log(`\nQuick completions (<1s): ${quickRequests.length}`);
 		console.log(`Slow completions (>=1s, likely multiple retries): ${slowRequests.length}`);
+
+		const amplification = serverHits / totalRequests;
+		console.log(`\nServer load amplification: ${amplification.toFixed(2)}x (${serverHits} hits)\n`);
+		return amplification;
 	} finally {
 		await server.stop();
 	}
 }
 
-retryStormScenario().catch(console.error);
+async function main() {
+	// minRetriesPerSec: 0 so the ratio alone bounds this short run; the default
+	// floor (10/s over a 10s window) would admit 100 retries on its own.
+	const ratio = 0.1;
+	const unbounded = await retryStormScenario("no budget");
+	const bounded = await retryStormScenario(`retry budget, ratio ${ratio}`, {
+		ratio,
+		windowMs: 10_000,
+		minRetriesPerSec: 0,
+	});
+
+	console.log("=== RETRY BUDGET ===");
+	console.log(`Without budget: ${unbounded.toFixed(2)}x server load`);
+	console.log(`With budget:    ${bounded.toFixed(2)}x server load (bound ≈ ${(1 + ratio).toFixed(2)}x)`);
+	if (bounded <= 1 + ratio + 0.01) {
+		console.log("✓ Retry budget bounded amplification to ≈ 1 + ratio");
+	} else {
+		console.log("✗ Amplification exceeded 1 + ratio");
+		process.exitCode = 1;
+	}
+}
+
+main().catch(console.error);

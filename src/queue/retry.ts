@@ -24,6 +24,7 @@ import type { Bulkhead } from "./bulkhead.ts";
 import type { CircuitBreaker } from "./circuit-breaker.ts";
 import { executeRequest, type MiddlewareFn } from "./executor.ts";
 import { defaultRetryPolicy, type RetryPolicyContext, shouldRetry } from "./policy.ts";
+import type { RetryBudget } from "./retry-budget.ts";
 import type { Semaphore } from "./semaphore.ts";
 
 export interface RetryJobOptions {
@@ -49,6 +50,8 @@ export interface RetryJobOptions {
 	semaphore?: Semaphore;
 	/** Per-partition circuit breaker. Inert unless configured/enabled. */
 	circuitBreaker: CircuitBreaker;
+	/** Per-partition retry budget. Inert unless configured. */
+	retryBudget?: RetryBudget;
 	/** Partition name, used to construct CircuitOpenError when the breaker is open. */
 	partition: string;
 	/** The error from the first attempt (fired client-side before queuing). */
@@ -58,6 +61,8 @@ export interface RetryJobOptions {
 	 *  whole ticket lifetime, not just the retries run inside this loop. */
 	initialQueuedMs: number;
 	onRetry?: (attempt: number, delayMs: number, error: AppError) => void;
+	/** Called when the retry budget refuses a retry, right before onFailure. */
+	onBudgetExhausted?: () => void;
 	/** Called on success so the client can emit the success event with the
 	 *  response status code, the total attempt count, and the cumulative ms
 	 *  spent waiting for a bulkhead/semaphore permit across all attempts. */
@@ -92,10 +97,12 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 		bulkhead,
 		semaphore,
 		circuitBreaker,
+		retryBudget,
 		partition,
 		firstError,
 		initialQueuedMs,
 		onRetry,
+		onBudgetExhausted,
 		onSuccess,
 		onFailure,
 		onCancelled,
@@ -177,6 +184,16 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 				const error = new DeadlineExceededError(displayUrl, timeoutConfig.totalMs, lastError);
 				onFailure?.(error, totalAttempts, totalQueuedMs);
 				controller.markDone({ success: false, error } as never);
+				return;
+			}
+
+			// Checked after the deadline so a doomed retry never spends budget,
+			// and before the sleep so a refused one fails without waiting.
+			if (retryBudget && !retryBudget.tryWithdraw()) {
+				onCleanup?.();
+				onBudgetExhausted?.();
+				onFailure?.(lastError, totalAttempts, totalQueuedMs);
+				controller.markDone({ success: false, error: lastError } as never);
 				return;
 			}
 

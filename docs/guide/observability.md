@@ -18,6 +18,12 @@ client.on("cancelled", ({ ticketId, url, partition, attempts, durationMs, queued
 
 `queuedMs` is the total time this ticket spent waiting for a bulkhead/global-semaphore permit, summed across every attempt — it's `0` when a request never had to wait (the default global cap is 50 concurrent, so most single-service consumers never hit it). A consistently nonzero `queuedMs` relative to `durationMs` means you're throttled by `concurrency`/a partition's `concurrency`, not by downstream latency; see [Wiring a metrics sink](../operations.md#wiring-a-metrics-sink) for the companion `vereda.queue_depth` / `vereda.global_queue_depth` gauges.
 
+If a [retry budget](resilience.md#retry-budget) is configured, `retryBudgetExhausted` fires when it refuses a retry, right before that ticket's `failure` event:
+
+```typescript
+client.on("retryBudgetExhausted", ({ ticketId, url, partition }) => {});
+```
+
 If the circuit breaker is enabled, a partition also fires `circuitOpen`/`circuitClose` independently of any single ticket:
 
 ```typescript
@@ -47,6 +53,7 @@ const client = HttpClient.create({ timeout: { attemptMs: 5_000 }, metrics });
 | `vereda.retries` | counter | `partition`, `kind` (what triggered the retry) |
 | `vereda.duration_ms` | histogram | `partition`, `kind` (`success`, `cancelled`, or the error `kind`) |
 | `vereda.circuit_open` | counter | `partition` |
+| `vereda.retry_budget_exhausted` | counter | `partition` |
 | `vereda.queue_depth` | gauge | `partition` |
 | `vereda.in_flight`, `vereda.global_queue_depth` | gauge | none |
 
