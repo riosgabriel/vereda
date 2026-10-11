@@ -38,11 +38,11 @@ describe("responseType (#142)", () => {
 	});
 
 	it('"blob" carries the response content-type', async () => {
-		const client = clientWith(fetchReturning("abc", { "content-type": "text/plain" }).fetch);
+		const client = clientWith(fetchReturning("abc", { "content-type": "application/x-smoke" }).fetch);
 		const result = await client.get("https://x.test/", { responseType: "blob" }).toPromise();
 		expect(result.success).toBe(true);
 		if (result.success) {
-			expect(result.data.type).toBe("text/plain");
+			expect(result.data.type).toBe("application/x-smoke");
 			expect(await result.data.text()).toBe("abc");
 		}
 		await client.close();
