@@ -120,6 +120,8 @@ export interface PartitionConfig {
 	circuitBreaker?: CircuitBreakerConfig;
 	/** Replaces the client-level `retryBudget` for this partition, field by field. */
 	retryBudget?: RetryBudgetConfig;
+	/** Replaces the client-level `rateLimit` for this partition, field by field. */
+	rateLimit?: RateLimitConfig;
 }
 
 /** Resolves the config that applies to a partition: its `partitions` entry
@@ -169,6 +171,26 @@ export interface CircuitBreakerConfig {
 	 *  (e.g. a body factory that threw before the request was dispatched) —
 	 *  those are always ignored, since there is no host-health signal to classify. */
 	isFailure?: (error: AppError) => boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Rate limit config
+// ---------------------------------------------------------------------------
+
+/** Token-bucket rate limit per partition. Every attempt, first attempts and
+ *  retries alike, takes a token before it is sent, waiting for one when the
+ *  bucket is empty. Bulkheads cap concurrency; this caps rate. Opt-in: no
+ *  limit applies unless one is configured. */
+export interface RateLimitConfig {
+	/** Sustained attempts per second. */
+	tokensPerSec: number;
+	/** Bucket size: attempts that may go out back to back after a quiet spell.
+	 *  @default `Math.max(1, tokensPerSec)` (one second's worth) */
+	burst?: number;
+	/** Longest an attempt may wait for its token. An attempt that would wait
+	 *  longer fails at once with `RateLimitedError`. Omit to wait as long as
+	 *  needed, bounded only by `cancel()` and `timeout.totalMs`. */
+	maxWaitMs?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -374,6 +396,8 @@ export interface ClientConfig {
 	circuitBreaker?: CircuitBreakerConfig;
 	/** Default per-partition retry budget. Opt-in — no budget unless set. */
 	retryBudget?: RetryBudgetConfig;
+	/** Default per-partition rate limit. Opt-in — no limit unless set. */
+	rateLimit?: RateLimitConfig;
 	/** Optional structured logger */
 	logger?: Logger;
 	/** Optional metrics sink for counters, histograms, and gauges. */

@@ -26,7 +26,7 @@ Follow one request — `client.get("/users/1")` — from call to settled result.
 ### Stop 0 — Get the vocabulary
 **Read:** `src/core/types.ts`, `src/core/errors.ts`
 
-Skim, don't study. Everything resolves to a `Result`; errors form a closed hierarchy under `RequestError` (`NetworkError`, `TimeoutError`, `ValidationError`, `CancelledError`, `MaxRetriesExceededError`). This is your reference for the rest of the tour.
+Skim, don't study. Everything resolves to a `Result`; errors form a hierarchy under `RequestError` (`NetworkError`, `TimeoutError`, `ValidationError`, `CancelledError`, `MaxRetriesExceededError`). This is your reference for the rest of the tour.
 
 ### Stop 1 — The entry point
 **Read:** `src/core/client.ts` → `HttpClient.request()`
@@ -51,7 +51,7 @@ Before anything fires, this checks the partition's circuit breaker (`src/queue/c
 ### Stop 5 — The gatekeeper
 **Read:** `src/queue/bulkhead.ts` → `Bulkhead`, `BulkheadRegistry`
 
-Each partition gets a concurrency limit plus a waiting queue. `schedule()` rejects when the queue is full — deliberate backpressure. This is what throttles retry traffic per host.
+Each partition gets a concurrency limit plus a waiting queue. `schedule()` rejects when the queue is full — deliberate backpressure. This is what throttles retry traffic per host. A partition with a `rateLimit` also owns a token bucket (`src/queue/rate-limiter.ts`): every attempt, first or retry, takes a token through `takeToken()` before it asks for a slot.
 
 ### Stop 6 — The retry loop
 **Read:** `src/queue/retry.ts` → `runRetryLoop()`

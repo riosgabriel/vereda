@@ -122,6 +122,16 @@ const scenarioArb = fc
 			fc.record({ ratio: fc.constantFrom(0, 1), windowMs: fc.constant(1_000), minRetriesPerSec: fc.constant(0) }),
 			{ nil: undefined },
 		),
+		// Fast enough that waits stay inside the scenario; a small maxWaitMs
+		// exercises RateLimitedError too.
+		rateLimit: fc.option(
+			fc.record({
+				tokensPerSec: fc.constantFrom(50, 200),
+				burst: fc.constantFrom(1, 2),
+				maxWaitMs: fc.option(fc.constantFrom(0, 10), { nil: undefined }),
+			}),
+			{ nil: undefined },
+		),
 		throwingClientListener: fc.boolean(),
 		throwingSink: fc.boolean(),
 		close: fc.option(
@@ -192,6 +202,7 @@ async function runScenario(s: Scenario): Promise<void> {
 		retry: { maxRetries: s.maxRetries, backoff: { baseDelayMs: 1, maxDelayMs: 2, jitter: false } },
 		timeout: { attemptMs: s.attemptMs ?? Number.POSITIVE_INFINITY, totalMs: s.totalMs },
 		retryBudget: s.retryBudget,
+		rateLimit: s.rateLimit,
 		partitions: { svc: { concurrency: s.partitionConcurrency, limitFirstAttempts: s.limitFirstAttempts } },
 	});
 

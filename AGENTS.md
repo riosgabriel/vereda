@@ -58,6 +58,7 @@ Request flow: `client.get()` returns a `Ticket` synchronously → first attempt 
 - First attempt skips the bulkhead (bulkhead throttles retry traffic only).
 - Per-partition circuit breaker (opt-in, `circuitBreaker` config) gates admission before the first attempt **and is re-checked before every retry** — trips open on consecutive failures or a rolling failure-rate window, rejects with `CircuitOpenError` while open, half-opens after `resetTimeoutMs` to trial recovery.
 - Per-partition retry budget (opt-in, `retryBudget` config) is checked in the retry loop after the deadline check and before the backoff sleep. Each first attempt the breaker admits counts as a request; a retry is counted only when the budget admits it. A refused retry fails the ticket with its last error and emits `retryBudgetExhausted` before `failure`. A budget is never pruned while a ticket holds it or while its window still has counts.
+- Per-partition rate limit (opt-in, `rateLimit` config) is a token bucket on the partition's `Bulkhead`. Every attempt, first and retry, takes a token via `bulkhead.takeToken()` **before** any bulkhead slot or semaphore permit. Callers reserve tokens (the balance can go negative), so each one gets an exact wait and waits are served in arrival order. An abort refunds the token. A wait over `maxWaitMs` is a `RateLimitedError`, never retried. The wait counts toward `queuedMs`. A bulkhead isn't idle, and so can't be pruned, until its bucket has refilled.
 - Default retry policy — only `network`/`timeout`/`retryable_status` errors on idempotent requests (or `retry.idempotent`/`Idempotency-Key` opt-in) are retried; user `retryWhen` is consulted after it and can only veto.
 - `retryWhen` is consulted after **every** failed attempt that could still be retried, including attempt 0. Not called after the final attempt when no retries remain.
 - `ValidationError` (failed `parse`) resolves immediately and is never retried.
@@ -65,7 +66,7 @@ Request flow: `client.get()` returns a `Ticket` synchronously → first attempt 
 - Cancellation wins over timeouts/retries; a cancelled ticket is never retried.
 - Replayable bodies — body may be a factory invoked per attempt; a raw `ReadableStream` is a `ConfigurationError`.
 - Retries honor `Retry-After` (seconds or HTTP-date) capped at `maxDelayMs`; backoff otherwise.
-- `ticket.toPromise()` never rejects — failures are a `Result` union with the closed `RequestError` hierarchy (`src/core/errors.ts`).
+- `ticket.toPromise()` never rejects — failures are a `Result` union over the `RequestError` hierarchy (`src/core/errors.ts`). Minors may add a class and `kind` (never change one), so docs recommend a `default` branch, not a `never` check.
 - Graceful shutdown: `client.close({ drain: true, timeoutMs })` waits for in-flight tickets up to `timeoutMs`, then cancels remaining; `client.close()` without drain cancels immediately. New requests throw `ConfigurationError("client closed")`.
 - Lifecycle events: `client.on(event, listener)` for `request`, `retry`, `success`, `failure`, `cancelled` — exactly one of `success`/`failure`/`cancelled` fires per ticket. The `retry` event fires with zero-based retry index (0 = first retry after initial attempt). `circuitOpen`/`circuitClose` (`{ partition }`) fire independently of any single ticket, only when the circuit breaker is enabled.
 - Verb methods: `get`, `head`, `options`, `post`, `put`, `patch`, `delete` on `HttpClient`, plus the generic `request()`. `json<T>()` (exported from `src/core/index.ts`) is a dependency-free `ParseFn<T>` for callers who want typed JSON without a schema library.
@@ -106,7 +107,7 @@ An LLM can stand in for a library's docs website: interactively walk a new contr
 - `retryWhen` is consulted after *every* failed attempt that could still be retried, including attempt 0. Not called after the final attempt when no retries remain.
 - `ValidationError` (failed `parse`) resolves immediately and is never retried.
 - Cancellation wins over timeouts/retries; a cancelled ticket is never retried.
-- `ticket.toPromise()` never rejects — failures are a `Result` union with the closed `RequestError` hierarchy (`src/core/errors.ts`).
+- `ticket.toPromise()` never rejects — failures are a `Result` union over the `RequestError` hierarchy (`src/core/errors.ts`). Minors may add a class and `kind` (never change one), so docs recommend a `default` branch, not a `never` check.
 - A per-partition circuit breaker (opt-in) can reject a request outright before any attempt, once that partition trips open.
 
 **Key file per concern** (for "where do I look?" questions)
@@ -118,6 +119,7 @@ An LLM can stand in for a library's docs website: interactively walk a new contr
 - Bulkhead + per-host queue: `src/queue/bulkhead.ts`
 - Circuit breaker: `src/queue/circuit-breaker.ts`
 - Retry budget: `src/queue/retry-budget.ts`
+- Rate limit (token bucket): `src/queue/rate-limiter.ts`, wired through `Bulkhead.takeToken()`
 - Backoff: `src/core/backoff.ts`
 - Config validation: `src/core/validate.ts`
 - Ticket ID generation: `src/core/nanoid.ts`

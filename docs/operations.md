@@ -16,8 +16,9 @@ Ballpark sizing:
 - Set per-partition `concurrency` close to what the downstream service can actually sustain concurrently (its own connection pool, rate limit, or known capacity). Too high and a struggling host's retries pile pressure back onto it; too low and legitimate retry traffic queues behind slow ones unnecessarily.
 - Set `maxQueueSize` based on how much retry backlog is acceptable before you'd rather fail fast. A small queue (`10`–`50`) surfaces backpressure quickly; a large one absorbs bursts but risks stale-by-the-time-they-run retries.
 - Set the global `concurrency` as a process-wide ceiling — the sum of what you're willing to have in flight across all partitions at once, informed by your own outbound connection limits or memory budget, not by any single downstream's capacity.
-- With many hosts, set `defaultPartition` instead of listing each one. It applies to every partition not named in `partitions`, with the same fields (`concurrency`, `maxQueueSize`, `retry`, `timeout`, `circuitBreaker`, `retryBudget`, `limitFirstAttempts`). A listed partition doesn't inherit from it, so a listed entry is the whole config for that host on top of the client-level settings.
+- With many hosts, set `defaultPartition` instead of listing each one. It applies to every partition not named in `partitions`, with the same fields (`concurrency`, `maxQueueSize`, `retry`, `timeout`, `circuitBreaker`, `retryBudget`, `rateLimit`, `limitFirstAttempts`). A listed partition doesn't inherit from it, so a listed entry is the whole config for that host on top of the client-level settings.
 - Bulkheads cap how many retries run **at once**, not how many run in total. To cap a failing host's retry volume, set a [retry budget](guide/resilience.md#retry-budget): `ratio` is the extra load you'll accept during an outage (`0.1` = 10%). Keep `windowMs` well above your backoff delays so retries are counted against the same window as the traffic that funded them. Lower `minRetriesPerSec` for hosts that see only a few requests per second, or the floor will admit more retries than the ratio would. Watch `vereda.retry_budget_exhausted`: a steady rate of refusals means the host is degraded, not just having an occasional failure.
+- For a host with a requests-per-second quota, set a [rate limit](guide/resilience.md#rate-limiting) a little under the quota, so a `429` stays the exception. Set `maxWaitMs` below `timeout.totalMs` when you'd rather fail fast with `RateLimitedError` than spend most of a request's deadline waiting for a token. A rate limit applies per process: with N replicas calling the same host, divide the quota by N.
 - Turn on `partition.limitFirstAttempts: true` only if a partition's downstream is fragile enough that *even first attempts* need throttling (R6). Off by default because it changes latency for fresh traffic, not just retries.
 
 When a partition fills up, `client.partitions()` (below) is how you observe it before it becomes an incident.
@@ -39,10 +40,10 @@ Both deadlines also bound reading the body of a Response Vereda hands back unrea
 
 ```typescript
 const snapshots = client.partitions();
-// [{ name: "api.example.com", running: 2, queued: 5, concurrency: 5, maxQueueSize: 100 }, ...]
+// [{ name: "api.example.com", running: 2, queued: 5, concurrency: 5, maxQueueSize: 100, tokens: 3 }, ...]
 ```
 
-One entry per partition that has handled at least one retry. `running` and `queued` are point-in-time counts of retry traffic only (first attempts never appear here, by design). Poll this on an interval and feed it into your metrics sink's gauges, or check it directly when debugging why a specific host's requests seem stuck — `queued` near `maxQueueSize` means that partition is saturated and new retries for it will start failing with `QueueFullError`.
+One entry per partition that has seen a request. `tokens`, present only for a partition with a `rateLimit`, is how many tokens are free right now; `0` with requests stalling means that partition is held back by its rate limit, not by concurrency. `running` and `queued` are point-in-time counts of retry traffic only (first attempts never appear here, by design). Poll this on an interval and feed it into your metrics sink's gauges, or check it directly when debugging why a specific host's requests seem stuck — `queued` near `maxQueueSize` means that partition is saturated and new retries for it will start failing with `QueueFullError`.
 
 ## Reading `circuits()`
 

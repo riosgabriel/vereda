@@ -120,7 +120,7 @@ run it, read the diff carefully.
 - `retryWhen` is consulted after **every** failed attempt that could still be retried, including attempt 0. Not called after the final attempt when no retries remain.
 - A failed `parse` (`ValidationError`) resolves immediately and is never retried.
 - Cancellation wins over timeouts and retries; a cancelled ticket is never retried.
-- `ticket.toPromise()` never rejects — failures are a `Result` union with a closed `RequestError` hierarchy.
+- `ticket.toPromise()` never rejects — failures are a `Result` union over the `RequestError` hierarchy. A new error class and `kind` is a minor change; changing an existing one is breaking.
 
 See [AGENTS.md](./AGENTS.md) for more gotchas.
 

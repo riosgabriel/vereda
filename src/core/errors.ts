@@ -9,7 +9,8 @@ export type AppError =
 	| QueueFullError
 	| ConfigurationError
 	| MaxRetriesExceededError
-	| CircuitOpenError;
+	| CircuitOpenError
+	| RateLimitedError;
 
 /**
  * Base class for failures that prevent a request from
@@ -167,6 +168,24 @@ export class CircuitOpenError extends RequestError {
 	}
 }
 
+export class RateLimitedError extends RequestError {
+	declare readonly kind: "rate_limited";
+	public readonly partition: string;
+	/** How long the attempt would have had to wait for a token. */
+	public readonly waitMs: number;
+	public readonly maxWaitMs: number;
+
+	constructor(partition: string, waitMs: number, maxWaitMs: number) {
+		super(
+			"rate_limited",
+			`Rate limit for partition '${partition}' would delay the attempt ${waitMs}ms (maxWaitMs ${maxWaitMs})`,
+		);
+		this.partition = partition;
+		this.waitMs = waitMs;
+		this.maxWaitMs = maxWaitMs;
+	}
+}
+
 /**
  * Narrows an unknown throw to one of this library's own error classes, so
  * internal catch sites can preserve a pre-typed failure (e.g. a
@@ -191,4 +210,5 @@ const APP_ERROR_CLASSES = [
 	ConfigurationError,
 	MaxRetriesExceededError,
 	CircuitOpenError,
+	RateLimitedError,
 ] as const;
