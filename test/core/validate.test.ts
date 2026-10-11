@@ -318,3 +318,28 @@ describe("validateConfig rateLimit", () => {
 		expect(() => validateConfig({ ...base, rateLimit: { tokensPerSec: 1, maxWaitMs: Infinity } })).not.toThrow();
 	});
 });
+
+describe("validateConfig opting a partition out", () => {
+	const base = { timeout: { attemptMs: 1_000 } } satisfies ClientConfig;
+
+	it("accepts retryBudget: false and rateLimit: false on partitions and defaultPartition", () => {
+		expect(() =>
+			validateConfig({
+				...base,
+				retryBudget: { ratio: 0.1, windowMs: 10_000 },
+				rateLimit: { tokensPerSec: 10 },
+				partitions: { internal: { retryBudget: false, rateLimit: false } },
+				defaultPartition: { retryBudget: false, rateLimit: false },
+			}),
+		).not.toThrow();
+	});
+
+	it.each([
+		["retryBudget", { retryBudget: true }],
+		["rateLimit", { rateLimit: "off" }],
+	])("rejects a non-object %s other than false", (key, partition) => {
+		expect(() => validateConfig({ ...base, partitions: { api: partition as never } })).toThrow(
+			new RegExp(`partitions\\.api\\.${key} must be an object, or false to turn it off`),
+		);
+	});
+});

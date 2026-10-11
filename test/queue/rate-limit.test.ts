@@ -226,6 +226,19 @@ describe("rate limit in the client", () => {
 		await plain.close();
 	});
 
+	it("lets a partition opt out of the client's rate limit with false", async () => {
+		const { client, sentAt } = setup({
+			rateLimit: { tokensPerSec: 1, burst: 1 },
+			partitions: { "free.test": { rateLimit: false } },
+		});
+		const results = [client.get("http://free.test/a").toPromise(), client.get("http://free.test/b").toPromise()];
+		await vi.advanceTimersByTimeAsync(10);
+		await Promise.all(results);
+		expect(sentAt).toEqual([0, 0]);
+		expect(client.partitions()[0]).not.toHaveProperty("tokens");
+		await client.close();
+	});
+
 	it("merges a partition's rateLimit over the client's, field by field", async () => {
 		const { client, sentAt } = setup({
 			rateLimit: { tokensPerSec: 10, burst: 1 },
