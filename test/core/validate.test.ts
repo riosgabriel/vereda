@@ -292,3 +292,29 @@ describe("validateConfig retryBudget", () => {
 		).not.toThrow();
 	});
 });
+
+describe("validateConfig rateLimit", () => {
+	const base = { timeout: { attemptMs: 1_000 } } satisfies ClientConfig;
+	const cases: Array<[string, NonNullable<ClientConfig["rateLimit"]>, RegExp]> = [
+		["tokensPerSec: 0", { tokensPerSec: 0 }, /rateLimit\.tokensPerSec must be a positive finite number/],
+		["tokensPerSec: Infinity", { tokensPerSec: Infinity }, /rateLimit\.tokensPerSec/],
+		["burst: 0.5", { tokensPerSec: 1, burst: 0.5 }, /rateLimit\.burst must be a finite number of at least 1/],
+		["burst: NaN", { tokensPerSec: 1, burst: Number.NaN }, /rateLimit\.burst/],
+		["maxWaitMs: -1", { tokensPerSec: 1, maxWaitMs: -1 }, /rateLimit\.maxWaitMs must be non-negative/],
+	];
+
+	it.each(cases)("client-level %s", (_label, rateLimit, message) => {
+		expect(() => validateConfig({ ...base, rateLimit })).toThrow(message);
+	});
+
+	it("validates partition-level rateLimit with the partition in the key", () => {
+		expect(() => validateConfig({ ...base, defaultPartition: { rateLimit: { tokensPerSec: -1 } } })).toThrow(
+			/defaultPartition\.rateLimit\.tokensPerSec/,
+		);
+	});
+
+	it("accepts maxWaitMs 0 and Infinity", () => {
+		expect(() => validateConfig({ ...base, rateLimit: { tokensPerSec: 1, maxWaitMs: 0 } })).not.toThrow();
+		expect(() => validateConfig({ ...base, rateLimit: { tokensPerSec: 1, maxWaitMs: Infinity } })).not.toThrow();
+	});
+});

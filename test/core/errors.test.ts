@@ -11,6 +11,7 @@ import {
 	NetworkError,
 	NO_TIMEOUT_CONFIGURED,
 	QueueFullError,
+	RateLimitedError,
 	RequestError,
 	RetryableStatusError,
 	TimeoutError,
@@ -157,6 +158,9 @@ describe("Error classes", () => {
 				case "circuit_open":
 					expectTypeOf(error).toEqualTypeOf<CircuitOpenError>();
 					return error.partition;
+				case "rate_limited":
+					expectTypeOf(error).toEqualTypeOf<RateLimitedError>();
+					return String(error.waitMs);
 				case "configuration":
 					return error.key;
 				case "max_retries":
@@ -170,6 +174,7 @@ describe("Error classes", () => {
 
 		expect(describeError(new HttpError("not found", 404, new Response()))).toBe("404");
 		expect(describeError(new CircuitOpenError("api"))).toBe("api");
+		expect(describeError(new RateLimitedError("api", 250, 100))).toBe("250");
 		expect(describeError(new MaxRetriesExceededError(4, new TimeoutError("http://x", 500)))).toBe("500");
 	});
 
