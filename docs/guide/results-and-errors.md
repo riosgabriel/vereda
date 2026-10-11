@@ -1,6 +1,6 @@
 # Results and errors
 
-What a finished request gives you: typed, validated bodies and a closed set of error classes. Back to the [README](../../README.md).
+What a finished request gives you: typed, validated bodies and a typed set of error classes. Back to the [README](../../README.md).
 
 ## Typed results
 
@@ -66,7 +66,7 @@ if (result.success) {
 
 ## Error handling
 
-Errors are a closed hierarchy under `RequestError`, and `AppError` is the union of all of them. Every class carries a readonly, literal-typed `kind`, so switching on it narrows to that class and its fields (`instanceof` works too):
+Errors form a hierarchy under `RequestError`, and `AppError` is the union of all of them: a failure is always one of these classes, never an arbitrary thrown value. Every class carries a readonly, literal-typed `kind`, so switching on it narrows to that class and its fields (`instanceof` works too):
 
 | Error | `kind` | Meaning | Notable fields |
 | --- | --- | --- | --- |
@@ -106,4 +106,4 @@ if (!result.success) {
 }
 ```
 
-Because the set is closed, a `switch` with a `const unreachable: never = result.error` default fails to compile if a case is missing.
+Keep a `default` branch like the one above. A minor release may add an error class with a new `kind` (see [Versioning and support](../../README.md#versioning-and-support)), and a `switch` that ends in a `const unreachable: never = result.error` check would stop compiling when one arrives. The `default` branch handles it at run time instead.

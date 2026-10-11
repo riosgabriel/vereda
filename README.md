@@ -112,7 +112,7 @@ if (result.success) {
 }
 ```
 
-`toPromise()` never rejects: every outcome is a `Result`, and every failure is one of a closed set of error classes, discriminated by `kind` ([Error handling](docs/guide/results-and-errors.md#error-handling)). `json<T>()` casts without checking; pass a real validator, or use the [Zod adapter](docs/guide/results-and-errors.md#zod-adapter-optional), when you need the shape enforced.
+`toPromise()` never rejects: every outcome is a `Result`, and every failure is one of Vereda's own error classes, discriminated by `kind` ([Error handling](docs/guide/results-and-errors.md#error-handling)). `json<T>()` casts without checking; pass a real validator, or use the [Zod adapter](docs/guide/results-and-errors.md#zod-adapter-optional), when you need the shape enforced.
 
 **`timeout.attemptMs` is the one required setting.** Most HTTP clients have no overall request timeout by default, which is how one hung dependency takes a service down. Vereda makes you choose a number, or pass `Infinity` to opt out on purpose. Everything else has a default:
 
@@ -211,7 +211,7 @@ The first attempt skips the partition bulkhead. Only requests that need another 
 | --- | --- | --- |
 | **[Retries and backoff](docs/guide/resilience.md#retries-and-backoff)**<br>Jittered exponential retries for transient failures | **[Timeouts](docs/guide/resilience.md#timeouts)**<br>Per-attempt timeout plus an optional total deadline | **[Bulkhead isolation](docs/guide/resilience.md#bulkhead-isolation)**<br>A concurrency limit and queue per host |
 | **[Circuit breaker](docs/guide/resilience.md#circuit-breaker)**<br>Stop calling a host that is clearly failing | **[Cancellation](docs/guide/requests.md#cancellation)**<br>Cancel from the ticket or an `AbortSignal` | **[Tickets](docs/guide/requests.md#tickets)**<br>Await, subscribe to, or cancel a request |
-| **[Typed results](docs/guide/results-and-errors.md#typed-results)**<br>Validate the body with any `parse` function | **[Error handling](docs/guide/results-and-errors.md#error-handling)**<br>A closed error hierarchy with a literal `kind` | **[Middleware](docs/guide/requests.md#middleware)**<br>Onion-style hooks around every attempt |
+| **[Typed results](docs/guide/results-and-errors.md#typed-results)**<br>Validate the body with any `parse` function | **[Error handling](docs/guide/results-and-errors.md#error-handling)**<br>A typed error hierarchy with a literal `kind` | **[Middleware](docs/guide/requests.md#middleware)**<br>Onion-style hooks around every attempt |
 | **[Custom fetch](docs/guide/requests.md#custom-fetch)**<br>Swap `globalThis.fetch` for your own | **[Lifecycle events](docs/guide/observability.md#lifecycle-events)**<br>Typed client-wide events for logging | **[Metrics](docs/guide/observability.md#metrics)**<br>Counters, histograms and gauges to any sink |
 | **[OpenTelemetry](docs/guide/observability.md#opentelemetry)**<br>Spans per ticket and attempt, plus an OTel metrics sink | **[Retry budget](docs/guide/resilience.md#retry-budget)**<br>Cap a host's retries to a fraction of its traffic | **[Rate limiting](docs/guide/resilience.md#rate-limiting)**<br>A token bucket per host for req/s quotas |
 
@@ -241,7 +241,7 @@ Each card links into one of four guides: [Resilience](docs/guide/resilience.md) 
 
 ## Versioning and support
 
-Vereda follows [Semantic Versioning](https://semver.org/) from `1.0.0` onward: breaking changes land only in a major version, and anything scheduled for removal is deprecated in a minor release first and noted in [CHANGELOG.md](CHANGELOG.md) before it goes. The public surface is exactly what `src/core/index.ts`, `src/middleware/index.ts`, `src/adapters/zod.ts`, and `src/otel/index.ts` export — anything under `src/queue/` and `src/ticket/` that those entry points don't re-export is internal, even though it's readable source.
+Vereda follows [Semantic Versioning](https://semver.org/) from `1.0.0` onward: breaking changes land only in a major version, and anything scheduled for removal is deprecated in a minor release first and noted in [CHANGELOG.md](CHANGELOG.md) before it goes. The error hierarchy is open to additions: a minor release may add an error class with a new `kind` (always listed in the CHANGELOG), so give a `switch` over `error.kind` a `default` branch rather than a `never` check. Existing classes, kinds and fields don't change outside a major. The public surface is exactly what `src/core/index.ts`, `src/middleware/index.ts`, `src/adapters/zod.ts`, and `src/otel/index.ts` export — anything under `src/queue/` and `src/ticket/` that those entry points don't re-export is internal, even though it's readable source.
 
 **Node support:** the currently supported line is whatever `engines.node` in `package.json` declares (`>=22` today); CI runs the full suite against Node 22 and 24 on every change, so those two are the versions actually verified. The floor moves only in a major release.
 
