@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `close({ drain: true, timeoutMs })` now rejects with a `ConfigurationError` when `timeoutMs` is not a finite number in `(0, 2_147_483_647]`. Before, `Infinity` and anything above 2^31-1 ms slipped past the check and Node clamped the drain timer to 1 ms, so in-flight tickets were cancelled almost at once instead of drained. A rejected call leaves the client open, so a corrected `close()` still drains (#198).
+- A throwing `logger` (or `requestLogger` `log` function) no longer changes a request's outcome. Before, a logger that threw on `Request succeeded` turned a successful response into a `NetworkError` failure and fired both `success` and `failure`. Logger errors are now isolated like listener and metrics errors: reported on a microtask, never affecting the result, the events or retries (#197).
 - An attempt whose transport ignores the abort signal (a custom `fetch` that drops `init.signal`, or middleware that swaps `ctx.signal`) now ends as soon as the attempt is cancelled or times out. Before, `await fetch` never returned: `cancel()` resolved the ticket but no `cancelled` event fired, and `attemptMs`/`totalMs` never resolved the ticket at all. A response that arrives after the attempt was abandoned has its body cancelled (#181).
 - Reject forbidden HTTP methods (`TRACE`, `CONNECT`, `TRACK`) up front with a `ConfigurationError` during request validation instead of letting them enter the retry loop client-side (#139).
 
