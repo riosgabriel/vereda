@@ -46,7 +46,9 @@ describe("defaultPartition", () => {
 		await client.get("/").toPromise();
 
 		expect(hits).toBe(3); // 1 attempt + defaultPartition.retry.maxRetries
-		expect(client.partitions()).toEqual([{ name: host, running: 0, queued: 0, concurrency: 3, maxQueueSize: 7 }]);
+		expect(client.partitions()).toEqual([
+			{ partition: host, name: host, running: 0, queued: 0, concurrency: 3, maxQueueSize: 7 },
+		]);
 	});
 
 	it("applies its timeout to an unlisted host", async () => {

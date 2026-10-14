@@ -29,7 +29,15 @@ describe("Bulkhead", () => {
 		// Second fills the wait queue
 		void bh.run(slow);
 		// Third should be rejected
-		await expect(bh.run(slow)).rejects.toThrow("full");
+		await expect(bh.run(slow)).rejects.toMatchObject({ kind: "queue_full", scope: "partition", partition: "test" });
+	});
+
+	it("tells a partition named 'global' apart from the global queue by scope", async () => {
+		const bh = new Bulkhead("global", { concurrency: 1, maxQueueSize: 1 });
+		const slow = () => new Promise<void>((r) => setTimeout(r, 50));
+		void bh.run(slow);
+		void bh.run(slow);
+		await expect(bh.run(slow)).rejects.toMatchObject({ scope: "partition", partition: "global" });
 	});
 
 	it("reports running count", async () => {

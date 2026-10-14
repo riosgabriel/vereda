@@ -149,7 +149,12 @@ export const DEFAULT_RESET_TIMEOUT_MS = 30_000;
 export const DEFAULT_HALF_OPEN_MAX_ATTEMPTS = 1;
 
 export interface CircuitBreakerConfig {
-	/** @default false */
+	/** Turns the breaker on. In 1.x a `circuitBreaker` without
+	 *  `enabled: true` is inert; in 2.0, setting `circuitBreaker` turns it on,
+	 *  as with `retryBudget` and `rateLimit`, and only `enabled: false` turns
+	 *  it off. Pass `enabled` explicitly, or remove a config you don't use,
+	 *  so 2.0 doesn't change your behavior.
+	 *  @default false */
 	enabled?: boolean;
 	/** Consecutive-failure trip mode (default strategy).
 	 *  @default {@link DEFAULT_FAILURE_THRESHOLD} */

@@ -1194,7 +1194,7 @@ export class HttpClient {
 	private emitQueueDepthGauges(): void {
 		if (!this.metrics) return;
 		for (const snapshot of this.bulkheads.getAll()) {
-			this.metrics.gauge(METRICS.QUEUE_DEPTH, snapshot.queued, { partition: snapshot.name });
+			this.metrics.gauge(METRICS.QUEUE_DEPTH, snapshot.queued, { partition: snapshot.partition });
 		}
 		const semaphore = this.bulkheads.getSemaphore();
 		if (semaphore) {

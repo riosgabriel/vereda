@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `parse` may be async: `ParseFn<T>` is now `(data: unknown) => T | Promise<T>`. A thrown error or rejected promise becomes a `ValidationError` and is never retried. The wait for `parse` counts against `attemptMs`/`totalMs`, so a parse that never settles ends as a timeout, and `cancel()` ends it too (#142).
 - `rateLimit` client and partition option (`{ tokensPerSec, burst?, maxWaitMs? }`): a token-bucket rate limit per partition. Every attempt, first attempts and retries alike, takes a token before it is sent, and waits for one when the bucket is empty. The wait is abort-aware: `cancel()` and `timeout.totalMs` end it, and the token goes back to the bucket. `burst` defaults to one second's worth (`Math.max(1, tokensPerSec)`). Without `maxWaitMs`, an attempt waits as long as it needs to; with it, an attempt that would wait longer fails at once with the new `RateLimitedError`. The wait counts toward `queuedMs`, and `partitions()` reports the free tokens as `tokens` for rate-limited partitions. A `429`'s `Retry-After` still delays only that ticket's own retry. Opt-in: no limit applies unless one is configured (#145).
 - `RateLimitedError` (`kind: "rate_limited"`, with `partition`, `waitMs`, `maxWaitMs`), never retried. This adds a member to the `AppError` union, so a `switch` over `error.kind` that ends in a `never` check needs a `"rate_limited"` case to compile (#145).
+- `BulkheadSnapshot.partition`: the partition's name, matching `CircuitSnapshot.partition`. Code that builds a `BulkheadSnapshot` by hand (a test double, say) needs the new field to compile; code that only reads `partitions()` is unaffected.
+- `QueueFullError.scope` (`"partition"` | `"global"`) tells which queue was full. Check it instead of `partition === "global"`, which a partition named `"global"` would also match.
 - `retryBudget` client and partition option (`{ ratio, windowMs, minRetriesPerSec? }`): a per-partition retry budget that caps retries to a fraction of recent traffic, as in gRPC and Finagle. A retry is allowed only while the partition's retries over the last `windowMs` stay below `max(minRetriesPerSec * windowMs / 1000, ratio * firstAttempts)`; `minRetriesPerSec` defaults to `10` (`DEFAULT_MIN_RETRIES_PER_SEC`). Past that, the ticket fails right away with its last error, after a new `retryBudgetExhausted` event (`{ ticketId, url, partition }`) and the `vereda.retry_budget_exhausted` counter. Opt-in: no budget applies unless one is configured. Under a retry storm, a host sees at most about `1 + ratio` times its normal load (#144).
 - `responseType` request option (`"json"` | `"text"` | `"arrayBuffer"` | `"blob"` | `"none"`): how the body is read inside the attempt before `parse` sees it. It defaults to `"json"` when `parse` is set. Without `parse`, `data` is the body read that way, typed as `unknown`, `string`, `ArrayBuffer`, `Blob` or `undefined`. `"none"` cancels the body unread. With neither option set, the body is still handed back unread on `raw`. An unknown value fails the ticket with a `ConfigurationError` (#142).
 
@@ -34,11 +36,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `withZod` validates with `parseAsync`, so schemas with async refinements or transforms work. Calling the returned function directly now gives `T | Promise<T>` (#142).
 - A body stream that fails mid-read is now reported as `NetworkError("Failed to read response body")` instead of `"Failed to parse response body as JSON"`, since the body is no longer always read as JSON (#142).
 - A retry whose delay (backoff or capped `Retry-After`) would run to or past `timeout.totalMs` is no longer slept on: the ticket fails right away with `DeadlineExceededError`, whose `cause` is the last attempt's error. Before, it slept until the deadline and then failed with the same error. `DeadlineExceededError` can therefore arrive before `totalMs` has elapsed (#143).
+- A full global queue's `QueueFullError` message now reads `Global queue is full (n/max)` instead of `Queue for partition 'global' is full (n/max)`.
 - The error hierarchy is now documented as open to additions: a minor release may add an error class and `kind`, always listed in this CHANGELOG, while existing classes, kinds and fields change only in a major. The docs now recommend a `default` branch over a `never` check when switching on `error.kind`.
 
 ### Changed
 
 - No more `node:events` or `node:crypto` imports, and timers are `unref()`'d only where the runtime supports it, so the package loads on Cloudflare Workers without `nodejs_compat`, and on other runtimes without Node builtins. Lifecycle and ticket events now use a small internal emitter that keeps the same behavior (a listener added twice runs twice, `off` removes the most recent registration, and a throwing listener can't break the others). A CI smoke test runs the built package in workerd (#146).
+
+### Deprecated
+
+These go away in 2.0 (tracked in #148):
+
+- `BulkheadSnapshot.name`: use `partition`, which holds the same value.
+- `QueueFullError.partition` set to `"global"` for the global queue: check `scope` instead. In 2.0, `partition` is absent when `scope` is `"global"`.
+- A `circuitBreaker` config without `enabled: true` being inert. In 2.0, setting `circuitBreaker` turns the breaker on, as `retryBudget` and `rateLimit` already do, and only `enabled: false` turns it off. Pass `enabled` explicitly, or remove an unused config, to keep your behavior.
 
 ### Documentation
 
