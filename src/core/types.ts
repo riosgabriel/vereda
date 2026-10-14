@@ -299,7 +299,9 @@ export type LifecycleEventMap = {
 	cancelled: {
 		ticketId: string;
 		url: string;
-		partition: string;
+		/** `undefined` only when the request was cancelled before its URL could
+		 *  be resolved (a pre-aborted `signal` with an unresolvable URL). */
+		partition: string | undefined;
 		attempts: number;
 		durationMs: number;
 		queuedMs: number;
