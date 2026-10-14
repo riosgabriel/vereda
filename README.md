@@ -124,7 +124,7 @@ if (result.success) {
 | Per-partition concurrency | 5 retries in flight per host |
 | Per-partition queue size | 100 waiting retries per host |
 | Global concurrency | 50 in-flight executions across all partitions |
-| Global queue size | 100 waiting executions; beyond that a request resolves with `QueueFullError` (`partition: "global"`) |
+| Global queue size | 100 waiting executions; beyond that a request resolves with `QueueFullError` (`scope: "global"`) |
 | First attempts | Skip the per-partition bulkhead (unless `partition.limitFirstAttempts` is set), but still take a global permit |
 | Total deadline | None — set `timeout.totalMs` to cap the whole request |
 | Circuit breaker | Disabled — opt in with `circuitBreaker: { enabled: true }` |

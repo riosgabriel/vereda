@@ -151,7 +151,12 @@ export const DEFAULT_RESET_TIMEOUT_MS = 30_000;
 export const DEFAULT_HALF_OPEN_MAX_ATTEMPTS = 1;
 
 export interface CircuitBreakerConfig {
-	/** @default false */
+	/** Turns the breaker on. In 1.x a `circuitBreaker` without
+	 *  `enabled: true` is inert; in 2.0, setting `circuitBreaker` turns it on,
+	 *  as with `retryBudget` and `rateLimit`, and only `enabled: false` turns
+	 *  it off. Pass `enabled` explicitly, or remove a config you don't use,
+	 *  so 2.0 doesn't change your behavior.
+	 *  @default false */
 	enabled?: boolean;
 	/** Consecutive-failure trip mode (default strategy).
 	 *  @default {@link DEFAULT_FAILURE_THRESHOLD} */
@@ -253,6 +258,7 @@ export interface RetryConfig {
 // Logger
 // ---------------------------------------------------------------------------
 
+/** A throwing method never changes a request's result, events or retries; the error is reported like a listener's, on a microtask. */
 export interface Logger {
 	debug(msg: string, meta?: Record<string, unknown>): void;
 	info(msg: string, meta?: Record<string, unknown>): void;
@@ -300,7 +306,9 @@ export type LifecycleEventMap = {
 	cancelled: {
 		ticketId: string;
 		url: string;
-		partition: string;
+		/** `undefined` only when the request was cancelled before its URL could
+		 *  be resolved (a pre-aborted `signal` with an unresolvable URL). */
+		partition: string | undefined;
 		attempts: number;
 		durationMs: number;
 		queuedMs: number;
@@ -400,7 +408,7 @@ export interface ClientConfig {
 	retryBudget?: RetryBudgetConfig;
 	/** Default per-partition rate limit. Opt-in — no limit unless set. */
 	rateLimit?: RateLimitConfig;
-	/** Optional structured logger */
+	/** Optional structured logger. A logger that throws never affects a request: the error is rethrown on a microtask (reaching `uncaughtException`), like a throwing listener. */
 	logger?: Logger;
 	/** Optional metrics sink for counters, histograms, and gauges. */
 	metrics?: MetricsSink;

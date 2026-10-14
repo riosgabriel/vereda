@@ -2,6 +2,7 @@ import { ConfigurationError } from "./errors.ts";
 import type {
 	CircuitBreakerConfig,
 	ClientConfig,
+	CloseOptions,
 	PartitionConfig,
 	RateLimitConfig,
 	RedirectMode,
@@ -32,6 +33,24 @@ export function isReadableStream(body: unknown): body is ReadableStream {
 export function validateRequestBody(body: BodyInit | (() => BodyInit) | undefined): void {
 	if (isReadableStream(body)) {
 		throw new ConfigurationError("body must be supplied as a factory (() => BodyInit) when it is a ReadableStream");
+	}
+}
+
+/** The largest delay `setTimeout` honours (2^31 - 1 ms, about 24.8 days).
+ *  Anything larger, including `Infinity`, is clamped to 1 ms by Node. */
+export const MAX_TIMER_MS = 2_147_483_647;
+
+/** Validates `close()` options. A drain needs a finite `timeoutMs` in
+ *  `(0, MAX_TIMER_MS]`: it is the only thing that bounds the wait, and the
+ *  drain timer silently fires after ~1 ms for anything `setTimeout` can't hold. */
+export function validateCloseOptions(opts: CloseOptions | undefined): void {
+	if (!opts?.drain) return;
+	const { timeoutMs } = opts as { timeoutMs?: unknown };
+	if (typeof timeoutMs !== "number" || !Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+		throw new ConfigurationError("close({ drain: true }) requires a finite, positive timeoutMs");
+	}
+	if (timeoutMs > MAX_TIMER_MS) {
+		throw new ConfigurationError(`close({ drain: true }) timeoutMs must not exceed ${MAX_TIMER_MS} ms`);
 	}
 }
 

@@ -49,7 +49,7 @@ export class Semaphore {
 		}
 
 		if (this.waitQueue.length >= this.maxQueueSize) {
-			return Promise.reject(new QueueFullError("global", this.waitQueue.length, this.maxQueueSize));
+			return Promise.reject(new QueueFullError("global", this.waitQueue.length, this.maxQueueSize, "global"));
 		}
 
 		return new Promise<() => void>((resolve, reject) => {

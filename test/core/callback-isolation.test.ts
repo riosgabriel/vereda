@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HttpClient } from "../../src/core/client.ts";
 import type { MetricsSink } from "../../src/core/metrics.ts";
+import { requestLogger } from "../../src/middleware/index.ts";
 import { createTicket } from "../../src/ticket/ticket.ts";
 
 // reportCallbackError rethrows on a microtask so the error reaches
@@ -96,5 +97,116 @@ describe("Client listener and metrics isolation (B3)", () => {
 		expect(result.success).toBe(true);
 		expect(calls).toBe(2);
 		expect(reported).toEqual([boom, boom]);
+	});
+});
+
+describe("Logger isolation (B3)", () => {
+	const loggerThrowing = (calls: string[]) => {
+		const fail = (msg: string) => {
+			calls.push(msg);
+			throw boom;
+		};
+		return { debug: fail, info: fail, warn: fail, error: fail };
+	};
+	const terminals = (client: HttpClient) => {
+		const seen: string[] = [];
+		for (const e of ["success", "failure", "cancelled"] as const) client.on(e, () => seen.push(e));
+		return seen;
+	};
+	const retry = { maxRetries: 3, backoff: { baseDelayMs: 1, jitter: false } };
+
+	it("a throwing logger does not turn a success into a failure", async () => {
+		let fetches = 0;
+		const logged: string[] = [];
+		const client = HttpClient.create({
+			logger: loggerThrowing(logged),
+			timeout: { attemptMs: 1_000 },
+			retry: { maxRetries: 0 },
+			fetch: async () => {
+				fetches++;
+				return new Response("{}", { status: 200 });
+			},
+		});
+		const seen = terminals(client);
+
+		const result = await client.get("http://svc/").toPromise();
+		expect(result.success).toBe(true);
+		expect(seen).toEqual(["success"]);
+		expect(fetches).toBe(1);
+		expect(logged).toContain("Request succeeded");
+		expect(reported.length).toBe(logged.length);
+	});
+
+	it("a throwing logger does not re-send a request that already succeeded", async () => {
+		let fetches = 0;
+		const client = HttpClient.create({
+			logger: loggerThrowing([]),
+			timeout: { attemptMs: 1_000 },
+			retry,
+			fetch: async () => {
+				fetches++;
+				return new Response("{}", { status: 200 });
+			},
+		});
+		const seen = terminals(client);
+
+		const result = await client.get("http://svc/").toPromise();
+		expect(result.success).toBe(true);
+		expect(seen).toEqual(["success"]);
+		expect(fetches).toBe(1);
+	});
+
+	it("a throwing logger does not change the retry path", async () => {
+		let fetches = 0;
+		const logged: string[] = [];
+		const client = HttpClient.create({
+			logger: loggerThrowing(logged),
+			timeout: { attemptMs: 1_000 },
+			retry,
+			fetch: async () => new Response("{}", { status: ++fetches === 1 ? 503 : 200 }),
+		});
+		const seen = terminals(client);
+
+		const result = await client.get("http://svc/").toPromise();
+		expect(result.success).toBe(true);
+		expect(seen).toEqual(["success"]);
+		expect(fetches).toBe(2);
+		expect(logged).toContain("Request queued for retry");
+	});
+
+	it("a throwing logger does not change the final failure", async () => {
+		let fetches = 0;
+		const logged: string[] = [];
+		const client = HttpClient.create({
+			logger: loggerThrowing(logged),
+			timeout: { attemptMs: 1_000 },
+			retry: { maxRetries: 1, backoff: { baseDelayMs: 1, jitter: false } },
+			fetch: async () => new Response("{}", { status: ++fetches > 0 ? 503 : 200 }),
+		});
+		const seen = terminals(client);
+
+		const result = await client.get("http://svc/").toPromise();
+		expect(result.success).toBe(false);
+		expect(seen).toEqual(["failure"]);
+		expect(fetches).toBe(2);
+		expect(logged).toContain("Request failed after retries");
+	});
+
+	it("a throwing requestLogger sink does not fail or re-send a request", async () => {
+		let fetches = 0;
+		const client = HttpClient.create({
+			timeout: { attemptMs: 1_000 },
+			retry,
+			fetch: async () => {
+				fetches++;
+				return new Response("{}", { status: 200 });
+			},
+		});
+		client.use(requestLogger({ log: thrower }));
+
+		const result = await client.get("http://svc/").toPromise();
+		expect(result.success).toBe(true);
+		expect(fetches).toBe(1);
+		expect(reported).toEqual([boom]);
 	});
 });

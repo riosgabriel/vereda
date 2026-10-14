@@ -77,7 +77,7 @@ Errors form a hierarchy under `RequestError`, and `AppError` is the union of all
 | `DeadlineExceededError` | `"deadline"` | Ticket exceeded `timeout.totalMs`, or its next retry delay wouldn't fit before it (terminal — not retried) | `url`, `totalMs`, `cause` (last attempt's error, when a retry was skipped) |
 | `ValidationError` | `"validation"` | Response body failed `parse` or isn't valid JSON (terminal — never retried) | `issues`, `cause` |
 | `CancelledError` | `"cancelled"` | Ticket cancelled or signal aborted (terminal) | — |
-| `QueueFullError` | `"queue_full"` | A partition's retry queue, or the global queue (`partition: "global"`), was full (terminal) | `partition`, `queueSize`, `maxQueueSize` |
+| `QueueFullError` | `"queue_full"` | A partition's retry queue (`scope: "partition"`), or the global queue (`scope: "global"`), was full (terminal) | `scope`, `partition` (`"global"` for the global queue; check `scope`, since a partition can be named that too), `queueSize`, `maxQueueSize` |
 | `CircuitOpenError` | `"circuit_open"` | The partition's breaker was open when an attempt was due, so it wasn't sent; earlier attempts may have run (terminal) | `partition` |
 | `RateLimitedError` | `"rate_limited"` | The partition's [rate limit](resilience.md#rate-limiting) would have made an attempt wait longer than `maxWaitMs`, so it wasn't sent; earlier attempts may have run (terminal) | `partition`, `waitMs`, `maxWaitMs` |
 | `ConfigurationError` | `"configuration"` | A relative URL with no `baseUrl`, a bare `ReadableStream` body, a body factory that threw, or invalid request-level `timeout`/`retry` options (terminal). Invalid client config throws from `create()` instead | `key` |

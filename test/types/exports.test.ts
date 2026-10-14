@@ -8,6 +8,7 @@ describe("public exports", () => {
 		const partitions: BulkheadSnapshot[] = client.partitions();
 
 		const snapshot: BulkheadSnapshot = {
+			partition: "host",
 			name: "host",
 			running: 0,
 			queued: 0,
@@ -16,6 +17,6 @@ describe("public exports", () => {
 		};
 
 		expect(Array.isArray(partitions)).toBe(true);
-		expect(snapshot.name).toBe("host");
+		expect(snapshot.partition).toBe("host");
 	});
 });

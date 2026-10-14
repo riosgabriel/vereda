@@ -6,7 +6,7 @@ This guide is for running Vereda in production: sizing its knobs, reading its ru
 
 Vereda has two independent concurrency limits:
 
-- **Global (`concurrency`, default `50`)** — a semaphore shared across every partition. It bounds total in-flight executions (first attempts and retries alike) against your process, regardless of how many hosts you talk to. Up to `maxQueueSize` (default `100`) more may wait for a permit; beyond that a request resolves with `QueueFullError` (`partition: "global"`).
+- **Global (`concurrency`, default `50`)** — a semaphore shared across every partition. It bounds total in-flight executions (first attempts and retries alike) against your process, regardless of how many hosts you talk to. Up to `maxQueueSize` (default `100`) more may wait for a permit; beyond that a request resolves with `QueueFullError` (`scope: "global"`).
 - **Per-partition (`partitions[name].concurrency`, default `5`)** — how many retries may run at once for a single partition (host). `partitions[name].maxQueueSize` (default `100`) bounds how many more retries may wait behind that limit before a request is rejected with `QueueFullError`.
 
 The per-partition limit applies **only to retries**: the first attempt for every request skips the partition bulkhead — this is deliberate (see [Design philosophy](../README.md#design-philosophy) in the README): a struggling downstream should throttle its own retry traffic, not new work. The global limit applies to every attempt, so a host that fails *slowly* can hold global permits and delay or reject requests to healthy hosts under enough load; keep `attemptMs` short for such hosts, or set `limitFirstAttempts`.
@@ -40,10 +40,10 @@ Both deadlines also bound reading the body of a Response Vereda hands back unrea
 
 ```typescript
 const snapshots = client.partitions();
-// [{ name: "api.example.com", running: 2, queued: 5, concurrency: 5, maxQueueSize: 100, tokens: 3 }, ...]
+// [{ partition: "api.example.com", running: 2, queued: 5, concurrency: 5, maxQueueSize: 100, tokens: 3 }, ...]
 ```
 
-One entry per partition that has seen a request. `tokens`, present only for a partition with a `rateLimit`, is how many tokens are free right now; `0` with requests stalling means that partition is held back by its rate limit, not by concurrency. `running` and `queued` are point-in-time counts of retry traffic only (first attempts never appear here, by design). Poll this on an interval and feed it into your metrics sink's gauges, or check it directly when debugging why a specific host's requests seem stuck — `queued` near `maxQueueSize` means that partition is saturated and new retries for it will start failing with `QueueFullError`.
+One entry per partition that has seen a request. Each entry also carries `name`, the same value as `partition`; it is deprecated and goes away in 2.0. `tokens`, present only for a partition with a `rateLimit`, is how many tokens are free right now; `0` with requests stalling means that partition is held back by its rate limit, not by concurrency. `running` and `queued` are point-in-time counts of retry traffic only (first attempts never appear here, by design). Poll this on an interval and feed it into your metrics sink's gauges, or check it directly when debugging why a specific host's requests seem stuck — `queued` near `maxQueueSize` means that partition is saturated and new retries for it will start failing with `QueueFullError`.
 
 ## Reading `circuits()`
 
@@ -80,11 +80,11 @@ await client.close({ drain: true, timeoutMs: 30_000 });
 ```
 
 - **`close()`** with no `drain` (or `drain: false`) cancels every in-flight ticket immediately and rejects new requests with `ConfigurationError("client closed")`. Use this for a hard, fast shutdown (e.g. `SIGKILL`-adjacent paths where you just need the process to exit without lingering timers).
-- **`close({ drain: true, timeoutMs })`** waits for in-flight tickets to settle naturally, up to `timeoutMs`, then cancels whatever's left. Use this on graceful shutdown (`SIGTERM` handler) so requests that are about to succeed get the chance to.
+- **`close({ drain: true, timeoutMs })`** waits for in-flight tickets to settle naturally, up to `timeoutMs` (a finite number up to 2,147,483,647 ms), then cancels whatever's left. Use this on graceful shutdown (`SIGTERM` handler) so requests that are about to succeed get the chance to.
 
 Either way, all internal timers (backoff sleeps, `attemptMs`/`totalMs` deadlines) are `unref()`ed from the moment they're created, so a Vereda client never by itself keeps the Node event loop alive — `close()` is about resolving in-flight *tickets* cleanly, not about unblocking process exit.
 
-Call `close()` once per client, before the process exits, in whichever shutdown handler your deployment already uses. Extra calls are harmless: a `close()` that arrives while a drain is in progress returns the same promise, so it resolves only when the shutdown actually finishes. `close({ drain: true })` without a positive `timeoutMs` rejects with a `ConfigurationError` and leaves the client open.
+Call `close()` once per client, before the process exits, in whichever shutdown handler your deployment already uses. Extra calls are harmless: a `close()` that arrives while a drain is in progress returns the same promise, so it resolves only when the shutdown actually finishes. `close({ drain: true })` without a finite `timeoutMs` between 1 and 2,147,483,647 ms (the largest delay a timer honours, about 24.8 days) rejects with a `ConfigurationError` and leaves the client open.
 
 ## Redaction
 

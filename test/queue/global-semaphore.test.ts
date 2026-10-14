@@ -135,7 +135,7 @@ describe("Global semaphore (5.2)", () => {
 		const release1 = await sem.acquire();
 
 		// Permit taken, wait queue full → should reject
-		await expect(sem.acquire()).rejects.toThrow("full");
+		await expect(sem.acquire()).rejects.toMatchObject({ kind: "queue_full", scope: "global", partition: "global" });
 
 		release1();
 	});
