@@ -286,6 +286,25 @@ export class HttpClient {
 		startTime: number,
 		hold: (release: () => void) => void,
 	): Promise<void> {
+		// A ticket that is already settled here was cancelled before it ever
+		// ran (a pre-aborted `signal`; nothing else can settle it before the
+		// first await). Every exit below would emit "failure" for a ticket whose
+		// Result is already CancelledError, so settle it once, up front, with the
+		// matching "cancelled" event. Doing it here keeps the one-terminal-event
+		// invariant true for any early exit added later without a per-exit guard.
+		if (ticket.isSettled) {
+			this.emit("cancelled", {
+				ticketId: ticket.id,
+				url: this.logUrl(url),
+				partition: this.tryResolvePartition(url, options),
+				attempts: 1,
+				durationMs: Date.now() - startTime,
+				queuedMs: 0,
+			});
+			cleanup();
+			return;
+		}
+
 		// Resolve URL and partition inside the async path so relative URLs
 		// without a baseUrl surface as a ticket ConfigurationError instead of
 		// throwing. It's a caller mistake, not a network fault, so it is never
