@@ -97,6 +97,24 @@ describe("RetryBudgetRegistry", () => {
 		expect(b.tryWithdraw()).toBe(false);
 	});
 
+	it("lets a partition opt out of the client's budget with false", () => {
+		const registry = new RetryBudgetRegistry(
+			{ ratio: 0, windowMs: 1_000, minRetriesPerSec: 0 },
+			partitionLookup({ internal: { retryBudget: false } }, { retryBudget: false }),
+		);
+		expect(registry.get("internal").enabled).toBe(false);
+		// defaultPartition: false covers every unlisted partition too.
+		expect(registry.get("other").enabled).toBe(false);
+	});
+
+	it("keeps the client's budget for partitions that don't opt out", () => {
+		const registry = new RetryBudgetRegistry(
+			{ ratio: 0, windowMs: 1_000, minRetriesPerSec: 0 },
+			partitionLookup({ internal: { retryBudget: false } }),
+		);
+		expect(registry.get("external").enabled).toBe(true);
+	});
+
 	it("hands out an inert budget when nothing is configured", () => {
 		const registry = new RetryBudgetRegistry(undefined, partitionLookup());
 		expect(registry.get("a").enabled).toBe(false);
@@ -173,6 +191,27 @@ describe("retry budget in the client", () => {
 
 		// 20 first attempts fund 10 retries; without the budget it'd be 80 calls.
 		expect(calls).toBe(30);
+		await client.close();
+	});
+
+	it("retries freely on a partition that opts out of the client's budget", async () => {
+		let calls = 0;
+		const client = HttpClient.create({
+			fetch: async () => {
+				calls++;
+				return unavailable();
+			},
+			timeout: { attemptMs: 1_000 },
+			retry: { maxRetries: 3, backoff: { baseDelayMs: 1, maxDelayMs: 1, jitter: false } },
+			retryBudget: { ratio: 0, windowMs: 10_000, minRetriesPerSec: 0 },
+			partitions: { "internal.test": { retryBudget: false } },
+		});
+
+		await client.get("http://internal.test/x").toPromise();
+		await client.get("http://external.test/x").toPromise();
+
+		// internal.test: 1 + 3 retries; external.test: refused after its first attempt.
+		expect(calls).toBe(5);
 		await client.close();
 	});
 

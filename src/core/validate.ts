@@ -181,8 +181,11 @@ function validatePartitionConfig(config: PartitionConfig | undefined, prefix: st
 	validateRateLimitConfig(config.rateLimit, `${prefix}.rateLimit`);
 }
 
-function validateRateLimitConfig(rateLimit: RateLimitConfig | undefined, prefix: string): void {
-	if (!rateLimit) return;
+function validateRateLimitConfig(rateLimit: RateLimitConfig | false | undefined, prefix: string): void {
+	if (rateLimit === undefined || rateLimit === false) return;
+	if (typeof rateLimit !== "object" || rateLimit === null) {
+		throw new ConfigurationError(`${prefix} must be an object, or false to turn it off`);
+	}
 	if (!(Number.isFinite(rateLimit.tokensPerSec) && rateLimit.tokensPerSec > 0)) {
 		throw new ConfigurationError(`${prefix}.tokensPerSec must be a positive finite number`);
 	}
@@ -196,8 +199,11 @@ function validateRateLimitConfig(rateLimit: RateLimitConfig | undefined, prefix:
 	}
 }
 
-function validateRetryBudgetConfig(budget: RetryBudgetConfig | undefined, prefix: string): void {
-	if (!budget) return;
+function validateRetryBudgetConfig(budget: RetryBudgetConfig | false | undefined, prefix: string): void {
+	if (budget === undefined || budget === false) return;
+	if (typeof budget !== "object" || budget === null) {
+		throw new ConfigurationError(`${prefix} must be an object, or false to turn it off`);
+	}
 	// 0 is legal: only the minRetriesPerSec floor is left.
 	if (!(Number.isFinite(budget.ratio) && budget.ratio >= 0)) {
 		throw new ConfigurationError(`${prefix}.ratio must be a non-negative finite number`);

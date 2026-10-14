@@ -118,10 +118,12 @@ export interface PartitionConfig {
 	retry?: RetryConfig;
 	timeout?: TimeoutConfig;
 	circuitBreaker?: CircuitBreakerConfig;
-	/** Replaces the client-level `retryBudget` for this partition, field by field. */
-	retryBudget?: RetryBudgetConfig;
-	/** Replaces the client-level `rateLimit` for this partition, field by field. */
-	rateLimit?: RateLimitConfig;
+	/** Replaces the client-level `retryBudget` for this partition, field by
+	 *  field. `false` turns the client-level budget off for this partition. */
+	retryBudget?: RetryBudgetConfig | false;
+	/** Replaces the client-level `rateLimit` for this partition, field by
+	 *  field. `false` turns the client-level limit off for this partition. */
+	rateLimit?: RateLimitConfig | false;
 }
 
 /** Resolves the config that applies to a partition: its `partitions` entry
