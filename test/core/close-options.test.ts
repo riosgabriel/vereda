@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HttpClient } from "../../src/core/client.ts";
+import { ConfigurationError } from "../../src/core/errors.ts";
 import type { CloseOptions } from "../../src/core/types.ts";
 
 const slowOk: typeof globalThis.fetch = () =>
@@ -17,6 +18,30 @@ describe("close() (B8)", () => {
 		await client.close({ drain: true, timeoutMs: 1_000 });
 		const result = await ticket.toPromise();
 		expect(result.success).toBe(true); // drained, not cancelled
+	});
+
+	it.each([
+		["Infinity", Number.POSITIVE_INFINITY],
+		["NaN", Number.NaN],
+		["0", 0],
+		["negative", -5],
+		["2^31", 2_147_483_648],
+	])("rejects drain timeoutMs %s and leaves the client open (#198)", async (_label, timeoutMs) => {
+		const client = HttpClient.create({ timeout: { attemptMs: 1_000 }, fetch: slowOk });
+		const ticket = client.get("http://svc.test/");
+
+		await expect(client.close({ drain: true, timeoutMs })).rejects.toBeInstanceOf(ConfigurationError);
+		expect(() => client.get("http://svc.test/")).not.toThrow();
+
+		await client.close({ drain: true, timeoutMs: 1_000 });
+		expect((await ticket.toPromise()).success).toBe(true);
+	});
+
+	it("accepts the largest timer-safe drain timeoutMs", async () => {
+		const client = HttpClient.create({ timeout: { attemptMs: 1_000 }, fetch: slowOk });
+		const ticket = client.get("http://svc.test/");
+		await client.close({ drain: true, timeoutMs: 2_147_483_647 });
+		expect((await ticket.toPromise()).success).toBe(true);
 	});
 
 	it("a second close() during a drain waits for the same shutdown", async () => {

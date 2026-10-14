@@ -45,7 +45,7 @@ import {
 	isBoundedMs,
 	partitionLookup,
 } from "./types.ts";
-import { validateConfig, validateRequestBody, validateRequestOptions } from "./validate.ts";
+import { validateCloseOptions, validateConfig, validateRequestBody, validateRequestOptions } from "./validate.ts";
 
 /** Pairs an in-flight ticket with its cleanup function so that
  *  resources (signal listeners, deadline timers) are released synchronously
@@ -1004,12 +1004,17 @@ export class HttpClient {
 	 *  immediately.
 	 *
 	 *  `timeoutMs` is required when `drain` is true to prevent indefinite
-	 *  hangs — use a value that fits your shutdown budget. */
+	 *  hangs — use a value that fits your shutdown budget. It must be a finite
+	 *  number in (0, 2_147_483_647] (the largest delay `setTimeout` honours,
+	 *  about 24.8 days); `Infinity`, `NaN`, zero, negatives and larger values
+	 *  reject with `ConfigurationError` and leave the client open. */
 	close(opts?: CloseOptions): Promise<void> {
 		// Validate before committing to close: a rejected call must leave the
 		// client open, or a corrected retry would no-op without draining (B8).
-		if (opts?.drain && (!opts.timeoutMs || opts.timeoutMs <= 0)) {
-			return Promise.reject(new ConfigurationError("close({ drain: true }) requires a positive timeoutMs"));
+		try {
+			validateCloseOptions(opts);
+		} catch (err) {
+			return Promise.reject(err);
 		}
 		// Idempotent, and a second caller waits for the same shutdown instead
 		// of resolving while the first one is still draining.
