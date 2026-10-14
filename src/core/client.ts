@@ -372,7 +372,7 @@ export class HttpClient {
 			method: options.method ?? "GET",
 			partition: partitionName,
 		});
-		this.logger?.info("Request initiated", {
+		this.log("info", "Request initiated", {
 			ticketId: ticket.id,
 			url: displayUrl,
 			method: options.method ?? "GET",
@@ -537,7 +537,7 @@ export class HttpClient {
 						queuedMs,
 						statusCode,
 					});
-					this.logger?.info("Request succeeded", {
+					this.log("info", "Request succeeded", {
 						ticketId: ticket.id,
 						url: displayUrl,
 					});
@@ -766,7 +766,7 @@ export class HttpClient {
 		startTime: number,
 		initialQueuedMs: number,
 	): void {
-		this.logger?.info("Request queued for retry", {
+		this.log("info", "Request queued for retry", {
 			ticketId: ticket.id,
 			url: displayUrl,
 			partition: partitionName,
@@ -831,7 +831,7 @@ export class HttpClient {
 					queuedMs,
 					error,
 				});
-				this.logger?.warn("Request failed after retries", {
+				this.log("warn", "Request failed after retries", {
 					ticketId: ticket.id,
 					url: displayUrl,
 					error: error.message,
@@ -1101,6 +1101,17 @@ export class HttpClient {
 	/** Returns the URL for logging, redacted if redactQuery is enabled. */
 	private logUrl(url: string): string {
 		return this.redactQuery ? redactUrl(url) : url;
+	}
+
+	/** Never throws: a throwing `logger` must not change a request's outcome,
+	 *  its events or its retries (B3), so its error is reported like a
+	 *  listener's instead of unwinding through the request path. */
+	private log(level: "info" | "warn", msg: string, meta: Record<string, unknown>): void {
+		try {
+			this.logger?.[level](msg, meta);
+		} catch (err) {
+			reportCallbackError(err);
+		}
 	}
 
 	/** Never throws: listener and metrics-sink errors are isolated (B3), since
