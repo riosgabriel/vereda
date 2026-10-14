@@ -107,6 +107,11 @@ const ticketArb = fc.record({
 	method: fc.constantFrom("GET", "POST"),
 	cancelAtMs: fc.option(fc.integer({ min: 0, max: 60 }), { nil: undefined }),
 	throwingDoneListener: fc.boolean(),
+	// A signal that is already aborted (#196), optionally combined with an
+	// early-exit failure (unresolvable URL, invalid options) that would
+	// otherwise emit "failure" for an already-cancelled ticket.
+	preAborted: fc.boolean(),
+	earlyExit: fc.constantFrom(undefined, "url", "options"),
 });
 
 const scenarioArb = fc
@@ -217,9 +222,13 @@ async function runScenario(s: Scenario): Promise<void> {
 	}
 
 	const tickets = s.tickets.map((t, i) => {
-		const ticket = client.request(`http://svc/t${i}`, {
+		const ac = new AbortController();
+		if (t.preAborted) ac.abort();
+		const ticket = client.request(t.earlyExit === "url" ? "not-a-url" : `http://svc/t${i}`, {
 			method: t.method,
 			partition: "svc",
+			...(t.preAborted ? { signal: ac.signal } : {}),
+			...(t.earlyExit === "options" ? { timeout: { attemptMs: -5 } } : {}),
 			...(t.parse ? { parse: json() } : {}),
 		});
 		if (t.throwingDoneListener) {

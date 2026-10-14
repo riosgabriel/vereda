@@ -45,7 +45,7 @@ import {
 	isBoundedMs,
 	partitionLookup,
 } from "./types.ts";
-import { validateConfig, validateRequestBody, validateRequestOptions } from "./validate.ts";
+import { validateCloseOptions, validateConfig, validateRequestBody, validateRequestOptions } from "./validate.ts";
 
 /** Pairs an in-flight ticket with its cleanup function so that
  *  resources (signal listeners, deadline timers) are released synchronously
@@ -286,6 +286,25 @@ export class HttpClient {
 		startTime: number,
 		hold: (release: () => void) => void,
 	): Promise<void> {
+		// A ticket that is already settled here was cancelled before it ever
+		// ran (a pre-aborted `signal`; nothing else can settle it before the
+		// first await). Every exit below would emit "failure" for a ticket whose
+		// Result is already CancelledError, so settle it once, up front, with the
+		// matching "cancelled" event. Doing it here keeps the one-terminal-event
+		// invariant true for any early exit added later without a per-exit guard.
+		if (ticket.isSettled) {
+			this.emit("cancelled", {
+				ticketId: ticket.id,
+				url: this.logUrl(url),
+				partition: this.tryResolvePartition(url, options),
+				attempts: 1,
+				durationMs: Date.now() - startTime,
+				queuedMs: 0,
+			});
+			cleanup();
+			return;
+		}
+
 		// Resolve URL and partition inside the async path so relative URLs
 		// without a baseUrl surface as a ticket ConfigurationError instead of
 		// throwing. It's a caller mistake, not a network fault, so it is never
@@ -372,7 +391,7 @@ export class HttpClient {
 			method: options.method ?? "GET",
 			partition: partitionName,
 		});
-		this.logger?.info("Request initiated", {
+		this.log("info", "Request initiated", {
 			ticketId: ticket.id,
 			url: displayUrl,
 			method: options.method ?? "GET",
@@ -537,7 +556,7 @@ export class HttpClient {
 						queuedMs,
 						statusCode,
 					});
-					this.logger?.info("Request succeeded", {
+					this.log("info", "Request succeeded", {
 						ticketId: ticket.id,
 						url: displayUrl,
 					});
@@ -766,7 +785,7 @@ export class HttpClient {
 		startTime: number,
 		initialQueuedMs: number,
 	): void {
-		this.logger?.info("Request queued for retry", {
+		this.log("info", "Request queued for retry", {
 			ticketId: ticket.id,
 			url: displayUrl,
 			partition: partitionName,
@@ -831,7 +850,7 @@ export class HttpClient {
 					queuedMs,
 					error,
 				});
-				this.logger?.warn("Request failed after retries", {
+				this.log("warn", "Request failed after retries", {
 					ticketId: ticket.id,
 					url: displayUrl,
 					error: error.message,
@@ -1004,12 +1023,17 @@ export class HttpClient {
 	 *  immediately.
 	 *
 	 *  `timeoutMs` is required when `drain` is true to prevent indefinite
-	 *  hangs — use a value that fits your shutdown budget. */
+	 *  hangs — use a value that fits your shutdown budget. It must be a finite
+	 *  number in (0, 2_147_483_647] (the largest delay `setTimeout` honours,
+	 *  about 24.8 days); `Infinity`, `NaN`, zero, negatives and larger values
+	 *  reject with `ConfigurationError` and leave the client open. */
 	close(opts?: CloseOptions): Promise<void> {
 		// Validate before committing to close: a rejected call must leave the
 		// client open, or a corrected retry would no-op without draining (B8).
-		if (opts?.drain && (!opts.timeoutMs || opts.timeoutMs <= 0)) {
-			return Promise.reject(new ConfigurationError("close({ drain: true }) requires a positive timeoutMs"));
+		try {
+			validateCloseOptions(opts);
+		} catch (err) {
+			return Promise.reject(err);
 		}
 		// Idempotent, and a second caller waits for the same shutdown instead
 		// of resolving while the first one is still draining.
@@ -1096,6 +1120,17 @@ export class HttpClient {
 	/** Returns the URL for logging, redacted if redactQuery is enabled. */
 	private logUrl(url: string): string {
 		return this.redactQuery ? redactUrl(url) : url;
+	}
+
+	/** Never throws: a throwing `logger` must not change a request's outcome,
+	 *  its events or its retries (B3), so its error is reported like a
+	 *  listener's instead of unwinding through the request path. */
+	private log(level: "info" | "warn", msg: string, meta: Record<string, unknown>): void {
+		try {
+			this.logger?.[level](msg, meta);
+		} catch (err) {
+			reportCallbackError(err);
+		}
 	}
 
 	/** Never throws: listener and metrics-sink errors are isolated (B3), since

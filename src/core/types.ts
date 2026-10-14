@@ -251,6 +251,7 @@ export interface RetryConfig {
 // Logger
 // ---------------------------------------------------------------------------
 
+/** A throwing method never changes a request's result, events or retries; the error is reported like a listener's, on a microtask. */
 export interface Logger {
 	debug(msg: string, meta?: Record<string, unknown>): void;
 	info(msg: string, meta?: Record<string, unknown>): void;
@@ -298,7 +299,9 @@ export type LifecycleEventMap = {
 	cancelled: {
 		ticketId: string;
 		url: string;
-		partition: string;
+		/** `undefined` only when the request was cancelled before its URL could
+		 *  be resolved (a pre-aborted `signal` with an unresolvable URL). */
+		partition: string | undefined;
 		attempts: number;
 		durationMs: number;
 		queuedMs: number;
@@ -398,7 +401,7 @@ export interface ClientConfig {
 	retryBudget?: RetryBudgetConfig;
 	/** Default per-partition rate limit. Opt-in — no limit unless set. */
 	rateLimit?: RateLimitConfig;
-	/** Optional structured logger */
+	/** Optional structured logger. A logger that throws never affects a request: the error is rethrown on a microtask (reaching `uncaughtException`), like a throwing listener. */
 	logger?: Logger;
 	/** Optional metrics sink for counters, histograms, and gauges. */
 	metrics?: MetricsSink;

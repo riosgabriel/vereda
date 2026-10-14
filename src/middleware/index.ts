@@ -1,3 +1,4 @@
+import { reportCallbackError } from "../core/listeners.ts";
 import { redactUrl } from "../core/redact.ts";
 
 export type { MiddlewareFn, NextFn, RequestContext } from "../queue/executor.ts";
@@ -37,7 +38,15 @@ export function requestLogger(options?: {
 	redactQuery?: boolean;
 }): import("../queue/executor.ts").MiddlewareFn {
 	// biome-ignore lint/suspicious/noConsole: console is the intended default sink for this opt-in logger middleware; callers override it via options.log.
-	const log = options?.log ?? ((msg, meta) => console.log(msg, meta));
+	const sink = options?.log ?? ((msg, meta) => console.log(msg, meta));
+	// A throwing sink must not fail (or get retried) a request, B3.
+	const log = (msg: string, meta: Record<string, unknown>): void => {
+		try {
+			sink(msg, meta);
+		} catch (err) {
+			reportCallbackError(err);
+		}
+	};
 
 	const shownUrl = options?.redactQuery === false ? (url: string) => url : redactUrl;
 

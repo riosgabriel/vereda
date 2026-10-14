@@ -80,11 +80,11 @@ await client.close({ drain: true, timeoutMs: 30_000 });
 ```
 
 - **`close()`** with no `drain` (or `drain: false`) cancels every in-flight ticket immediately and rejects new requests with `ConfigurationError("client closed")`. Use this for a hard, fast shutdown (e.g. `SIGKILL`-adjacent paths where you just need the process to exit without lingering timers).
-- **`close({ drain: true, timeoutMs })`** waits for in-flight tickets to settle naturally, up to `timeoutMs`, then cancels whatever's left. Use this on graceful shutdown (`SIGTERM` handler) so requests that are about to succeed get the chance to.
+- **`close({ drain: true, timeoutMs })`** waits for in-flight tickets to settle naturally, up to `timeoutMs` (a finite number up to 2,147,483,647 ms), then cancels whatever's left. Use this on graceful shutdown (`SIGTERM` handler) so requests that are about to succeed get the chance to.
 
 Either way, all internal timers (backoff sleeps, `attemptMs`/`totalMs` deadlines) are `unref()`ed from the moment they're created, so a Vereda client never by itself keeps the Node event loop alive — `close()` is about resolving in-flight *tickets* cleanly, not about unblocking process exit.
 
-Call `close()` once per client, before the process exits, in whichever shutdown handler your deployment already uses. Extra calls are harmless: a `close()` that arrives while a drain is in progress returns the same promise, so it resolves only when the shutdown actually finishes. `close({ drain: true })` without a positive `timeoutMs` rejects with a `ConfigurationError` and leaves the client open.
+Call `close()` once per client, before the process exits, in whichever shutdown handler your deployment already uses. Extra calls are harmless: a `close()` that arrives while a drain is in progress returns the same promise, so it resolves only when the shutdown actually finishes. `close({ drain: true })` without a finite `timeoutMs` between 1 and 2,147,483,647 ms (the largest delay a timer honours, about 24.8 days) rejects with a `ConfigurationError` and leaves the client open.
 
 ## Redaction
 

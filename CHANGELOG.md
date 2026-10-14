@@ -22,11 +22,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `close({ drain: true, timeoutMs })` now rejects with a `ConfigurationError` when `timeoutMs` is not a finite number in `(0, 2_147_483_647]`. Before, `Infinity` and anything above 2^31-1 ms slipped past the check and Node clamped the drain timer to 1 ms, so in-flight tickets were cancelled almost at once instead of drained. A rejected call leaves the client open, so a corrected `close()` still drains (#198).
+- A throwing `logger` (or `requestLogger` `log` function) no longer changes a request's outcome. Before, a logger that threw on `Request succeeded` turned a successful response into a `NetworkError` failure and fired both `success` and `failure`. Logger errors are now isolated like listener and metrics errors: reported on a microtask, never affecting the result, the events or retries (#197).
+- A request whose `signal` was already aborted no longer emits `failure` while its ticket resolves as `CancelledError` when it also fails an early check (an unresolvable URL, an invalid body or option, an open circuit breaker, a rate limit). It now emits a single `cancelled` event, matching the result, and never reaches the circuit breaker or the rate limiter, and no `request` event fires for it. (#196).
 - An attempt whose transport ignores the abort signal (a custom `fetch` that drops `init.signal`, or middleware that swaps `ctx.signal`) now ends as soon as the attempt is cancelled or times out. Before, `await fetch` never returned: `cancel()` resolved the ticket but no `cancelled` event fired, and `attemptMs`/`totalMs` never resolved the ticket at all. A response that arrives after the attempt was abandoned has its body cancelled (#181).
 - Reject forbidden HTTP methods (`TRACE`, `CONNECT`, `TRACK`) up front with a `ConfigurationError` during request validation instead of letting them enter the retry loop client-side (#139).
 
 ### Changed
 
+- The `cancelled` lifecycle event's `partition` is now typed `string | undefined`, as on `failure`. It is `undefined` only for a request cancelled by an already-aborted `signal` before its URL could be resolved. TypeScript code that uses it as a `string` (for example as an object key) needs a fallback (#196).
 - `withZod` validates with `parseAsync`, so schemas with async refinements or transforms work. Calling the returned function directly now gives `T | Promise<T>` (#142).
 - A body stream that fails mid-read is now reported as `NetworkError("Failed to read response body")` instead of `"Failed to parse response body as JSON"`, since the body is no longer always read as JSON (#142).
 - A retry whose delay (backoff or capped `Retry-After`) would run to or past `timeout.totalMs` is no longer slept on: the ticket fails right away with `DeadlineExceededError`, whose `cause` is the last attempt's error. Before, it slept until the deadline and then failed with the same error. `DeadlineExceededError` can therefore arrive before `totalMs` has elapsed (#143).
