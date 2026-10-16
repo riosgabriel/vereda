@@ -2,6 +2,8 @@
 
 Welcome! This guide walks you through how Vereda works by following a single request through the codebase. By the end you'll understand the architecture well enough to fix a bug or add a feature.
 
+Want the long version? [The Vereda Book](docs/book/README.md) follows one request through every subsystem, chapter by chapter, with the reasons behind each design choice and exercises against the real code.
+
 Prefer to be walked through it? Ask an LLM to guide you stop-by-stop — it can open each referenced file and explain the real code as you go.
 
 **Prerequisites:** Node 18+, basic TypeScript, familiarity with `fetch`.

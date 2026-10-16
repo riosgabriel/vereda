@@ -54,6 +54,7 @@ These go away in 2.0 (tracked in #148):
 
 ### Documentation
 
+- New `docs/book/`: The Vereda Book, thirteen chapters on how the client works inside, following one request (`GET /users/42`: a hang, a 503, then a 200) through the ticket, the retry loop, isolation, the circuit breaker and retry budget, observability, the invariants and the bugs that taught them, and testing and release. Linked from ONBOARDING.md.
 - README documents the `fetch` client option, with a security note: automatic redirects bypass dispatcher-level DNS guards for IP-literal targets, so SSRF-sensitive callers should use `redirect: "manual"` and follow hops themselves.
 
 ## [1.0.2] - 2026-10-07
