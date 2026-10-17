@@ -64,7 +64,7 @@ describe("setLongTimeout", () => {
 			const unref = vi.fn(() => timer);
 			unrefs.push(unref);
 			return Object.assign(timer, { unref });
-		}) as typeof setTimeout);
+		}) as unknown as typeof setTimeout);
 		setLongTimeout(() => {}, MAX_TIMER_MS + 1);
 		vi.advanceTimersByTime(MAX_TIMER_MS + 1);
 		expect(unrefs.length).toBe(2);
