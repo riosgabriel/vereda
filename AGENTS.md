@@ -18,6 +18,8 @@ bun run format                                  # format all files with Biome
 bun run format:check                            # check formatting without writing
 bun run lint                                    # Biome lint only
 bun run lint:fix                                # Biome lint with safe auto-fix
+bun run book:check                              # docs/book references resolve (in CI)
+bun run book:drift                              # chapters citing src changed since the book's pin
 ```
 
 Biome is the sole linter/formatter (no ESLint, no Prettier). Run `bun run check:fix` before committing;
@@ -91,6 +93,7 @@ Checks that found Vereda's real bugs (B1–B17 in the 1.0 review). Apply them to
 - Self-contained: integration tests spin up `node:http` servers on `127.0.0.1` ephemeral ports. No network, services, or env vars needed.
 - `testTimeout` is 15s (`vitest.config.ts`); retry/backoff tests use tiny delays (`baseDelayMs: 10`, `jitter: false`) — keep new timing-sensitive tests similarly fast.
 - `test/core/lifecycle-invariants.property.test.ts` (fast-check) runs random scenarios (server behavior, timeouts, deadlines, cancel, throwing listeners/sinks, `close()`) and checks that every ticket settles with exactly one matching terminal event and releases its resources. It runs 100 scenarios by default; `VEREDA_FC_RUNS=1000 npx vitest run lifecycle-invariants` for a deep local run. A failure prints a shrunk counterexample; turn it into a regular regression test next to the fix.
+- `scripts/book-check.ts` (`book:check`, in CI) fails when a file or a `` `path` — `symbol` `` pair cited in docs/book no longer exists. Renaming a cited function means updating the chapter in the same PR.
 - `test/docs/readme-snippets.test.ts` typechecks every fenced `typescript`/`ts` block in README.md, docs/operations.md, and docs/guide/*.md (the `DOCS` list) against the real library types (via a standalone `tsc` run per suite invocation) — a snippet must be a complete, standalone statement (imports included), since it's compiled as its own module. A handful of ambient names (`client`, `ticket`, `AppError`, `User`, `order`) are declared for it automatically when a block references but doesn't itself declare them. Code fences must be tagged `typescript`/`ts` (a `js`/`tsx` fence fails the test rather than dodging it). `test/docs/defaults-table.test.ts` pins the Quick start defaults table to the `DEFAULT_*` constants — change a default, update that table. `test/docs/middleware-example.test.ts` executes the Middleware block in docs/guide/requests.md itself (not a copy) and asserts its specific values, so editing that example means updating the test with it.
 
 ## Onboarding contributors (for LLMs)
