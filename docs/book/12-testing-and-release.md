@@ -281,9 +281,7 @@ that the test works.
 3. **Predict the next release.** Read `## [Unreleased]` in `CHANGELOG.md`. Which bump would the
    prepare script choose? Check without changing anything: import `inferBump` and
    `unreleasedSection` from `./scripts/release-prepare.ts` in a scratch script. (`minor`. The
-   section has `### Added` and `### Deprecated`, and no `### Breaking` or `### Removed`.) While
-   you're there, notice that the section has two `### Changed` headings. That's harmless for the
-   script but worth merging.
+   section has `### Added` and `### Deprecated`, and no `### Breaking` or `### Removed`.)
 4. **Break a default on purpose.** In a scratch copy of the repo, change `DEFAULT_MAX_RETRIES` in
    `src/core/types.ts` from 3 to 4 and run the whole suite. Before you run it, guess which tests
    fail. (Four: the defaults-table test, because the README still says 3, and three tests in

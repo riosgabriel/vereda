@@ -13,37 +13,6 @@ for it.
 
 ## From the issue tracker
 
-### #203: huge timeouts fire almost at once
-
-*Bug. Chapters 1, 5, 6 and 11.*
-
-This is the trap chapter 1 described, still open in four places. Node can't hold a timer longer
-than 2^31−1 ms, about 24.8 days. Ask for more and it waits 1 ms instead, with only a warning.
-`Infinity` is safe, because the code skips the timer for it. A large *finite* number isn't.
-
-Our running example shows it. Give it `attemptMs: 3e9` (about 35 days) instead of 200, and the
-first try, which hangs, times out after 3 ms instead of 200. The request still succeeds, because
-the server answers on the third try, but every attempt now has about a millisecond to work. Give
-it `totalMs: 3e9` instead, and the whole request fails with a `DeadlineExceededError` after about
-13 ms, having asked the server once.
-
-The issue lists four options that accept such values: `attemptMs`, `totalMs`, the backoff's
-`maxDelayMs`, and the rate limit's `maxWaitMs`.
-
-**Where to start.** Chapter 11 showed how `close()` got the same fix: a validator in
-`src/core/validate.ts` and a named limit, `MAX_TIMER_MS`. Read `validateCloseOptions` there, then
-find where each of the four options is validated, and where its timer is set (the issue's table
-points to each file).
-
-**The design question.** A number the caller *wrote* can be rejected with a `ConfigurationError`,
-as `close()` now does. A number the code *computed* (a backoff with jitter, a `Retry-After`
-header, a token-bucket wait) can't be rejected, because nobody wrote it; it has to be clamped to
-the limit instead. Decide which of the four is which. The issue also asks whether
-`maxDelayMs: Infinity` should be legal, meaning "no cap", as `attemptMs: Infinity` is.
-
-**Acceptance.** A test per option, written first and failing on `main`. Use a fake server that
-answers after 50 ms and check that the request succeeds rather than timing out.
-
 ### #192: one registry for every kind of partition state
 
 *Internal refactor, milestone 1.3. Chapters 8 and 9.*
@@ -141,7 +110,6 @@ And a few doc fixes, smaller still:
   fourth covers `performance/`).
 - CONTRIBUTING.md names `### Removed` as the heading that makes a release a major one; the release
   script also treats `### Breaking` that way.
-- `CHANGELOG.md`'s unreleased section has two `### Changed` headings.
 - In `src/core/validate.ts`, the doc comment for `validateRequestOptions` sits above the constant
   before it, so editors show it on the wrong name.
 
@@ -150,9 +118,9 @@ And a few doc fixes, smaller still:
 If this is your first change, take a doc fix or the import-guard test: small, real, and a full
 trip through the test-and-review loop from chapter 12.
 
-If you've read the whole book, take #203. It's a real bug with a known shape, the `close()` fix
-in chapter 11 shows the pattern, and the design question (reject or clamp?) is small enough to
-settle in the pull request.
+If you've read the whole book, take #192. It's a refactor with a known shape: three registries
+that are nearly copies, a rule from chapter 11 that all three must keep, and tests that already
+pin each one's behaviour.
 
 If you want a design problem, take #191, and write the open questions down as a table of options
 before any code.
