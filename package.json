@@ -38,7 +38,9 @@
 		"check:fix": "biome check --write",
 		"ci": "biome ci --error-on-warnings",
 		"docs": "typedoc",
-		"release:prepare": "tsx scripts/release-prepare.ts"
+		"release:prepare": "tsx scripts/release-prepare.ts",
+		"book:check": "tsx scripts/book-check.ts",
+		"book:drift": "tsx scripts/book-check.ts drift"
 	},
 	"keywords": [
 		"http",

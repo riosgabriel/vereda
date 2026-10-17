@@ -39,6 +39,17 @@ The book doesn't repeat the user-facing docs. Where a chapter needs them, it lin
 [operations guide](../operations.md), [AGENTS.md](../../AGENTS.md) and
 [ONBOARDING.md](../../ONBOARDING.md).
 
+## Keeping it current
+
+The book is reviewed text, not generated on demand, so readers can trust it and link to it.
+Two checks keep it honest:
+
+- `npm run book:check` runs in CI. Every file and every `` `path` — `symbol` `` pair the book
+  cites must still exist, so a PR that renames one fails and names the chapter.
+- `npm run book:drift` lists the chapters that cite source changed since the pinned commit.
+  `release:prepare` prints it at each release. To update the book, rewrite those chapters,
+  re-verify their numbers and exercises, and move the pin above.
+
 ## The running example
 
 The book follows one request from chapter to chapter: you ask for user 42, and the server is

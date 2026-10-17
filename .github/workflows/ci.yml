@@ -29,6 +29,12 @@ jobs:
       - name: Biome
         run: bun run ci
 
+      # docs/book cites files and symbols by name (`src/queue/retry.ts` —
+      # `runRetryLoop`). A PR that renames or deletes one fails here and names
+      # the chapter, instead of leaving the book quietly wrong.
+      - name: Book references
+        run: bun run book:check
+
   test:
     name: test (node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
