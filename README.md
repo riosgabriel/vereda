@@ -237,6 +237,7 @@ Each card links into one of four guides: [Resilience](docs/guide/resilience.md) 
   - [Working with requests](docs/guide/requests.md) — cancellation, tickets, middleware, custom fetch.
   - [Observability](docs/guide/observability.md) — lifecycle events, metrics, OpenTelemetry.
 - **[Operations guide](docs/operations.md)** — sizing concurrency and queues, `attemptMs` vs. `totalMs`, reading `partitions()` and `circuits()`, wiring a metrics sink, the shutdown sequence, and log redaction.
+- **[The Vereda Book](docs/book/README.md)** — how the library works inside: the request lifecycle, the invariants, and the bugs that shaped them. For contributors.
 - **[API reference](https://riosgabriel.github.io/vereda/)** — generated from source via TypeDoc on every push to `main`; every public option documents its default.
 
 ## Versioning and support
@@ -257,9 +258,10 @@ Vereda follows [Semantic Versioning](https://semver.org/) from `1.0.0` onward: b
 
 ## Contributing
 
-New to Vereda? Two on-ramps:
+New to Vereda? Three on-ramps:
 
 - **Self-guided** — read [ONBOARDING.md](ONBOARDING.md), a tour that follows one request through the library.
+- **In depth** — read [The Vereda Book](docs/book/README.md): thirteen chapters on how the client works inside and why, following one request through every subsystem, with exercises against the real code.
 - **Interactive** — run the **`guide-me`** skill in your coding harness (Claude Code, OpenCode, etc.). It's bundled in the repo and walks you through the internals interactively.
 
 When you're ready, read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, commands, and the behavioral invariants your change must preserve. Tests are self-contained: no network, services, or env vars needed.
