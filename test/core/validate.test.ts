@@ -71,6 +71,28 @@ describe("validateConfig", () => {
 		expect(() => validateConfig({ timeout: { attemptMs: -100 } })).toThrow(ConfigurationError);
 	});
 
+	// #203: setTimeout fires after ~1 ms for any delay it can't hold.
+	it("accepts timeout values up to 2^31 - 1 ms", () => {
+		const max = 2_147_483_647;
+		expect(() => validateConfig({ timeout: { attemptMs: max, totalMs: max } })).not.toThrow();
+	});
+
+	it("rejects finite timeout attemptMs/totalMs above 2^31 - 1 ms", () => {
+		const tooLong = 2_147_483_648;
+		expect(() => validateConfig({ timeout: { attemptMs: tooLong } })).toThrow(/timeout\.attemptMs must not exceed/);
+		expect(() => validateConfig({ timeout: { attemptMs: 5_000, totalMs: tooLong } })).toThrow(
+			/timeout\.totalMs must not exceed/,
+		);
+		expect(() =>
+			validateConfig({ timeout: { attemptMs: 5_000 }, partitions: { x: { timeout: { attemptMs: 3e9 } } } }),
+		).toThrow(/partitions\.x\.timeout\.attemptMs must not exceed/);
+		expect(() => validateRequestOptions({ timeout: { totalMs: 3e9 } })).toThrow(/request\.timeout\.totalMs/);
+	});
+
+	it("still accepts timeout totalMs: Infinity", () => {
+		expect(() => validateConfig({ timeout: { attemptMs: 5_000, totalMs: Infinity } })).not.toThrow();
+	});
+
 	it("rejects baseDelayMs > maxDelayMs", () => {
 		expect(() =>
 			validateConfig({

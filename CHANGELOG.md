@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `timeout.attemptMs` and `timeout.totalMs` above 2^31 − 1 ms (about 24.8 days) are now rejected with a `ConfigurationError`. Before, `setTimeout` clamped such a delay to 1 ms, so a 35-day `attemptMs` timed out every attempt almost at once. `Infinity` still means no timeout. Waits vereda computes itself, a retry's backoff or capped `Retry-After` and a rate-limit token wait, now last their full length past that limit instead of ending after ~1 ms, so `backoff.maxDelayMs` and `rateLimit.maxWaitMs` need no upper bound (#203).
 - `close({ drain: true, timeoutMs })` now rejects with a `ConfigurationError` when `timeoutMs` is not a finite number in `(0, 2_147_483_647]`. Before, `Infinity` and anything above 2^31-1 ms slipped past the check and Node clamped the drain timer to 1 ms, so in-flight tickets were cancelled almost at once instead of drained. A rejected call leaves the client open, so a corrected `close()` still drains (#198).
 - A throwing `logger` (or `requestLogger` `log` function) no longer changes a request's outcome. Before, a logger that threw on `Request succeeded` turned a successful response into a `NetworkError` failure and fired both `success` and `failure`. Logger errors are now isolated like listener and metrics errors: reported on a microtask, never affecting the result, the events or retries (#197).
 - A request whose `signal` was already aborted no longer emits `failure` while its ticket resolves as `CancelledError` when it also fails an early check (an unresolvable URL, an invalid body or option, an open circuit breaker, a rate limit). It now emits a single `cancelled` event, matching the result, and never reaches the circuit breaker or the rate limiter, and no `request` event fires for it. (#196).
@@ -39,9 +40,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A retry whose delay (backoff or capped `Retry-After`) would run to or past `timeout.totalMs` is no longer slept on: the ticket fails right away with `DeadlineExceededError`, whose `cause` is the last attempt's error. Before, it slept until the deadline and then failed with the same error. `DeadlineExceededError` can therefore arrive before `totalMs` has elapsed (#143).
 - A full global queue's `QueueFullError` message now reads `Global queue is full (n/max)` instead of `Queue for partition 'global' is full (n/max)`.
 - The error hierarchy is now documented as open to additions: a minor release may add an error class and `kind`, always listed in this CHANGELOG, while existing classes, kinds and fields change only in a major. The docs now recommend a `default` branch over a `never` check when switching on `error.kind`.
-
-### Changed
-
 - No more `node:events` or `node:crypto` imports, and timers are `unref()`'d only where the runtime supports it, so the package loads on Cloudflare Workers without `nodejs_compat`, and on other runtimes without Node builtins. Lifecycle and ticket events now use a small internal emitter that keeps the same behavior (a listener added twice runs twice, `off` removes the most recent registration, and a throwing listener can't break the others). A CI smoke test runs the built package in workerd (#146).
 
 ### Deprecated

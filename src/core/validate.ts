@@ -1,4 +1,5 @@
 import { ConfigurationError } from "./errors.ts";
+import { MAX_TIMER_MS } from "./timer.ts";
 import type {
 	CircuitBreakerConfig,
 	ClientConfig,
@@ -35,10 +36,6 @@ export function validateRequestBody(body: BodyInit | (() => BodyInit) | undefine
 		throw new ConfigurationError("body must be supplied as a factory (() => BodyInit) when it is a ReadableStream");
 	}
 }
-
-/** The largest delay `setTimeout` honours (2^31 - 1 ms, about 24.8 days).
- *  Anything larger, including `Infinity`, is clamped to 1 ms by Node. */
-export const MAX_TIMER_MS = 2_147_483_647;
 
 /** Validates `close()` options. A drain needs a finite `timeoutMs` in
  *  `(0, MAX_TIMER_MS]`: it is the only thing that bounds the wait, and the
@@ -119,12 +116,20 @@ export function validateRequestOptions(
 function validateTimeoutConfig(timeout: TimeoutConfig | undefined, prefix: string): void {
 	if (!timeout) return;
 
-	if (timeout.attemptMs !== undefined && !(timeout.attemptMs > 0)) {
-		throw new ConfigurationError(`${prefix}.attemptMs must be positive`);
-	}
+	validateTimerMs(timeout.attemptMs, `${prefix}.attemptMs`);
+	validateTimerMs(timeout.totalMs, `${prefix}.totalMs`);
+}
 
-	if (timeout.totalMs !== undefined && !(timeout.totalMs > 0)) {
-		throw new ConfigurationError(`${prefix}.totalMs must be positive`);
+/** A timeout that arms a timer directly must be positive, and if finite, fit
+ *  in `setTimeout`: a larger value would fire after ~1 ms instead of later.
+ *  `Infinity` stays legal, meaning "no timeout" (see isBoundedMs). */
+function validateTimerMs(ms: number | undefined, name: string): void {
+	if (ms === undefined) return;
+	if (!(ms > 0)) {
+		throw new ConfigurationError(`${name} must be positive`);
+	}
+	if (Number.isFinite(ms) && ms > MAX_TIMER_MS) {
+		throw new ConfigurationError(`${name} must not exceed ${MAX_TIMER_MS} ms (use Infinity for no timeout)`);
 	}
 }
 

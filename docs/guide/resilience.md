@@ -121,6 +121,8 @@ client.get("/reports/slow", { timeout: { attemptMs: 15_000 } });
 - `attemptMs` — a hard per-attempt timeout. The attempt is aborted with a `TimeoutError`, which is retryable. Required on the client-level `timeout` config — pass `Infinity` to explicitly opt out of a cap. Partition- and request-level `timeout` stay optional and inherit the client default.
 - `totalMs` — a deadline for the whole ticket, across every attempt and backoff delay. On expiry the in-flight attempt is aborted and the ticket resolves with a `DeadlineExceededError` (a `failure` event, not `cancelled`), which is terminal. When the next retry's delay (backoff or `Retry-After`) would run to or past the deadline, the ticket fails with that error right away instead of sleeping first, and `cause` holds the last attempt's error. Omit `totalMs` (or pass `Infinity`) for no deadline.
 
+A finite `attemptMs` or `totalMs` can be at most 2,147,483,647 ms (about 24.8 days), the longest delay `setTimeout` holds; a larger one fails with a `ConfigurationError`. Use `Infinity` for no limit.
+
 The [operations guide](../operations.md) covers how to choose the two together.
 
 ## Bulkhead isolation

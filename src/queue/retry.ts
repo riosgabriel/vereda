@@ -11,6 +11,7 @@ import {
 	RetryableStatusError,
 	TimeoutError,
 } from "../core/errors.ts";
+import { setLongTimeout } from "../core/timer.ts";
 import {
 	type BackoffOptions,
 	DEFAULT_MAX_RETRIES,
@@ -399,13 +400,12 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 			reject(signal.reason);
 			return;
 		}
-		const timer = setTimeout(() => {
+		const cancel = setLongTimeout(() => {
 			signal?.removeEventListener("abort", onAbort);
 			resolve();
 		}, ms);
-		timer.unref?.();
 		const onAbort = () => {
-			clearTimeout(timer);
+			cancel();
 			reject(signal?.reason);
 		};
 		signal?.addEventListener("abort", onAbort, { once: true });
