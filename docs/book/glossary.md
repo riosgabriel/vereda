@@ -85,7 +85,7 @@ over by any path. (4)
 **`limitFirstAttempts`** — Partition option that makes first attempts take a partition slot too. (5,
 8)
 
-**`MAX_TIMER_MS`** — 2,147,483,647 ms (about 24.8 days), the longest delay a JavaScript timer can hold; a larger one fires after about 1 ms. `close()` rejects drain timeouts above it. Config timeouts aren't checked against it yet (issue #203). (5, 11, 13)
+**`MAX_TIMER_MS`** — 2,147,483,647 ms (about 24.8 days), the longest delay a JavaScript timer can hold; a larger one fires after about 1 ms. `close()` and the `attemptMs`/`totalMs` checks reject values above it; computed waits go through `setLongTimeout` instead. Defined in `src/core/timer.ts`. (5, 11)
 
 **`MetricsSink`** — The three-method interface (`counter`, `histogram`, `gauge`) a client reports
 metrics to. Metric names are in `METRICS`. (10)
@@ -145,6 +145,8 @@ but never force one. (7)
 
 **`settleOnAbort`** — The executor helper that makes an awaited promise reject as soon as the
 attempt's signal aborts, so an attempt ends even if the transport ignores the signal. (6)
+
+**`setLongTimeout`** — `setTimeout` for delays vereda computes (backoff, a capped `Retry-After`, a token wait): it chains timers of at most `MAX_TIMER_MS`, so a longer wait still lasts its full length. Returns a cancel function. (11)
 
 **Spine** — The path a request takes from `client.get()` to a settled ticket: `send`,
 `_fireFirstAttempt`, `runRetryLoop`. (5)

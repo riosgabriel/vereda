@@ -292,7 +292,7 @@ Chapter 1 described exactly this trap, and the timeout code already avoided it w
 `isBoundedMs` helper. `close()` had been written without it.
 
 The fix is a validator next to the others in `src/core/validate.ts`, with the limit as a named
-constant, `MAX_TIMER_MS`. A drain now needs a finite `timeoutMs` above 0 and at most that limit:
+constant, `MAX_TIMER_MS` (now in `src/core/timer.ts`). A drain now needs a finite `timeoutMs` above 0 and at most that limit:
 
 ```text
 close({ drain: true, timeoutMs: Infinity })       rejects: requires a finite, positive timeoutMs
@@ -303,8 +303,13 @@ close({ drain: true, timeoutMs: 2_147_483_647 })  ok
 A rejected call leaves the client open, so you can call `close()` again with a valid value. That
 detail is itself an older rule (B8). The tests are in `test/core/close-options.test.ts`.
 
-The same 1 ms trap is still open elsewhere: a finite `attemptMs`, `totalMs` or backoff cap above
-the limit gets the same treatment. Chapter 13 has it as an open problem.
+The same 1 ms trap was open elsewhere, and #203 closed it with one question: who wrote the
+number? A finite `attemptMs` or `totalMs` above the limit is the caller's, so creating the client
+rejects it, as `close()` does. A retry's backoff, a capped `Retry-After` and a rate-limit token
+wait are computed, so nobody can be told to fix them. They go through `setLongTimeout` in
+`src/core/timer.ts`, which chains timers of at most `MAX_TIMER_MS` until the whole delay has
+passed. Shortening them to the limit instead would have been wrong for the token wait: the
+attempt would go out before its token was due.
 
 ### What the three have in common
 
@@ -357,7 +362,7 @@ The code behind each rule, by file and name:
 
 - Rule 1: `src/ticket/ticket.ts` — `Ticket`; `src/core/client.ts` — `_fireFirstAttempt`.
 - Rule 2: `src/queue/circuit-breaker.ts` — `CircuitPermit`; `src/queue/bulkhead.ts` — `_releaseSlot`;
-  `src/core/validate.ts` — `validateCloseOptions`.
+  `src/core/validate.ts` — `validateCloseOptions`; `src/core/timer.ts` — `setLongTimeout`.
 - Rule 3: `src/queue/executor.ts` — `settleOnAbort`; `src/queue/executor.ts` — `readBytes`.
 - Rule 4: `src/core/listeners.ts` — `reportCallbackError`; `src/core/listeners.ts` — `Emitter`.
 - Rule 5: `src/core/redact.ts` — `redactUrl`.
