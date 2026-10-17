@@ -1,4 +1,5 @@
 import { CancelledError, QueueFullError, RateLimitedError } from "../core/errors.ts";
+import { setLongTimeout } from "../core/timer.ts";
 import {
 	DEFAULT_CONCURRENCY,
 	DEFAULT_MAX_QUEUE_SIZE,
@@ -92,13 +93,12 @@ export class Bulkhead {
 				reject(new CancelledError());
 				return;
 			}
-			const timer = setTimeout(() => {
+			const cancel = setLongTimeout(() => {
 				signal?.removeEventListener("abort", onAbort);
 				resolve(waitMs);
 			}, waitMs);
-			timer.unref?.();
 			const onAbort = () => {
-				clearTimeout(timer);
+				cancel();
 				bucket.refund();
 				reject(new CancelledError());
 			};
