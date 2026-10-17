@@ -143,8 +143,10 @@ jobs:
       # node_modules/typescript in this job's runner only, and the direct
       # binary path sidesteps an npx arg-parsing quirk with this package's
       # bin resolution that otherwise misreads `tsc` itself as a root file.
+      # bun, not npm: npm 10's arborist can crash (`reading 'edgesOut'`)
+      # loading a bun-built tree that has nested node_modules.
       - name: Install TypeScript 7
-        run: npm install --no-save typescript@^7
+        run: bun add --no-save typescript@^7
 
       - name: Typecheck against TypeScript 7
         run: |
@@ -253,8 +255,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      # bun, not npm, for the same reason as the TypeScript 7 job above.
       - name: Install Miniflare
-        run: npm install --no-save miniflare@4.20260730.0
+        run: bun add --no-save miniflare@4.20260730.0
 
       - name: Run the smoke test in workerd
         run: node scripts/smoke/workers.mjs
