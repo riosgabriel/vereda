@@ -10,6 +10,7 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import { driftReport } from "./book-check.ts";
 
 export type Bump = "patch" | "minor" | "major";
 
@@ -116,6 +117,10 @@ function main(argv: string[]): void {
 	console.log(`  git commit -am "chore(release): prepare ${plan.to}"`);
 	console.log(`  git push -u origin HEAD && gh pr create --fill`);
 	console.log("\nMerging it releases: release.yml stages the version on npm, then you approve it with 2FA.");
+
+	// The book pins the commit it describes; a release is the natural moment to bring it up to date.
+	const drift = driftReport(".");
+	if (drift !== undefined) console.log(`\n${drift.join("\n")}`);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
