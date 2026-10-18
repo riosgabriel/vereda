@@ -81,18 +81,26 @@ Even once that loop is correct, it has no limit on how many retries pile onto a 
 
 Most HTTP clients retry. Fewer protect the host you're calling, or the rest of your service, once retrying stops helping:
 
-| | Vereda | ky | axios + axios-retry | got | ofetch | cockatiel | opossum |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Built on `fetch` | ✅ | ✅ | adapter | ❌ | ✅ | any function | any function |
-| Backoff with jitter | ✅ full jitter | ✅ opt-in | exponential, no jitter | ±100 ms noise | fixed delay | ✅ | ❌ no retries |
-| Honours `Retry-After` | ✅ | ✅ | ✅ | ✅ | ❌ | manual | — |
-| Per-attempt timeout *and* overall deadline | ✅ | ✅ | one or the other | overall | per attempt | ✅ by composing policies | per call |
-| Circuit breaker | ✅ per host | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
-| Concurrency limit per host | ✅ | ❌ | ❌ | ❌ | ❌ | one instance per host | one instance per host |
-| Retry budget | ✅ per host | ❌ | ❌ | ❌ | ❌ | ❌ | — |
-| Rate limit (token bucket) | ✅ per host | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| HTTP errors as values, not throws | ✅ | ❌ | ❌ | ❌ | ❌ | — | — |
-| Runtime dependencies | 0 | 0 | 4 + 1 | 10 | 3 | 0 | 0 |
+| | Vereda | ky | axios | got | ofetch | cockatiel | opossum |
+| --- | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
+| Built on `fetch` | ✅ | ✅ | ⚠️ | ❌ | ✅ | — | — |
+| Jittered backoff | ✅ | ✅ | ⚠️ | ⚠️ | ❌ | ✅ | ❌ |
+| `Retry-After` | ✅ | ✅ | ✅ | ✅ | ❌ | ⚠️ | — |
+| Attempt *and* total timeout | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ | ✅ | ⚠️ |
+| Circuit breaker | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
+| Per-host concurrency | ✅ | ❌ | ❌ | ❌ | ❌ | ⚠️ | ⚠️ |
+| Retry budget | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | — |
+| Rate limit | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Errors as values | ✅ | ❌ | ❌ | ❌ | ❌ | — | — |
+| Dependencies | 0 | 0 | 5 | 10 | 3 | 0 | 0 |
+
+✅ built in · ⚠️ partial (see below) · ❌ no · — not applicable
+
+- **axios** (with axios-retry): `fetch` is one adapter among several; exponential delay with no jitter; `timeout` bounds either the whole request or, with `shouldResetTimeout`, each attempt, not both. 4 dependencies plus 1 for axios-retry.
+- **got**: a fixed ±100 ms of noise instead of jitter; one overall `timeout.request`.
+- **ofetch**: a per-attempt timeout, but no deadline across retries.
+- **cockatiel**: `Retry-After` needs a custom backoff; per-host limits need one `bulkhead` per host.
+- **opossum**: a per-call timeout and no retries; its `capacity` limit applies per breaker, so per host means one breaker per host.
 
 ky, axios, got and ofetch are HTTP clients; cockatiel and opossum are resilience policies you wrap around any async function, `fetch` included. If retries are all you need, ky is an excellent choice. Vereda is for services where one slow dependency must not take the others down with it. Checked against ky 2.2.0, axios 1.20.0 with axios-retry 4.5.0, got 16.1.0, ofetch 1.5.1, cockatiel 4.0.0 and opossum 10.0.0 in October 2026, from each project's docs and source; if a row is out of date, please [open an issue](https://github.com/riosgabriel/vereda/issues).
 
