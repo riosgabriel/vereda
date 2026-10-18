@@ -76,6 +76,25 @@ Even once that loop is correct, it has no limit on how many retries pile onto a 
 | You need to know what happened | emits typed lifecycle events (with attempt counts and queue time) and [metrics](docs/guide/observability.md#metrics) (requests, retries, latency, in-flight, queue depth, breaker trips), tagged per partition |
 | You need auth headers, logging, URL rewriting | runs onion middleware around every attempt |
 
+### Compared with other libraries
+
+Most HTTP clients retry. Fewer protect the host you're calling, or the rest of your service, once retrying stops helping:
+
+| | Vereda | ky | axios + axios-retry | got | ofetch | cockatiel | opossum |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Built on `fetch` | ✅ | ✅ | adapter | ❌ | ✅ | any function | any function |
+| Backoff with jitter | ✅ full jitter | ✅ opt-in | exponential, no jitter | ±100 ms noise | fixed delay | ✅ | ❌ no retries |
+| Honours `Retry-After` | ✅ | ✅ | ✅ | ✅ | ❌ | manual | — |
+| Per-attempt timeout *and* overall deadline | ✅ | ✅ | one or the other | overall | per attempt | ✅ by composing policies | per call |
+| Circuit breaker | ✅ per host | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
+| Concurrency limit per host | ✅ | ❌ | ❌ | ❌ | ❌ | one instance per host | one instance per host |
+| Retry budget | ✅ per host | ❌ | ❌ | ❌ | ❌ | ❌ | — |
+| Rate limit (token bucket) | ✅ per host | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| HTTP errors as values, not throws | ✅ | ❌ | ❌ | ❌ | ❌ | — | — |
+| Runtime dependencies | 0 | 0 | 4 + 1 | 10 | 3 | 0 | 0 |
+
+ky, axios, got and ofetch are HTTP clients; cockatiel and opossum are resilience policies you wrap around any async function, `fetch` included. If retries are all you need, ky is an excellent choice. Vereda is for services where one slow dependency must not take the others down with it. Checked against ky 2.2.0, axios 1.20.0 with axios-retry 4.5.0, got 16.1.0, ofetch 1.5.1, cockatiel 4.0.0 and opossum 10.0.0 in October 2026, from each project's docs and source; if a row is out of date, please [open an issue](https://github.com/riosgabriel/vereda/issues).
+
 **What Vereda does not do.** No response caching, no request deduplication, no streaming helpers, no browser support. It targets Node.js 22+ services that depend on other services; for a handful of calls in a script, plain `fetch` is fine.
 
 ## Quick start
