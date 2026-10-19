@@ -1,0 +1,467 @@
+<title>Retry Storm Simulator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@600;800&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="engine/demo.css">
+<style>
+/* Page-specific: the explanation text is a little denser than the other pages. */
+.explain .formula { font-size: 0.8rem; }
+</style>
+
+<div class="wrap">
+  <div>
+    <div class="eyebrow">Vereda · retryBudget</div>
+    <h1>Why a retry budget saves a slow host</h1>
+    <p class="lede">Two clients send the same 80 requests per second to the same host. At 8 s the host slows down and can serve only 60 per second. At 24 s it is fixed. Both clients retry failed requests up to 3 times. Only the right one has a retry budget. Press Play. The page slows down at key moments and says what happened.</p>
+  </div>
+
+  <div class="controls">
+    <button id="play" type="button">Play</button>
+    <button id="replay" class="ghost" type="button">Replay</button>
+    <label class="field" for="maxRetries">Max retries <input id="maxRetries" type="range" min="1" max="5" step="1" value="3"> <output id="maxRetriesOut">3</output></label>
+    <label class="field" for="ratio">Budget ratio <input id="ratio" type="range" min="0.05" max="0.5" step="0.05" value="0.1"> <output id="ratioOut">0.10</output></label>
+    <label class="field" for="speed">Speed <select id="speed"></select></label>
+    <label class="field" for="guided"><input id="guided" type="checkbox" checked> Slow down at key moments</label>
+    <span class="clock" id="clock">t = 0.0 s</span>
+  </div>
+
+  <div class="timeline" id="timeline" role="img" aria-label="Scenario timeline"></div>
+  <p class="caption" id="caption" aria-live="polite"></p>
+
+  <div class="legend">
+    <span><i class="dot" style="background:var(--first)"></i>First attempt</span>
+    <span><i class="dot" style="background:var(--retry)"></i>Retry</span>
+    <span><i class="dot" style="background:var(--ok)"></i>Served</span>
+    <span><i class="dot" style="background:var(--fail)"></i>Timed out / failed</span>
+    <span><i class="dot" style="background:var(--refused)"></i>Retry refused by budget (fails fast)</span>
+  </div>
+
+  <div class="lanes">
+    <article class="panel lane">
+      <header><h2>Retries, no budget</h2><span class="cfg" id="cfgA">retry: { maxRetries: 3 }</span></header>
+      <canvas id="laneA" aria-label="Animation: client without a retry budget"></canvas>
+      <div class="stats">
+        <div class="stat"><span class="v" id="aLoad">0</span><span class="k">attempts/s hitting the host</span></div>
+        <div class="stat"><span class="v" id="aX">1.0×</span><span class="k">times normal load</span></div>
+        <div class="stat"><span class="v" id="aOk">0</span><span class="k">of 80 req/s succeed</span></div>
+        <div class="stat"><span class="v" id="aRet">0</span><span class="k">retries sent/s</span></div>
+      </div>
+    </article>
+    <article class="panel lane">
+      <header><h2>Retries + retry budget</h2><span class="cfg" id="cfgB">retryBudget: { ratio: 0.1, windowMs: 1000 }</span></header>
+      <canvas id="laneB" aria-label="Animation: client with a retry budget"></canvas>
+      <div class="stats">
+        <div class="stat"><span class="v" id="bLoad">0</span><span class="k">attempts/s hitting the host</span></div>
+        <div class="stat"><span class="v" id="bX">1.0×</span><span class="k">times normal load</span></div>
+        <div class="stat"><span class="v" id="bOk">0</span><span class="k">of 80 req/s succeed</span></div>
+        <div class="stat"><span class="v" id="bRef">0</span><span class="k">retries refused/s</span></div>
+      </div>
+    </article>
+  </div>
+
+  <div class="charts">
+    <div class="panel chart">
+      <h3>Load on the host (attempts per second)</h3>
+      <canvas id="chartLoad" aria-label="Chart of host load over time"></canvas>
+      <p>The dashed line is what the host can serve. Above it, the host falls behind and requests time out.</p>
+    </div>
+    <div class="panel chart">
+      <h3>Requests that succeed (per second, out of 80)</h3>
+      <canvas id="chartOk" aria-label="Chart of successful requests over time"></canvas>
+      <p>The budget gets more requests through during the outage, and all of them once the host is fixed.</p>
+    </div>
+  </div>
+
+  <div class="explain">
+    <section>
+      <h2>Why plain retries never let go</h2>
+      <ol>
+        <li>The host slows down. Requests wait longer than the client's timeout, so the client counts them as failures.</li>
+        <li>Every failure comes back as a retry, up to 3 times. One request can become 4 attempts.</li>
+        <li>The host now gets about 3.6× its normal traffic. It spends time on requests whose clients already gave up, so it serves even fewer.</li>
+        <li>Fewer served means more failures, which means more retries. The loop feeds itself.</li>
+      </ol>
+      <p>Look at the left lane after the host is fixed. It can serve 120/s again, but the retries keep sending it more than that, so it stays down. This is called a <strong>metastable failure</strong>: the original cause is gone, and the retries alone keep the outage going.</p>
+    </section>
+    <section>
+      <h2>What the budget changes</h2>
+      <p>The budget doesn't look at whether a single request deserves a retry. It looks at the whole partition: retries may add at most <code>ratio</code> on top of the first attempts seen in the last <code>windowMs</code>.</p>
+      <div class="formula">allowed = max(minRetriesPerSec × windowMs/1000,
+              ratio × firstAttemptsInWindow)
+retry allowed only while  retriesInWindow &lt; allowed</div>
+      <p>With <code>ratio: 0.1</code>, the host gets at most about 1.1× its normal load, however bad things get. Refused retries fail right away with their last error, so the caller hears about it quickly instead of waiting. As soon as the host is fixed, load is already below capacity and everything succeeds.</p>
+      <p class="note">Try moving the sliders: with 1 max retry, even the left lane recovers. With a budget ratio of 0.5, the right lane carries more load during the outage.</p>
+    </section>
+    <section>
+      <h2>In Vereda</h2>
+      <div class="formula">HttpClient.create({
+  timeout: { attemptMs: 1_000 },
+  retry: { maxRetries: 3 },
+  retryBudget: {
+    ratio: 0.1,
+    windowMs: 1_000,
+    minRetriesPerSec: 1,
+  },
+})</div>
+      <p class="note">This page follows the logic in <code>src/queue/retry-budget.ts</code> (<code>tryWithdraw</code>).</p>
+      <p class="note">Simplified model: the host's real throughput drops as it gets overloaded (down to 30% at 2.2× its capacity), 5% of requests fail at random, and retries wait 0.3 s before they go out. Here <code>minRetriesPerSec</code> is 1 instead of Vereda's default of 10, so the ratio is what you see working.</p>
+    </section>
+  </div>
+</div>
+
+<script type="module">
+import { dot, legend, mix, playedLine, roundRect, sizeCanvas, timeAxes, valueAt } from "./engine/draw.js";
+import { mountDemo } from "./engine/player.js";
+
+// ---- Simulation: fluid model, deterministic -------------------------------
+const DT = 0.1;
+const RATE = 80;
+const DELAY = 3;
+const P0 = 0.05;
+const END = 40;
+const FLOOR = 1;
+const BAD_FROM = 8;
+const BAD_TO = 24;
+const capacityAt = (t) => (t < BAD_FROM ? 120 : t < BAD_TO ? 60 : 120);
+const collapse = (x) => (x <= 1 ? 1 : Math.max(0.3, 1 - 0.6 * (x - 1)));
+
+function run(budget, o) {
+  const pending = [];
+  const win = [];
+  const out = [];
+  for (let i = 0; i <= END / DT; i++) {
+    const t = i * DT;
+    const C = capacityAt(t);
+    const due = [];
+    for (let j = pending.length - 1; j >= 0; j--) if (pending[j].at <= i) due.push(pending.splice(j, 1)[0]);
+    const first = RATE * DT;
+    const want = due.reduce((s, r) => s + r.n, 0);
+    let f = 1;
+    win.push({ req: first, ret: 0 });
+    if (win.length > 10) win.shift();
+    if (budget) {
+      const req = win.reduce((s, b) => s + b.req, 0);
+      const ret = win.reduce((s, b) => s + b.ret, 0);
+      const room = Math.max(0, Math.max(FLOOR, o.ratio * req) - ret);
+      f = want > 0 ? Math.min(1, room / want) : 1;
+      win[win.length - 1].ret = want * f;
+    }
+    const refused = want * (1 - f);
+    const levels = [{ k: 0, n: first }, ...due.map((r) => ({ k: r.k, n: r.n * f }))];
+    const L = levels.reduce((s, a) => s + a.n, 0);
+    const ok = Math.min(L, C * collapse(L / DT / C) * DT) * (1 - P0);
+    const p = L > 0 ? 1 - ok / L : 0;
+    for (const a of levels) if (a.k < o.maxRetries && a.n * p > 1e-6) pending.push({ k: a.k + 1, n: a.n * p, at: i + DELAY });
+    out.push({ t, C, load: L / DT, retries: (L - first) / DT, ok: ok / DT, refused: refused / DT, p });
+  }
+  return out;
+}
+
+const toLane = (ticks, config) => ({
+  config,
+  attempts: [],
+  results: [],
+  series: {
+    load: ticks.map((s) => [s.t, s.load]),
+    retries: ticks.map((s) => [s.t, s.retries]),
+    ok: ticks.map((s) => [s.t, s.ok]),
+    refused: ticks.map((s) => [s.t, s.refused]),
+    capacity: ticks.map((s) => [s.t, s.C]),
+    failP: ticks.map((s) => [s.t, s.p]),
+  },
+});
+
+function phases(metastable, o) {
+  return [
+    {
+      from: 0, to: BAD_FROM, tone: "good", label: "Healthy · 120/s",
+      caption: "Both clients send 80 requests per second. The host can serve 120, so every request is answered. Before you press Play: when the host slows down at 8 s, what will each client's load do?",
+    },
+    {
+      from: BAD_FROM, to: BAD_TO, tone: "bad", label: "Host slow · serves 60/s",
+      caption: `The host now serves only 60 per second, so requests time out. Both clients retry them, up to ${o.maxRetries} times. On the left, every failure comes back as a retry, so the load climbs far above 80. On the right, the budget refuses most retries, so the load stays close to normal. Watch the host's gauge and the load chart.`,
+    },
+    {
+      from: BAD_TO, to: END, tone: "good", label: "Host fixed · 120/s again",
+      caption: metastable
+        ? "The host works again and can serve 120 per second. Watch the left lane. Its retries still send more than 120, so it stays down. The right lane is already healthy."
+        : "The host works again and can serve 120 per second. Both lanes carry less than 120, so both recover.",
+    },
+  ];
+}
+
+/** Key moments, read off the simulated series (never hand-written times). */
+function momentsOf(a, b) {
+  const n = (v) => Math.round(v);
+  const moments = [];
+  const over = a.find((s) => s.load > s.C);
+  if (over) moments.push({ t: over.t, label: `No budget: load passes capacity (${n(over.load)}/s vs ${over.C}/s)` });
+  const refusing = b.find((s) => s.refused > 0.5);
+  if (refusing) moments.push({ t: refusing.t, label: `Budget: the first retries are refused (${n(refusing.refused)}/s)` });
+  const fixA = a.find((s) => s.t >= BAD_TO);
+  if (fixA) {
+    const back = a.find((s) => s.t >= BAD_TO && s.load <= s.C);
+    moments.push(
+      back
+        ? { t: back.t, label: `No budget: load falls under capacity (${n(back.load)}/s vs ${back.C}/s)` }
+        : { t: fixA.t, label: `No budget: the host is fixed, but load stays at ${n(fixA.load)}/s vs ${fixA.C}/s capacity` },
+    );
+  }
+  const lastRefused = b.findLastIndex((s) => s.refused > 0.5);
+  const after = lastRefused >= 0 ? b[lastRefused + 1] : null;
+  if (after && refusing && after.t > refusing.t) {
+    moments.push({ t: after.t, label: `Budget: refusals stop, load is ${n(after.load)}/s vs ${after.C}/s capacity` });
+  }
+  return moments.sort((x, y) => x.t - y.t);
+}
+
+/** @returns {import("./engine/trace.js").DemoTrace} */
+function simulate(o) {
+  const a = run(false, o);
+  const b = run(true, o);
+  const metastable = a.every((s) => s.t < BAD_TO || s.load > s.C);
+  const ratio = o.ratio.toFixed(2).replace(/0$/, "");
+  return {
+    version: 1,
+    pattern: "retry-budget",
+    duration: END,
+    phases: phases(metastable, o),
+    moments: momentsOf(a, b),
+    lanes: {
+      without: toLane(a, `retry: { maxRetries: ${o.maxRetries} }`),
+      with: toLane(b, `retryBudget: { ratio: ${ratio}, windowMs: 1000 }`),
+    },
+  };
+}
+
+// ---- Drawing --------------------------------------------------------------
+const $ = (id) => document.getElementById(id);
+const DOT = 3; // attempts per drawn dot
+const GO = 1.0; // sim seconds a dot spends travelling to the host (half of it for a refused retry)
+const OK_T = 0.5;
+const FAIL_T = 0.8;
+const DROP_T = 1.0;
+const LIFE = GO + Math.max(OK_T, FAIL_T, DROP_T) + 0.1;
+
+/** Seeded hash to a number in [0, 1). The same inputs always give the same output. */
+function hash(a, b, c) {
+  let h = Math.imul(a ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(b + 0x7f4a7c15, 0xc2b2ae35) ^ Math.imul(c + 1, 0x27d4eb2f);
+  h ^= h >>> 15;
+  h = Math.imul(h, 0x2c1b3c6d);
+  h ^= h >>> 12;
+  h = Math.imul(h, 0x297a2d39);
+  h ^= h >>> 15;
+  return (h >>> 0) / 4294967296;
+}
+
+function drawLane(canvas, lane, simT, col, laneId, withBudget) {
+  const { ctx, w, h } = sizeCanvas(canvas);
+  const clientR = 74;
+  const hostL = w - 104;
+  const gateX = (clientR + hostL) / 2;
+  const cy = h / 2 - 8;
+  const load = valueAt(lane.series.load, simT);
+  const C = valueAt(lane.series.capacity, simT);
+
+  // client box
+  ctx.fillStyle = col.bg;
+  ctx.strokeStyle = col.line;
+  ctx.lineWidth = 1;
+  roundRect(ctx, 8, cy - 50, clientR - 14, 100, 8);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = col.ink;
+  ctx.font = `600 12px ${col.mono}`;
+  ctx.textAlign = "center";
+  ctx.fillText("client", 8 + (clientR - 14) / 2, cy + 4);
+
+  // budget gate
+  if (withBudget) {
+    ctx.strokeStyle = col.muted;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(gateX, cy - 56);
+    ctx.lineTo(gateX, cy + 56);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = col.muted;
+    ctx.font = `600 11px ${col.mono}`;
+    ctx.fillText("budget", gateX, cy - 62);
+  }
+
+  // host box with load gauge
+  const hostW = 96;
+  const hy = cy - 62;
+  const hh = 124;
+  const over = load > C;
+  ctx.fillStyle = over ? mix(col.fail, col.surface, 0.18) : col.bg;
+  ctx.strokeStyle = over ? col.fail : col.line;
+  roundRect(ctx, hostL, hy, hostW, hh, 8);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = col.ink;
+  ctx.font = `600 12px ${col.mono}`;
+  ctx.fillText("host", hostL + 34, hy + 18);
+  const MAX = 400;
+  const gx = hostL + hostW - 26;
+  const gy = hy + 10;
+  const gh = hh - 20;
+  const gw = 14;
+  ctx.fillStyle = col.surface;
+  ctx.strokeStyle = col.line;
+  ctx.fillRect(gx, gy, gw, gh);
+  ctx.strokeRect(gx, gy, gw, gh);
+  const fillH = Math.min(1, load / MAX) * gh;
+  ctx.fillStyle = over ? col.fail : col.ok;
+  ctx.fillRect(gx, gy + gh - fillH, gw, fillH);
+  const capY = gy + gh - (C / MAX) * gh;
+  ctx.strokeStyle = col.cap;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(gx - 6, capY);
+  ctx.lineTo(gx + gw + 2, capY);
+  ctx.stroke();
+  ctx.lineWidth = 1;
+  ctx.fillStyle = col.muted;
+  ctx.font = `10px ${col.mono}`;
+  ctx.textAlign = "right";
+  ctx.fillText(`cap ${C}`, gx - 8, capY + 3);
+  ctx.textAlign = "left";
+  ctx.fillStyle = over ? col.fail : col.ink;
+  ctx.font = `600 13px ${col.mono}`;
+  ctx.fillText(`${Math.round(load)}/s`, hostL + 10, hy + hh - 14);
+
+  // Dots. Each tick's series values say how many dots of each kind launch in it;
+  // a seeded hash fixes their launch times, heights and fates. A dot's place is a
+  // function of simT minus its launch time, so pause, replay and speed all agree.
+  const startX = clientR;
+  const endX = hostL - 4;
+  const rates = [RATE, null, null];
+  const k1 = Math.floor(simT / DT);
+  const k0 = Math.max(0, Math.floor((simT - LIFE) / DT));
+  for (let k = k0; k <= k1; k++) {
+    rates[1] = lane.series.retries[k]?.[1] ?? 0;
+    rates[2] = lane.series.refused[k]?.[1] ?? 0;
+    for (let kind = 0; kind < 3; kind++) {
+      const seed = laneId * 8 + kind;
+      const count = Math.floor((rates[kind] * DT) / DOT + hash(seed, k, 0));
+      for (let i = 0; i < count; i++) {
+        const age = simT - (k + hash(seed, k, i * 4 + 1)) * DT;
+        if (age < 0) continue;
+        const launch = simT - age;
+        const y = cy + (hash(seed, k, i * 4 + 2) - 0.5) * 70;
+        let x;
+        let yy = y;
+        let r = 3.2;
+        let color = kind === 0 ? col.first : col.retry;
+        let alpha = 1;
+        if (kind === 2) {
+          const go = age / (GO / 2);
+          if (go < 1) x = startX + (gateX - startX) * go;
+          else {
+            const d = (age - GO / 2) / DROP_T;
+            if (d >= 1) continue;
+            x = gateX + 6 * d;
+            yy = y + 80 * d * d;
+            color = col.refused;
+            alpha = 1 - d * 0.8;
+          }
+        } else if (age < GO) {
+          x = startX + (endX - startX) * (age / GO);
+        } else {
+          const arrival = launch + GO;
+          const failed = hash(seed, k, i * 4 + 3) < valueAt(lane.series.failP, arrival);
+          if (failed) {
+            const d = (age - GO) / FAIL_T;
+            if (d >= 1) continue;
+            x = endX - 40 * d;
+            yy = y + 14 * d * d;
+            color = col.fail;
+            alpha = 1 - d;
+          } else {
+            const d = (age - GO) / OK_T;
+            if (d >= 1) continue;
+            x = endX + 6;
+            r = 3 + 6 * d;
+            color = col.ok;
+            alpha = 1 - d;
+          }
+        }
+        dot(ctx, x, yy, r, color, alpha);
+      }
+    }
+  }
+}
+
+function drawChart(trace, simT, col, id, key, yMax, ticks, showCap) {
+  const { ctx, w, h } = sizeCanvas($(id));
+  const pad = [10, 10, 24, 40];
+  const { X, Y } = timeAxes(ctx, { w, h, pad, end: trace.duration, yMax, ticks, phases: trace.phases, col });
+  if (showCap) {
+    ctx.strokeStyle = col.cap;
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    trace.lanes.without.series.capacity.forEach(([t, v], i) => {
+      if (i) ctx.lineTo(X(t), Y(v));
+      else ctx.moveTo(X(t), Y(v));
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  playedLine(ctx, trace.lanes.without.series[key], X, Y, col.fail, simT);
+  playedLine(ctx, trace.lanes.with.series[key], X, Y, col.first, simT);
+  legend(ctx, pad[3] + 6, pad[0] + 12, [["no budget", col.fail], ["with budget", col.first], ...(showCap ? [["- - capacity", col.ink]] : [])], col);
+}
+
+function setStat(id, text, cls) {
+  const el = $(id);
+  const next = `v${cls ? ` ${cls}` : ""}`;
+  if (el.textContent !== String(text)) el.textContent = text;
+  if (el.className !== next) el.className = next;
+}
+
+function render(trace, simT, col) {
+  const { without, with: withB } = trace.lanes;
+  drawLane($("laneA"), without, simT, col, 0, false);
+  drawLane($("laneB"), withB, simT, col, 1, true);
+  drawChart(trace, simT, col, "chartLoad", "load", 320, [0, 80, 160, 240, 320], true);
+  drawChart(trace, simT, col, "chartOk", "ok", 80, [0, 20, 40, 60, 80], false);
+  for (const [p, lane] of [["a", without], ["b", withB]]) {
+    const s = lane.series;
+    const load = valueAt(s.load, simT);
+    const ok = valueAt(s.ok, simT);
+    const retries = valueAt(s.retries, simT);
+    setStat(`${p}Load`, Math.round(load), load > valueAt(s.capacity, simT) ? "bad" : "");
+    setStat(`${p}X`, `${(load / RATE).toFixed(1)}×`, load / RATE > 1.5 ? "bad" : "");
+    setStat(`${p}Ok`, Math.round(ok), ok < 60 ? "bad" : "good");
+    if (p === "a") setStat("aRet", Math.round(retries), retries > 40 ? "bad" : "");
+    else setStat("bRef", Math.round(valueAt(s.refused, simT)), "");
+  }
+}
+
+// ---- Wiring -----------------------------------------------------------------
+function build(o) {
+  const trace = simulate(o);
+  $("cfgA").textContent = trace.lanes.without.config;
+  $("cfgB").textContent = trace.lanes.with.config;
+  return trace;
+}
+
+const demo = mountDemo({
+  build,
+  render,
+  options: { maxRetries: 3, ratio: 0.1 },
+  speed: 2,
+});
+
+$("maxRetries").addEventListener("input", (e) => {
+  $("maxRetriesOut").textContent = e.target.value;
+  demo.rerun({ maxRetries: Number(e.target.value) });
+});
+$("ratio").addEventListener("input", (e) => {
+  const ratio = Number(e.target.value);
+  $("ratioOut").textContent = ratio.toFixed(2);
+  demo.rerun({ ratio });
+});
+</script>

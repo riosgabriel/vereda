@@ -1,0 +1,625 @@
+<title>Circuit Breaker Simulator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@600;800&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="engine/demo.css">
+<style>
+/* Page-specific: the breaker's state machine and its log. */
+.dot.ring { background: transparent; border: 2px solid var(--retry); }
+.machine { display: grid; grid-template-columns: 3fr 2fr; gap: 16px; }
+.machine svg { width: 100%; height: auto; display: block; }
+.machine svg text { font-family: var(--mono); }
+.log { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-family: var(--mono); font-size: 0.8rem; }
+.log li { display: grid; grid-template-columns: 4.5ch 1fr; gap: 10px; align-items: baseline; }
+.log .t { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.log .why { color: var(--muted); display: block; font-size: 0.76rem; }
+.log .empty { color: var(--muted); grid-template-columns: 1fr; }
+.chip { display: inline-block; padding: 1px 8px; border-radius: 99px; font-weight: 600; font-size: 0.78rem; }
+.chip.closed { background: color-mix(in srgb, var(--ok) 20%, var(--surface)); color: var(--ok); }
+.chip.open { background: color-mix(in srgb, var(--fail) 20%, var(--surface)); color: var(--fail); }
+.chip.half-open { background: color-mix(in srgb, var(--retry) 22%, var(--surface)); color: var(--retry); }
+@media (max-width: 900px) { .machine { grid-template-columns: 1fr; } }
+</style>
+
+<div class="wrap">
+  <div>
+    <div class="eyebrow">Vereda · circuitBreaker</div>
+    <h1>What a circuit breaker does when a host goes down</h1>
+    <p class="lede">Two clients send the same 10 requests per second to the same host, with a 1 second timeout. At 6 s the host breaks, and at 20 s it is fixed. The right client has a circuit breaker. Retries are off, so each dot is one request. Press Play. When a phase starts or the breaker changes state, the page slows down for a moment and tells you what happened.</p>
+  </div>
+
+  <div class="controls">
+    <button id="play" type="button">Play</button>
+    <button id="replay" class="ghost" type="button">Replay</button>
+    <label class="field" for="scenario">Host
+      <select id="scenario">
+        <option value="down">goes down (every request times out)</option>
+        <option value="flaky">is flaky (40% time out)</option>
+      </select>
+    </label>
+    <label class="field" for="mode">Open the breaker after
+      <select id="mode">
+        <option value="consec">N failures in a row</option>
+        <option value="window">failure rate &gt; 30% (last 3 s)</option>
+      </select>
+    </label>
+    <label class="field" for="threshold" id="thresholdField">N <input id="threshold" type="range" min="1" max="10" step="1" value="5"> <output id="thresholdOut">5</output></label>
+    <label class="field" for="reset">Reset timeout <input id="reset" type="range" min="1" max="8" step="1" value="4"> <output id="resetOut">4 s</output></label>
+    <label class="field" for="speed">Speed <select id="speed"></select></label>
+    <label class="field" for="guided"><input id="guided" type="checkbox" checked> Slow down at key moments</label>
+    <span class="clock" id="clock">t = 0.0 s</span>
+  </div>
+
+  <div class="timeline" id="timeline" role="img" aria-label="Scenario timeline"></div>
+  <p class="caption" id="caption" aria-live="polite"></p>
+
+  <div class="legend">
+    <span><i class="dot" style="background:var(--first)"></i>Request</span>
+    <span><i class="dot ring"></i>Half-open trial request</span>
+    <span><i class="dot" style="background:var(--ok)"></i>Answered</span>
+    <span><i class="dot" style="background:var(--fail)"></i>Timed out after 1 s</span>
+    <span><i class="dot" style="background:var(--refused)"></i>Rejected by the open breaker (fails at once)</span>
+  </div>
+
+  <div class="lanes">
+    <article class="panel lane">
+      <header><h2>No circuit breaker</h2><span class="cfg">timeout: 1 s</span></header>
+      <canvas id="laneA" aria-label="Animation: client without a circuit breaker"></canvas>
+      <div class="stats">
+        <div class="stat"><span class="v" id="aWait">0</span><span class="k">callers waiting right now</span></div>
+        <div class="stat"><span class="v" id="aAvg">0 ms</span><span class="k">average wait, last 2 s</span></div>
+        <div class="stat"><span class="v" id="aHit">0</span><span class="k hitK">requests sent to the broken host</span></div>
+        <div class="stat"><span class="v" id="aFail">0</span><span class="k">timed out</span></div>
+      </div>
+    </article>
+    <article class="panel lane">
+      <header><h2>With a circuit breaker</h2><span class="cfg" id="cfgB">failureThreshold: 5, resetTimeout: 4 s</span></header>
+      <canvas id="laneB" aria-label="Animation: client with a circuit breaker"></canvas>
+      <div class="stats">
+        <div class="stat"><span class="v" id="bWait">0</span><span class="k">callers waiting right now</span></div>
+        <div class="stat"><span class="v" id="bAvg">0 ms</span><span class="k">average wait, last 2 s</span></div>
+        <div class="stat"><span class="v" id="bHit">0</span><span class="k hitK">requests sent to the broken host</span></div>
+        <div class="stat"><span class="v" id="bFast">0</span><span class="k">failed fast (breaker open)</span></div>
+      </div>
+    </article>
+  </div>
+
+  <div class="machine">
+    <div class="panel">
+      <header><h3>The breaker's state machine</h3><span class="chip closed" id="stateChip">closed</span></header>
+      <svg id="fsm" viewBox="0 0 560 230" role="img" aria-label="Circuit breaker states: closed, open, half-open"></svg>
+    </div>
+    <div class="panel">
+      <h3>What the breaker did</h3>
+      <ul class="log" id="log"></ul>
+    </div>
+  </div>
+
+  <div class="charts">
+    <div class="panel chart">
+      <h3>How long each caller waited for an answer</h3>
+      <canvas id="chartWait" aria-label="Scatter chart of wait time per request"></canvas>
+      <p>Each point is one request. Without a breaker, callers wait the full second while the host is down. An open breaker answers in about 0 ms.</p>
+    </div>
+    <div class="panel chart">
+      <h3>Requests reaching the host (per second)</h3>
+      <canvas id="chartHost" aria-label="Chart of requests reaching the host per second, with the breaker state below"></canvas>
+      <p>The strip at the bottom is the breaker's state. While it is open, the host gets almost no traffic, only one trial request each reset timeout.</p>
+    </div>
+  </div>
+
+  <div class="explain">
+    <section>
+      <h2>What the breaker gives you</h2>
+      <ol>
+        <li><strong>Callers find out at once.</strong> When the breaker is open, a request fails with <code>CircuitOpenError</code> in about 0 ms instead of waiting 1 s for a timeout. Waiting requests don't pile up.</li>
+        <li><strong>The broken host gets a break.</strong> It sees one trial request per reset timeout instead of 10 per second, so it has room to restart or catch up.</li>
+        <li><strong>It checks by itself.</strong> After the reset timeout, one trial goes through (half-open). If it works, the breaker closes. If not, it opens again and waits.</li>
+      </ol>
+    </section>
+    <section>
+      <h2>What it costs</h2>
+      <ul>
+        <li>It doesn't make anything succeed while the host is down. Both lanes fail every request. The breaker only makes those failures fast and cheap.</li>
+        <li>After the host is fixed, the breaker keeps rejecting requests until the next trial, which can take up to a full reset timeout. Look at the gap right after 20 s.</li>
+        <li>On a flaky host, an open breaker also rejects requests that would have worked.</li>
+      </ul>
+      <p class="note">Things to try: choose the flaky host with "5 failures in a row". The breaker almost never opens, because 5 timeouts in a row happen only about 1% of the time (0.4⁵). Switch to the failure rate and it opens. A flaky host that never trips the breaker is the case the <a href="retry-budget.html">retry budget</a> covers.</p>
+    </section>
+    <section>
+      <h2>In Vereda</h2>
+      <div class="formula">HttpClient.create({
+  timeout: { attemptMs: 1_000 },
+  circuitBreaker: {
+    enabled: true,
+    failureThreshold: 5,
+    resetTimeoutMs: 30_000,
+    halfOpenMaxAttempts: 1,
+    // or, instead of failureThreshold:
+    // window: { sizeMs: 3_000,
+    //   failureRatePercent: 30,
+    //   minimumRequests: 10 },
+  },
+})</div>
+      <p class="note">This page follows the state machine in <code>src/queue/circuit-breaker.ts</code>, one breaker per partition. In Vereda every attempt asks the breaker, retries included. Only network errors, timeouts and retryable statuses count as failures. A 404 counts as a success, because the host answered.</p>
+      <p class="note">Times are shortened so you don't have to wait: the default reset timeout is 30 s, and here it is 1 to 8 s. In 1.x the breaker does nothing unless <code>enabled: true</code> is set. The page clears the failure window when the breaker closes; the library currently keeps it, which is being fixed.</p>
+    </section>
+  </div>
+</div>
+
+<script type="module">
+import { dot, legend, mix, playedLine, roundRect, sizeCanvas, timeAxes, valueAt } from "./engine/draw.js";
+import { mountDemo } from "./engine/player.js";
+
+// ---- Simulation: one record per request, same rules as circuit-breaker.ts ----
+const END = 32;
+const RATE = 10;
+const TIMEOUT = 1.0;
+const OK_LAT = 0.1;
+const BAD_FROM = 6;
+const BAD_TO = 20;
+const WINDOW_SEC = 3;
+const MIN_REQ = 10;
+const PCT = 30;
+
+function rng(seed) {
+  return () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+}
+const isBad = (t) => t >= BAD_FROM && t < BAD_TO;
+
+function phases(o) {
+  const down = o.scenario === "down";
+  const trip = o.mode === "window" ? `more than ${PCT}% of the last ${WINDOW_SEC} s fail` : `${o.threshold} requests in a row fail`;
+  return [
+    {
+      from: 0, to: BAD_FROM, tone: "good", label: "Healthy",
+      caption: "Both clients send 10 requests per second, and every request is answered. On the right, the breaker is closed and counts failures. Before you press Play: when the host breaks at 6 s, how long will callers on each side wait?",
+    },
+    {
+      from: BAD_FROM, to: BAD_TO, tone: "bad",
+      label: down ? "Host down · every request times out" : "Host flaky · 40% of requests time out",
+      caption: down
+        ? `The host just broke. On the left, every caller now waits the full 1 s timeout. On the right, the breaker opens once ${trip}. After that, callers get CircuitOpenError in about 0 ms. Watch the switch and the log.`
+        : `40% of requests now time out, at random. The breaker opens only once ${trip}. Will that happen here? Watch the counter under the switch.`,
+    },
+    {
+      from: BAD_TO, to: END, tone: "good", label: "Host fixed",
+      caption: `The host works again. The left lane recovers at once. The right lane keeps rejecting requests until its next trial, up to ${o.resetSec} s later. That gap is the price of the breaker.`,
+    },
+  ];
+}
+
+/** @returns {import("./engine/trace.js").DemoTrace} */
+function simulate(o) {
+  const rand = rng(42);
+  const arrivals = [];
+  for (let i = 0; i < END * RATE; i++) {
+    const t = i / RATE + 0.02 + rand() * 0.04;
+    const fails = isBad(t) && (o.scenario === "down" || rand() < 0.4);
+    arrivals.push({ id: i, t, fails, lat: fails ? TIMEOUT : OK_LAT + rand() * 0.05 });
+  }
+  const resultOf = (a) => ({
+    request: a.request,
+    t: a.end,
+    ok: a.outcome === "ok",
+    error: a.outcome === "timeout" ? "timeout" : a.outcome === "rejected" ? "circuit_open" : undefined,
+  });
+
+  // Lane without a breaker: every request reaches the host.
+  const plain = arrivals.map((r) => ({
+    request: r.id, n: 0, sent: r.t, start: r.t, end: r.t + r.lat, outcome: r.fails ? "timeout" : "ok",
+  }));
+
+  // Lane with a breaker.
+  const br = { state: "closed", consec: 0, openedAt: 0, inflight: 0, gen: 0, win: [] };
+  const states = [{ t: 0, state: "closed" }];
+  const failures = [[0, 0]];
+  const failRate = [[0, 0]];
+  const attempts = [];
+  const pending = [];
+  const setState = (s, t, reason) => {
+    br.state = s;
+    states.push({ t, state: s, reason });
+  };
+  const winStats = (t) => {
+    br.win = br.win.filter((w) => w.t >= t - WINDOW_SEC);
+    const f = br.win.filter((w) => w.f).length;
+    return { total: br.win.length, rate: br.win.length ? (f / br.win.length) * 100 : 0 };
+  };
+  const count = (t) => {
+    failures.push([t, br.consec]);
+    failRate.push([t, winStats(t).rate]);
+  };
+  const trips = (t) => {
+    if (o.mode === "window") {
+      const w = winStats(t);
+      return w.total >= MIN_REQ && w.rate > PCT;
+    }
+    return br.consec >= o.threshold;
+  };
+  const complete = (p) => {
+    const t = p.end;
+    const isTrial = p.trialGen !== null && p.trialGen === br.gen;
+    // A request admitted while closed must not decide a later half-open episode.
+    if (br.state === "half-open" && !isTrial) return;
+    if (!p.fails) {
+      if (br.state === "half-open") {
+        br.inflight = Math.max(0, br.inflight - 1);
+        br.consec = 0;
+        br.win = [];
+        setState("closed", t, "trial request answered");
+        count(t);
+      } else if (br.state === "closed") {
+        br.consec = 0;
+        br.win.push({ t, f: false });
+        count(t);
+      }
+    } else if (br.state === "half-open") {
+      br.inflight = Math.max(0, br.inflight - 1);
+      br.openedAt = t;
+      setState("open", t, "trial request timed out");
+    } else if (br.state === "closed") {
+      br.consec++;
+      br.win.push({ t, f: true });
+      count(t);
+      if (trips(t)) {
+        br.openedAt = t;
+        setState("open", t, o.mode === "window"
+          ? `${Math.round(winStats(t).rate)}% of the last ${WINDOW_SEC} s failed`
+          : `${br.consec} failures in a row`);
+      }
+    }
+  };
+  const drain = (until) => {
+    pending.sort((x, y) => x.end - y.end);
+    while (pending.length && pending[0].end <= until) complete(pending.shift());
+  };
+  for (const r of arrivals) {
+    drain(r.t);
+    let admitted = true;
+    let trialGen = null;
+    if (br.state === "open") {
+      if (r.t - br.openedAt >= o.resetSec) {
+        br.inflight = 0;
+        br.gen++;
+        setState("half-open", r.t, `reset timeout (${o.resetSec} s) passed, sending one trial`);
+      } else {
+        admitted = false;
+      }
+    }
+    if (admitted && br.state === "half-open") {
+      if (br.inflight >= 1) admitted = false;
+      else {
+        br.inflight++;
+        trialGen = br.gen;
+      }
+    }
+    if (!admitted) {
+      attempts.push({ request: r.id, n: 0, sent: r.t, start: null, end: r.t + 0.002, outcome: "rejected", reason: "circuit_open" });
+      continue;
+    }
+    const a = { request: r.id, n: 0, sent: r.t, start: r.t, end: r.t + r.lat, outcome: r.fails ? "timeout" : "ok" };
+    if (trialGen !== null) a.trial = true;
+    attempts.push(a);
+    pending.push({ end: a.end, fails: r.fails, trialGen });
+  }
+  drain(Number.POSITIVE_INFINITY);
+
+  const cfg = o.mode === "window"
+    ? `window: >${PCT}% of ${WINDOW_SEC} s, resetTimeout: ${o.resetSec} s`
+    : `failureThreshold: ${o.threshold}, resetTimeout: ${o.resetSec} s`;
+  return {
+    version: 1,
+    pattern: "circuit-breaker",
+    duration: END,
+    phases: phases(o),
+    moments: states.slice(1).map((s, i) => ({
+      t: s.t,
+      label: `Breaker ${states[i].state} → ${s.state}: ${s.reason}`,
+    })),
+    lanes: {
+      without: { config: "timeout: 1 s", attempts: plain, results: plain.map(resultOf) },
+      with: { config: cfg, attempts, results: attempts.map(resultOf), states, series: { failures, failRate } },
+    },
+  };
+}
+
+// ---- Drawing --------------------------------------------------------------
+const $ = (id) => document.getElementById(id);
+let current = {};
+const stateAt = (states, t) => {
+  let s = states[0];
+  for (const x of states) {
+    if (x.t > t) break;
+    s = x;
+  }
+  return s;
+};
+const stateColor = (s, col) => (s === "closed" ? col.ok : s === "open" ? col.fail : col.retry);
+const G = 0.25; // sim seconds a dot spends travelling each way
+
+function drawLane(canvas, lane, simT, col, withBreaker) {
+  const { ctx, w, h } = sizeCanvas(canvas);
+  const cy = h / 2;
+  const clientR = 74;
+  const hostW = 110;
+  const hostL = w - hostW - 8;
+  const gateX = (clientR + hostL) / 2;
+  const bad = isBad(simT);
+
+  ctx.fillStyle = col.bg;
+  ctx.strokeStyle = col.line;
+  ctx.lineWidth = 1;
+  roundRect(ctx, 8, cy - 50, clientR - 14, 100, 8);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = col.ink;
+  ctx.font = `600 12px ${col.mono}`;
+  ctx.textAlign = "center";
+  ctx.fillText("client", 8 + (clientR - 14) / 2, cy + 4);
+
+  const hy = cy - 70;
+  const hh = 140;
+  ctx.fillStyle = bad ? mix(col.fail, col.surface, 0.14) : col.bg;
+  ctx.strokeStyle = bad ? col.fail : col.line;
+  roundRect(ctx, hostL, hy, hostW, hh, 8);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = bad ? col.fail : col.ink;
+  ctx.fillText(bad ? (current.scenario === "down" ? "host: down" : "host: flaky") : "host: ok", hostL + hostW / 2, hy + 18);
+
+  if (withBreaker) {
+    const st = stateAt(lane.states, simT);
+    const c = stateColor(st.state, col);
+    const lx = gateX - 20;
+    const rx = gateX + 20;
+    ctx.strokeStyle = c;
+    ctx.lineWidth = 3;
+    dot(ctx, lx, cy, 4, c);
+    dot(ctx, rx, cy, 4, c);
+    const ang = st.state === "closed" ? 0 : st.state === "open" ? -0.75 : -0.3;
+    if (st.state === "half-open") ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    ctx.moveTo(lx, cy);
+    ctx.lineTo(lx + 40 * Math.cos(ang), cy + 40 * Math.sin(ang));
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.lineWidth = 1;
+    ctx.fillStyle = c;
+    ctx.font = `600 12px ${col.mono}`;
+    ctx.fillText(st.state, gateX, cy - 44);
+    ctx.fillStyle = col.muted;
+    ctx.font = `11px ${col.mono}`;
+    let note;
+    if (st.state === "open") {
+      const left = Math.max(0, current.resetSec - (simT - st.t));
+      note = left > 0 ? `trial in ${left.toFixed(1)} s` : "next request = trial";
+    } else if (st.state === "closed") {
+      note = current.mode === "window"
+        ? `fail rate ${Math.round(valueAt(lane.series.failRate, simT))}%`
+        : `failures ${valueAt(lane.series.failures, simT)}/${current.threshold}`;
+    } else {
+      note = "waiting for trial";
+    }
+    ctx.fillText(note, gateX, cy + 34);
+  }
+
+  const startX = clientR;
+  const hostIn = hostL + 8;
+  let waiting = 0;
+  for (const a of lane.attempts) {
+    if (a.sent > simT) break;
+    if (simT - a.sent > TIMEOUT + 2 * G + 0.1) continue;
+    const y = cy + (((a.request * 37) % 9) - 4) * 9;
+    if (a.start === null) {
+      const go = (simT - a.sent) / (G / 2);
+      if (go < 1) dot(ctx, startX + (gateX - 22 - startX) * go, y, 3.4, col.first);
+      else {
+        const back = (simT - a.sent - G / 2) / G;
+        if (back < 1) dot(ctx, gateX - 22 - (gateX - 22 - startX) * back, y, 3.4, col.refused, 1 - back * 0.6);
+      }
+      continue;
+    }
+    const tGo = a.sent + G;
+    const tBack = a.end + G;
+    let x;
+    let yy = y;
+    let color = col.first;
+    let alpha = 1;
+    if (simT < tGo) x = startX + (hostIn - startX) * ((simT - a.sent) / G);
+    else if (simT < tBack) {
+      waiting++;
+      const slot = a.request % 12;
+      x = hostIn + 10 + (slot % 4) * 14;
+      yy = cy - 26 + Math.floor(slot / 4) * 20;
+    } else {
+      const back = (simT - tBack) / G;
+      if (back >= 1) continue;
+      x = hostIn - (hostIn - startX) * back;
+      color = a.outcome === "ok" ? col.ok : col.fail;
+      alpha = 1 - back * 0.5;
+    }
+    if (a.trial) {
+      ctx.strokeStyle = col.retry;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(x, yy, 6.4, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.lineWidth = 1;
+    }
+    dot(ctx, x, yy, 3.4, color, alpha);
+  }
+  ctx.fillStyle = col.muted;
+  ctx.font = `11px ${col.mono}`;
+  ctx.textAlign = "center";
+  ctx.fillText(`${waiting} waiting`, hostL + hostW / 2, hy + hh - 12);
+}
+
+let lastFsm = "";
+function drawFsm(state, col) {
+  const key = state + current.mode + current.threshold + current.resetSec + col.ink;
+  if (key === lastFsm) return;
+  lastFsm = key;
+  const nodes = { closed: [90, 165], open: [470, 165], "half-open": [280, 50] };
+  const node = (s) => {
+    const [x, y] = nodes[s];
+    const on = s === state;
+    const c = stateColor(s, col);
+    return `<g><rect x="${x - 62}" y="${y - 22}" width="124" height="44" rx="22" fill="${on ? c : col.surface}" stroke="${c}" stroke-width="2"/>
+      <text x="${x}" y="${y + 5}" text-anchor="middle" font-size="14" font-weight="600" fill="${on ? col.surface : c}">${s}</text></g>`;
+  };
+  const tripLabel = current.mode === "window" ? `fail rate > ${PCT}%` : `${current.threshold} failures in a row`;
+  const lbl = (x, y, t, anchor = "middle") => `<text x="${x}" y="${y}" text-anchor="${anchor}" font-size="12" fill="${col.muted}">${t}</text>`;
+  $("fsm").innerHTML = `
+    <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${col.muted}"/></marker></defs>
+    <g fill="none" stroke="${col.muted}" stroke-width="1.6" marker-end="url(#arr)">
+      <path d="M152,165 L404,165"/>
+      <path d="M455,141 Q420,70 346,56"/>
+      <path d="M342,74 Q390,120 418,145"/>
+      <path d="M216,62 Q140,90 110,141"/>
+    </g>
+    ${lbl(280, 186, tripLabel)}
+    ${lbl(452, 82, `after ${current.resetSec} s`, "start")}
+    ${lbl(372, 136, "trial fails", "end")}
+    ${lbl(140, 92, "trial answered", "end")}
+    ${node("closed")}${node("open")}${node("half-open")}
+    ${lbl(90, 212, "requests pass")}${lbl(470, 212, "requests fail fast")}${lbl(280, 14, "one trial request")}`;
+  const chip = $("stateChip");
+  chip.textContent = state;
+  chip.className = `chip ${state}`;
+}
+
+let lastLog = "";
+function drawLog(states, simT) {
+  const changes = [];
+  for (let i = 1; i < states.length && states[i].t <= simT; i++) changes.push({ ...states[i], from: states[i - 1].state });
+  const shown = changes.slice(-6).reverse();
+  const key = `${changes.length}:${current.scenario}${current.mode}${current.threshold}${current.resetSec}`;
+  if (key === lastLog) return;
+  lastLog = key;
+  $("log").innerHTML = shown.length
+    ? shown.map((e) => `<li><span class="t">${e.t.toFixed(1)}s</span><span><span class="chip ${e.from}">${e.from}</span> → <span class="chip ${e.state}">${e.state}</span><span class="why">${e.reason}</span></span></li>`).join("")
+    : `<li class="empty">Nothing yet. The breaker is closed and counting failures.</li>`;
+}
+
+function drawWait(trace, simT, col) {
+  const { ctx, w, h } = sizeCanvas($("chartWait"));
+  const pad = [22, 10, 22, 50];
+  const { X, Y } = timeAxes(ctx, { w, h, pad, end: trace.duration, yMax: 1.2, ticks: [0, 0.4, 0.8, 1.2], fmt: (v) => `${Math.round(v * 1000)}ms`, phases: trace.phases, col });
+  const pts = (attempts, color, dy) => {
+    for (const a of attempts) dot(ctx, X(a.end), Y(a.end - a.sent) + dy, 2.3, color, a.end <= simT ? 0.9 : 0.12);
+  };
+  pts(trace.lanes.without.attempts, col.fail, -2);
+  pts(trace.lanes.with.attempts, col.first, 2);
+  legend(ctx, pad[3] + 6, 12, [["no breaker", col.fail], ["with breaker", col.first]], col);
+}
+
+function drawHost(trace, simT, col) {
+  const { ctx, w, h } = sizeCanvas($("chartHost"));
+  const pad = [22, 10, 44, 34];
+  const { X, Y } = timeAxes(ctx, { w, h, pad, end: trace.duration, yMax: 12, ticks: [0, 4, 8, 12], phases: trace.phases, col });
+  const perSecond = (attempts) => {
+    const n = new Array(trace.duration).fill(0);
+    for (const a of attempts) if (a.start !== null) n[Math.min(trace.duration - 1, Math.floor(a.sent))]++;
+    return n.map((v, i) => [i + 0.5, v]);
+  };
+  playedLine(ctx, perSecond(trace.lanes.without.attempts), X, Y, col.fail, simT);
+  playedLine(ctx, perSecond(trace.lanes.with.attempts), X, Y, col.first, simT);
+  legend(ctx, pad[3] + 6, 12, [["no breaker", col.fail], ["with breaker", col.first]], col);
+  const states = trace.lanes.with.states;
+  const sy = h - pad[2] + 20;
+  states.forEach((s, i) => {
+    const t1 = states[i + 1]?.t ?? trace.duration;
+    ctx.globalAlpha = s.t <= simT ? 1 : 0.25;
+    ctx.fillStyle = stateColor(s.state, col);
+    ctx.fillRect(X(s.t), sy, Math.max(1.5, X(t1) - X(s.t)), 8);
+  });
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = col.muted;
+  ctx.font = `10px ${col.mono}`;
+  ctx.textAlign = "right";
+  ctx.fillText("state", pad[3] - 4, sy + 8);
+}
+
+function setStat(id, text, cls) {
+  const el = $(id);
+  const next = `v${cls ? ` ${cls}` : ""}`;
+  if (el.textContent !== String(text)) el.textContent = text;
+  if (el.className !== next) el.className = next;
+}
+function laneStats(attempts, simT) {
+  let waiting = 0;
+  let sum = 0;
+  let n = 0;
+  let hit = 0;
+  let failed = 0;
+  let fast = 0;
+  for (const a of attempts) {
+    if (a.sent > simT) break;
+    if (a.start !== null && a.end > simT) waiting++;
+    if (a.end <= simT && a.end > simT - 2) {
+      sum += a.end - a.sent;
+      n++;
+    }
+    if (a.start !== null && isBad(a.sent)) hit++;
+    if (a.end <= simT && a.outcome === "timeout") failed++;
+    if (a.end <= simT && a.outcome === "rejected") fast++;
+  }
+  return { waiting, avg: n ? (sum / n) * 1000 : 0, hit, failed, fast };
+}
+
+function render(trace, simT, col) {
+  const { without, with: withB } = trace.lanes;
+  drawLane($("laneA"), without, simT, col, false);
+  drawLane($("laneB"), withB, simT, col, true);
+  drawFsm(stateAt(withB.states, simT).state, col);
+  drawLog(withB.states, simT);
+  drawWait(trace, simT, col);
+  drawHost(trace, simT, col);
+  const a = laneStats(without.attempts, simT);
+  const b = laneStats(withB.attempts, simT);
+  setStat("aWait", a.waiting, a.waiting > 4 ? "bad" : "");
+  setStat("aAvg", `${Math.round(a.avg)} ms`, a.avg > 400 ? "bad" : "");
+  setStat("aHit", a.hit, a.hit > 30 ? "bad" : "");
+  setStat("aFail", a.failed, a.failed ? "bad" : "");
+  setStat("bWait", b.waiting, b.waiting > 4 ? "bad" : "");
+  setStat("bAvg", `${Math.round(b.avg)} ms`, b.avg > 400 ? "bad" : "");
+  setStat("bHit", b.hit, b.hit > 30 ? "bad" : "good");
+  setStat("bFast", b.fast, "");
+}
+
+// ---- Wiring -----------------------------------------------------------------
+function build(o) {
+  current = o;
+  lastFsm = "";
+  lastLog = "";
+  $("cfgB").textContent = o.mode === "window" ? `window: >${PCT}% of ${WINDOW_SEC} s, resetTimeout: ${o.resetSec} s` : `failureThreshold: ${o.threshold}, resetTimeout: ${o.resetSec} s`;
+  $("thresholdField").hidden = o.mode === "window";
+  for (const el of document.querySelectorAll(".hitK")) {
+    el.textContent = o.scenario === "down" ? "requests sent to the broken host" : "requests sent to the flaky host";
+  }
+  return simulate(o);
+}
+
+const demo = mountDemo({
+  build,
+  render,
+  options: { scenario: "down", mode: "consec", threshold: 5, resetSec: 4 },
+  speed: 1,
+});
+
+$("scenario").addEventListener("change", (e) => demo.rerun({ scenario: e.target.value }));
+$("mode").addEventListener("change", (e) => demo.rerun({ mode: e.target.value }));
+$("threshold").addEventListener("input", (e) => {
+  $("thresholdOut").textContent = e.target.value;
+  demo.rerun({ threshold: Number(e.target.value) });
+});
+$("reset").addEventListener("input", (e) => {
+  $("resetOut").textContent = `${e.target.value} s`;
+  demo.rerun({ resetSec: Number(e.target.value) });
+});
+</script>
