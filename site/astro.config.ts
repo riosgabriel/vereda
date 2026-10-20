@@ -27,7 +27,11 @@ export default defineConfig({
 			description: "Resilient HTTP for TypeScript: retries, timeouts, bulkheads, circuit breakers.",
 			social: [{ icon: "github", label: "GitHub", href: "https://github.com/riosgabriel/vereda" }],
 			editLink: { baseUrl: "https://github.com/riosgabriel/vereda/edit/main/docs/" },
-			components: { Head: "./src/components/Head.astro", SiteTitle: "./src/components/SiteTitle.astro" },
+			components: {
+				Head: "./src/components/Head.astro",
+				SiteTitle: "./src/components/SiteTitle.astro",
+				Footer: "./src/components/Footer.astro",
+			},
 			customCss: ["./src/styles/theme.css"],
 			// Starlight's Markdown transforms (heading anchor links, code block defaults) only run on
 			// its own content folder unless listed here, and the docs load from the repo's docs/.
