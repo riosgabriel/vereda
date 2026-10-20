@@ -175,7 +175,7 @@ function drawLane(canvas, lane, simT, col, bulk) {
   const pad = 8;
   const inner = w - 2 * pad;
   ctx.textAlign = "left";
-  ctx.font = `11px ${col.mono}`;
+  ctx.font = col.label;
   const label = (t, y, c) => {
     ctx.fillStyle = c || col.muted;
     ctx.fillText(t, pad, y);
@@ -204,10 +204,10 @@ function drawLane(canvas, lane, simT, col, bulk) {
   } else {
     label("no search limit", 130);
     ctx.fillStyle = sHold >= G ? col.fail : col.ink;
-    ctx.font = `600 12px ${col.mono}`;
+    ctx.font = col.strong;
     ctx.fillText(`search holds ${sHold} of ${G} permits`, pad, 150);
     ctx.fillStyle = col.muted;
-    ctx.font = `11px ${col.mono}`;
+    ctx.font = col.label;
     ctx.fillText("payments waits in the same queue", pad, 170);
   }
 

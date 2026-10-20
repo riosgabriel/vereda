@@ -168,7 +168,7 @@ function drawLane(canvas, lane, simT, col, info) {
   ctx.fill();
   ctx.stroke();
   ctx.fillStyle = col.ink;
-  ctx.font = `600 12px ${col.mono}`;
+  ctx.font = col.strong;
   ctx.textAlign = "center";
   ctx.fillText("clients", 8 + (clientR - 14) / 2, cy + 4);
 
@@ -181,13 +181,13 @@ function drawLane(canvas, lane, simT, col, info) {
   ctx.fill();
   ctx.stroke();
   ctx.fillStyle = col.ink;
-  ctx.font = `600 12px ${col.mono}`;
+  ctx.font = col.strong;
   ctx.fillText(down ? "host: down" : "host: up", hostL + hostW / 2, hy + 18);
   ctx.fillStyle = col.muted;
-  ctx.font = `11px ${col.mono}`;
+  ctx.font = col.label;
   ctx.fillText(`cap ${info.capacity}/s`, hostL + hostW / 2, hy + 36);
   ctx.fillStyle = over ? col.fail : col.ink;
-  ctx.font = `600 13px ${col.mono}`;
+  ctx.font = col.big;
   ctx.fillText(`${Math.round(load)}/s`, hostL + hostW / 2, hy + hh - 14);
 
   // clients waiting for their next retry
@@ -197,7 +197,7 @@ function drawLane(canvas, lane, simT, col, info) {
     if (next[i] !== null && next[i] - G > simT) waiting++;
   }
   ctx.fillStyle = col.muted;
-  ctx.font = `11px ${col.mono}`;
+  ctx.font = col.label;
   ctx.fillText(`${waiting} waiting`, 8 + (clientR - 14) / 2, hy + hh + 14);
 
   // dots, one row per client

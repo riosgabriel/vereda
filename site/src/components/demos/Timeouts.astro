@@ -113,7 +113,7 @@ client.get("/slow", &#123;
 	.demo .bar.dash { background: transparent; border-top: 2px dashed var(--muted); height: 0; }
 	.demo .bar.host { background: color-mix(in srgb, var(--fail) 38%, var(--surface)); }
 	.demo .bar.deadline { background: transparent; border-left: 2px dashed var(--ink); width: 0; height: 12px; }
-	.demo .stat .v.sm { font-size: 0.92rem; padding-block: 3px; }
+	.demo .stat .v.sm { font-size: var(--sl-text-sm); padding-block: 3px; }
 </style>
 
 <script>
@@ -148,7 +148,7 @@ function drawLane(canvas, lane, simT, col, { duration, rows, deadline }) {
   const rowH = Math.min(34, (h - T - B) / rows);
   const barH = 14;
 
-  ctx.font = `10px ${col.mono}`;
+  ctx.font = col.label;
   ctx.strokeStyle = col.line;
   ctx.fillStyle = col.muted;
   ctx.lineWidth = 1;
@@ -173,7 +173,7 @@ function drawLane(canvas, lane, simT, col, { duration, rows, deadline }) {
     ctx.setLineDash([]);
     ctx.lineWidth = 1;
     ctx.fillStyle = col.ink;
-    ctx.font = `600 10px ${col.mono}`;
+    ctx.font = col.strong;
     ctx.textAlign = X(deadline) > w - 70 ? "right" : "left";
     ctx.fillText(`deadline ${deadline} s`, X(deadline) + (ctx.textAlign === "right" ? -4 : 4), 10);
   }
@@ -183,7 +183,7 @@ function drawLane(canvas, lane, simT, col, { duration, rows, deadline }) {
     const hangs = a.outcome === "hang";
     const y = T + a.n * rowH + 3;
     ctx.fillStyle = col.muted;
-    ctx.font = `10px ${col.mono}`;
+    ctx.font = col.label;
     ctx.textAlign = "left";
     ctx.fillText(`#${a.n + 1}`, 2, y + 11);
     if (simT < a.start) continue;
@@ -199,7 +199,7 @@ function drawLane(canvas, lane, simT, col, { duration, rows, deadline }) {
       ctx.beginPath();
       ctx.arc(X(a.end), y + barH / 2, 5, 0, Math.PI * 2);
       ctx.fill();
-      ctx.font = `600 10px ${col.mono}`;
+      ctx.font = col.strong;
       const label = a.outcome === "aborted" ? "aborted at deadline" : "timeout";
       const lw = ctx.measureText(label).width;
       if (X(a.end) + 10 + lw < w - 4) {
@@ -258,7 +258,7 @@ function drawLane(canvas, lane, simT, col, { duration, rows, deadline }) {
     ctx.stroke();
     ctx.lineWidth = 1;
     ctx.fillStyle = col.ink;
-    ctx.font = `600 10px ${col.mono}`;
+    ctx.font = col.strong;
     const onRight = X(res.t) < w - 130;
     ctx.textAlign = onRight ? "left" : "right";
     ctx.fillText(
@@ -268,7 +268,7 @@ function drawLane(canvas, lane, simT, col, { duration, rows, deadline }) {
     );
   } else if (!res && simT >= END) {
     ctx.fillStyle = col.fail;
-    ctx.font = `600 11px ${col.mono}`;
+    ctx.font = col.strong;
     ctx.textAlign = "right";
     ctx.fillText("no answer, ever", w - R, 10);
   }
@@ -287,7 +287,7 @@ function drawSweep(trace, col) {
   const yMax = Math.max(6, Math.ceil((finiteMax + 1) / 2) * 2);
   const X = (d) => L + ((d - 1) / (SWEEP_MAX - 1)) * (w - L - R);
   const Y = (v) => T + (1 - Math.min(v, yMax) / yMax) * (h - T - B);
-  ctx.font = `10px ${col.mono}`;
+  ctx.font = col.label;
   ctx.strokeStyle = col.line;
   ctx.fillStyle = col.muted;
   ctx.lineWidth = 1;
@@ -332,14 +332,14 @@ function drawSweep(trace, col) {
   ctx.arc(X(cur), Y(mine === INF ? yMax : mine), 5, 0, Math.PI * 2);
   ctx.fill();
   ctx.textAlign = "left";
-  ctx.font = `600 11px ${col.mono}`;
+  ctx.font = col.strong;
   ctx.fillStyle = col.fail;
   ctx.fillText("no deadline", L + 6, 12);
   ctx.fillStyle = col.first;
   ctx.fillText("with deadline", L + 100, 12);
   if (!Number.isFinite(base) || sweep.some((p) => p.y === INF)) {
     ctx.fillStyle = col.muted;
-    ctx.font = `10px ${col.mono}`;
+    ctx.font = col.label;
     ctx.textAlign = "right";
     ctx.fillText("top = never", w - R, 12);
   }
@@ -364,7 +364,7 @@ function drawWaste(trace, simT, col) {
   const yMax = peak <= 8 ? 8 : peak <= 16 ? 16 : peak <= 32 ? 32 : Math.ceil(peak / 20) * 20;
   const X = (t) => L + (t / END) * (w - L - R);
   const Y = (v) => T + (1 - Math.min(v, yMax) / yMax) * (h - T - B);
-  ctx.font = `10px ${col.mono}`;
+  ctx.font = col.label;
   ctx.strokeStyle = col.line;
   ctx.fillStyle = col.muted;
   ctx.lineWidth = 1;
@@ -411,7 +411,7 @@ function drawWaste(trace, simT, col) {
   line(sa, col.fail);
   line(sb, col.first);
   ctx.textAlign = "left";
-  ctx.font = `600 11px ${col.mono}`;
+  ctx.font = col.strong;
   ctx.fillStyle = col.fail;
   ctx.fillText("no deadline", L + 6, 12);
   ctx.fillStyle = col.first;

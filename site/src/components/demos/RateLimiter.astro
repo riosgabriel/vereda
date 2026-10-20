@@ -171,7 +171,7 @@ function drawLane(canvas, lane, simT, col, bucketOn) {
   ctx.fill();
   ctx.stroke();
   ctx.fillStyle = col.ink;
-  ctx.font = `600 12px ${col.mono}`;
+  ctx.font = col.strong;
   ctx.fillText("client", 8 + (clientR - 14) / 2, cy + 4);
 
   // API box with the per-second counter
@@ -185,7 +185,7 @@ function drawLane(canvas, lane, simT, col, bucketOn) {
   ctx.fill();
   ctx.stroke();
   ctx.fillStyle = over ? col.fail : col.ink;
-  ctx.font = `600 12px ${col.mono}`;
+  ctx.font = col.strong;
   ctx.fillText(`API · ${API_LIMIT}/s`, apiL + apiW / 2, ay + 18);
   ctx.fillStyle = col.line;
   roundRect(ctx, apiL + 10, ay + ah - 30, apiW - 20, 8, 4);
@@ -194,7 +194,7 @@ function drawLane(canvas, lane, simT, col, bucketOn) {
   roundRect(ctx, apiL + 10, ay + ah - 30, Math.max(6, (apiW - 20) * Math.min(1, cnt / API_LIMIT)), 8, 4);
   ctx.fill();
   ctx.fillStyle = col.muted;
-  ctx.font = `11px ${col.mono}`;
+  ctx.font = col.label;
   ctx.fillText(`${cnt} this second`, apiL + apiW / 2, ay + ah - 8);
 
   // token bucket
@@ -226,13 +226,13 @@ function drawLane(canvas, lane, simT, col, bucketOn) {
       dot(ctx, bx, top - 34 + f * 32, 2.6, col.first, full ? 0.2 : 0.9);
     }
     ctx.fillStyle = col.muted;
-    ctx.font = `600 11px ${col.mono}`;
+    ctx.font = col.strong;
     ctx.fillText(`+${tokensPerSec} tokens/s`, bx, top - 42);
     ctx.fillStyle = col.ink;
-    ctx.font = `600 12px ${col.mono}`;
+    ctx.font = col.strong;
     ctx.fillText(`${tk.toFixed(1)} / ${burst}`, bx, top + bh + 18);
     ctx.fillStyle = col.muted;
-    ctx.font = `11px ${col.mono}`;
+    ctx.font = col.label;
     ctx.fillText("tokens", bx, top + bh + 32);
   }
 
@@ -281,7 +281,7 @@ function drawLane(canvas, lane, simT, col, bucketOn) {
   }
   if (bucketOn) {
     ctx.fillStyle = col.muted;
-    ctx.font = `11px ${col.mono}`;
+    ctx.font = col.label;
     ctx.textAlign = "left";
     ctx.fillText(waiting ? `${waiting} waiting in line${extra ? ` (${extra} not drawn)` : ""}` : "line empty", clientR - 4, cy - 66);
   }
@@ -314,7 +314,7 @@ function drawApi(trace, simT, col) {
   ctx.setLineDash([]);
   ctx.lineWidth = 1;
   ctx.fillStyle = col.cap;
-  ctx.font = `600 10px ${col.mono}`;
+  ctx.font = col.strong;
   ctx.textAlign = "right";
   ctx.fillText(`API limit ${API_LIMIT}/s`, w - R - 2, Y(API_LIMIT) - 5);
   legend(ctx, PAD[3] + 6, 12, [["no limit", col.fail], ["with limit", col.first]], col);
@@ -348,7 +348,7 @@ function drawWait(trace, simT, col) {
     ctx.setLineDash([]);
     ctx.lineWidth = 1;
     ctx.fillStyle = col.cap;
-    ctx.font = `600 10px ${col.mono}`;
+    ctx.font = col.strong;
     ctx.textAlign = "right";
     ctx.fillText(`maxWaitMs ${maxWaitMs / 1000}s`, w - PAD[1] - 2, Y(maxWaitMs / 1000) - 5);
   }

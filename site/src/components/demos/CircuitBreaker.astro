@@ -130,13 +130,13 @@
 	.demo .dot.ring { background: transparent; border: 2px solid var(--retry); }
 	.demo .machine { display: grid; grid-template-columns: 3fr 2fr; gap: 16px; }
 	.demo .machine svg { width: 100%; height: auto; display: block; }
-	.demo .machine svg text { font-family: var(--mono); }
-	.demo .log { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-family: var(--mono); font-size: 0.8rem; }
+	.demo .machine svg text { font-family: var(--sans); }
+	.demo .log { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: var(--sl-text-sm); }
 	.demo .log li { display: grid; grid-template-columns: 4.5ch 1fr; gap: 10px; align-items: baseline; }
 	.demo .log .t { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
-	.demo .log .why { color: var(--muted); display: block; font-size: 0.76rem; }
+	.demo .log .why { color: var(--muted); display: block; font-size: var(--sl-text-xs); }
 	.demo .log .empty { color: var(--muted); grid-template-columns: 1fr; }
-	.demo .chip { display: inline-block; padding: 1px 8px; border-radius: 99px; font-weight: 600; font-size: 0.78rem; }
+	.demo .chip { display: inline-block; padding: 1px 8px; border-radius: 99px; font-weight: 600; font-size: var(--sl-text-xs); }
 	.demo .chip.closed { background: color-mix(in srgb, var(--ok) 20%, var(--surface)); color: var(--ok); }
 	.demo .chip.open { background: color-mix(in srgb, var(--fail) 20%, var(--surface)); color: var(--fail); }
 	.demo .chip.half-open { background: color-mix(in srgb, var(--retry) 22%, var(--surface)); color: var(--retry); }
@@ -180,7 +180,7 @@ function drawLane(canvas, lane, simT, col, withBreaker) {
   ctx.fill();
   ctx.stroke();
   ctx.fillStyle = col.ink;
-  ctx.font = `600 12px ${col.mono}`;
+  ctx.font = col.strong;
   ctx.textAlign = "center";
   ctx.fillText("client", 8 + (clientR - 14) / 2, cy + 4);
 
@@ -212,10 +212,10 @@ function drawLane(canvas, lane, simT, col, withBreaker) {
     ctx.setLineDash([]);
     ctx.lineWidth = 1;
     ctx.fillStyle = c;
-    ctx.font = `600 12px ${col.mono}`;
+    ctx.font = col.strong;
     ctx.fillText(st.state, gateX, cy - 44);
     ctx.fillStyle = col.muted;
-    ctx.font = `11px ${col.mono}`;
+    ctx.font = col.label;
     let note;
     if (st.state === "open") {
       const left = Math.max(0, current.resetSec - (simT - st.t));
@@ -276,7 +276,7 @@ function drawLane(canvas, lane, simT, col, withBreaker) {
     dot(ctx, x, yy, 3.4, color, alpha);
   }
   ctx.fillStyle = col.muted;
-  ctx.font = `11px ${col.mono}`;
+  ctx.font = col.label;
   ctx.textAlign = "center";
   ctx.fillText(`${waiting} waiting`, hostL + hostW / 2, hy + hh - 12);
 }
@@ -362,7 +362,7 @@ function drawHost(trace, simT, col) {
   });
   ctx.globalAlpha = 1;
   ctx.fillStyle = col.muted;
-  ctx.font = `10px ${col.mono}`;
+  ctx.font = col.label;
   ctx.textAlign = "right";
   ctx.fillText("state", pad[3] - 4, sy + 8);
 }
