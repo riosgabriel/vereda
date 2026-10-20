@@ -63,13 +63,15 @@ h2 {
 }
 
 /* Inline code in prose: quieter than Starlight's default pill. Sized in em so it follows its
-   context (prose, cards, ledes); no vertical padding, so it doesn't read as a separate box. */
+   context (prose, cards, ledes); no vertical padding, so it doesn't read as a separate box.
+   Option names are code, so an operations page carries one every ten words or so; the faintest
+   surface gray keeps them from turning a paragraph into a grid of boxes. */
 .sl-markdown-content :not(pre) > code:not(:where(.not-content *)) {
 	font-size: 0.875em;
 	padding: 0 0.25em;
 	margin-block: 0;
 	border-radius: var(--v-radius-sm);
-	background-color: color-mix(in srgb, var(--sl-color-gray-5) 45%, transparent);
+	background-color: var(--sl-color-gray-6);
 }
 
 /* Doc pages: a wider column than Starlight's 45rem, so tables and code blocks stop wrapping on
