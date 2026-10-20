@@ -48,6 +48,13 @@ const TRAIL =
 		height: clamp(130px, 16.7vw, 300px);
 		margin-top: -1rem;
 	}
+	/* 100vw counts a classic scrollbar (Windows, most Linux) and 50% doesn't, so the full bleed
+	   overshoots the page by half the scrollbar and the page scrolls sideways. The clip sits on
+	   Starlight's content frame, not <html>: on the root, browsers turn clip into hidden, which
+	   still scrolls. */
+	:global(.main-frame:has(.horizon)) {
+		overflow-x: clip;
+	}
 	svg {
 		display: block;
 		width: 100%;
