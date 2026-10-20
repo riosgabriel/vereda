@@ -20,6 +20,8 @@ export function runModel(o, total) {
 	let answerAt = INF;
 	let error = "never";
 	let skipped = false;
+	// The kind of the error's `cause`: only the skipped-retry path wraps the last TimeoutError.
+	let cause;
 	for (let k = 0; k <= o.maxRetries; k++) {
 		const start = t;
 		const attemptEnd = o.attemptSec === INF ? INF : start + o.attemptSec;
@@ -47,20 +49,23 @@ export function runModel(o, total) {
 			answerAt = t;
 			error = "deadline";
 			skipped = true;
+			cause = "timeout";
 			break;
 		}
 		t += delay;
 	}
-	return { attempts, answerAt, error, skipped, total };
+	return { attempts, answerAt, error, cause, skipped, total };
 }
 
 // ---- Trace ----------------------------------------------------------------
-function phases(o, duration) {
+function phases(o, duration, leftDoneAt, rightDoneAt) {
 	const retries = o.maxRetries === 0 ? "no retries" : o.maxRetries === 1 ? "1 retry" : `${o.maxRetries} retries`;
-	const hasDeadline = o.totalSec !== INF && o.totalSec < duration;
+	// The host hangs for the whole run. When the deadline ends the right lane before the left one,
+	// a second phase marks it; both are the same "bad" tone, because the host never recovers.
+	const split = o.totalSec !== INF && rightDoneAt < Math.min(leftDoneAt, duration);
 	const first = {
 		from: 0,
-		to: hasDeadline ? o.totalSec : duration,
+		to: split ? rightDoneAt : duration,
 		tone: "bad",
 		label: "Host hangs",
 		caption:
@@ -68,15 +73,15 @@ function phases(o, duration) {
 				? "The host never answers, and there is no limit on one attempt. Will either caller ever hear back?"
 				: `The host never answers. Each attempt waits ${o.attemptSec} s and there ${o.maxRetries === 1 ? "is" : "are"} ${retries}${o.totalSec === INF ? "" : `. The right lane also has a ${o.totalSec} s deadline`}. When will each caller hear back?`,
 	};
-	if (!hasDeadline) return [first];
+	if (!split) return [first];
 	return [
 		first,
 		{
-			from: o.totalSec,
+			from: rightDoneAt,
 			to: duration,
-			tone: "busy",
-			label: "Right lane: deadline has passed",
-			caption: "The deadline has passed, so the right lane is finished. Only the left lane can still be waiting.",
+			tone: "bad",
+			label: "Host hangs · right lane done",
+			caption: "The right lane is finished. The host still hangs, so only the left lane can still be waiting.",
 		},
 	];
 }
@@ -172,7 +177,7 @@ export function simulate(o) {
 		version: 1,
 		pattern: "timeouts",
 		duration,
-		phases: phases(o, duration),
+		phases: phases(o, duration, a.answerAt, b.answerAt),
 		moments: momentsOf(lanes),
 		lanes,
 	};

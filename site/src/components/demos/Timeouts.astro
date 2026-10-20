@@ -72,7 +72,7 @@
       <ol>
         <li><strong>attemptMs caps one attempt.</strong> A hung host costs at most <code>attemptMs</code> per try, and the attempt ends with a <code>TimeoutError</code> that Vereda retries. The timer also covers the body read and an async <code>parse</code>, when <code>parse</code> or <code>responseType</code> is set.</li>
         <li><strong>totalMs caps the whole request.</strong> The clock starts at <code>request()</code> and counts everything: queue waits, rate-limit waits, attempts and backoff sleeps. At the deadline, Vereda aborts the attempt or wakes the sleep, and the ticket ends with <code>DeadlineExceededError</code>.</li>
-        <li><strong>Doomed retries are skipped.</strong> If the next backoff would reach the deadline, the ticket fails now instead of sleeping first. Set totalMs to 2 s: the right lane stops at 2.0 s, with the last <code>TimeoutError</code> as <code>cause</code>.</li>
+        <li><strong>Doomed retries are skipped.</strong> If the next backoff would reach the deadline, the ticket fails now instead of sleeping first, with the last <code>TimeoutError</code> as <code>cause</code>. Set totalMs to 7 s: attempt #3 times out at 6.6 s, the 0.8 s backoff would reach 7 s, so the right lane stops right then.</li>
       </ol>
     </section>
     <section>
@@ -443,13 +443,15 @@ function laneStats(p, lane, simT, duration) {
   setStat(`${p}Wait`, `${waited.toFixed(1)} s`, waited > 5 ? "bad" : answered ? "good" : "");
   setStat(`${p}Sent`, String(sent), "");
   setStat(`${p}Err`, answered ? res.error : never ? "never" : "waiting", answered || never ? "bad" : "");
-  setStat(`${p}Waste`, `${hostBusy(lane, simT).toFixed(1)} s`, "");
+  // Same clock as the chart, which ends at the run's duration.
+  setStat(`${p}Waste`, `${hostBusy(lane, Math.min(simT, duration)).toFixed(1)} s`, "");
 }
 
 function render(trace, simT, col) {
   const { without, with: withD } = trace.lanes;
   const rows = Math.max(...without.attempts.concat(withD.attempts).map((a) => a.n)) + 1;
-  const deadline = trace.phases[1]?.from;
+  // The right lane's deadline line; phases no longer start at it (the host hangs all run).
+  const deadline = currentTotal === INF ? undefined : currentTotal;
   drawLane($("laneA"), without, simT, col, { duration: trace.duration, rows });
   drawLane($("laneB"), withD, simT, col, { duration: trace.duration, rows, deadline });
   // Once one run has ended the chart stays: after that it's a tool for the totalMs control.

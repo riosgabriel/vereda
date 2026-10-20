@@ -13,7 +13,13 @@ import { HttpClient } from "../../src/core/client.ts";
 // abort). That is invented physics for the chart; the client cannot observe it.
 
 type Options = { attemptSec: number; totalSec: number; maxRetries: number };
-type Real = { attempts: Array<{ start: number; end: number | undefined }>; settledAt?: number; kind?: string };
+type Real = {
+	attempts: Array<{ start: number; end: number | undefined }>;
+	settledAt?: number;
+	kind?: string;
+	/** The `kind` of the error's `cause`, when it has one. */
+	causeKind?: string;
+};
 
 const RUN_SEC = 60;
 
@@ -50,6 +56,8 @@ async function runReal(o: Options): Promise<Real> {
 		.then((r) => {
 			real.settledAt = Date.now() / 1000;
 			real.kind = r.success ? "ok" : r.error.kind;
+			const cause = r.success ? undefined : (r.error as { cause?: { kind?: string } }).cause;
+			real.causeKind = cause?.kind;
 		});
 	await vi.advanceTimersByTimeAsync(RUN_SEC * 1000);
 	// Snapshot before close(): closing aborts whatever is still waiting.
@@ -68,7 +76,7 @@ describe("timeouts demo model matches the real HttpClient", () => {
 
 	const name = (v: number, unit = " s") => (v === INF ? "off" : `${v}${unit}`);
 	const attempts = [1, 2, 3, 5, INF];
-	const totals = [1, 2, 2.1, 4, 6, 12, INF];
+	const totals = [1, 2, 2.1, 4, 6, 7, 12, INF];
 	const retries = [0, 1, 3, 5];
 
 	for (const attemptSec of attempts) {
@@ -91,6 +99,7 @@ describe("timeouts demo model matches the real HttpClient", () => {
 						expect(real.settledAt).toBeDefined();
 						expect(real.settledAt).toBeCloseTo(model.answerAt, 2);
 						expect(real.kind).toBe(model.error);
+						if (model.error === "deadline") expect(real.causeKind).toBe(model.cause);
 					} else {
 						// attemptMs off and no deadline: nothing can end the wait.
 						expect(model.error).toBe("never");
