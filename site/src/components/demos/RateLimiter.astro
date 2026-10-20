@@ -1,27 +1,10 @@
-<!doctype html>
-<html lang="en">
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<script>
-  // Follow the theme picked on vereda.dev (Starlight stores it under this key).
-  try {
-    const t = localStorage.getItem("starlight-theme");
-    if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
-  } catch {}
-</script>
-<title>Rate Limiter Simulator</title>
-<meta name="claude:viewport-fit-sides" content="cover">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@600;800&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
-<link rel="stylesheet" href="engine/demo.css">
+---
+// How a token bucket protects an API from your own burst
+// The simulation is in site/demos/models/, the player and drawing helpers in site/demos/engine/.
+---
 
-<div class="wrap">
-  <div>
-    <div class="eyebrow"><a href="./">Vereda patterns</a> · rateLimit</div>
-    <h1>How a token bucket protects an API from your own burst</h1>
-    <p class="lede">Two clients send the same traffic to an API that allows 20 requests per second and answers 429 above that. The traffic is quiet, then 100 requests arrive within 0.4 s at 6 s, then 12 per second. Retries are on. The right client has a rate limit. Press Play. The page slows down at key moments and says what happened.</p>
-  </div>
+<div class="demo not-content">
+  <p class="lede">Two clients send the same traffic to an API that allows 20 requests per second and answers 429 above that. The traffic is quiet, then 100 requests arrive within 0.4 s at 6 s, then 12 per second. Retries are on. The right client has a rate limit. Press Play. The page slows down at key moments and says what happened.</p>
 
   <div class="controls">
     <button id="play" type="button">Play</button>
@@ -61,7 +44,7 @@
 
   <div class="lanes">
     <article class="panel lane">
-      <header><h2>No rate limit</h2><span class="cfg" id="cfgA">retry: { maxRetries: 3 }</span></header>
+      <header><h2>No rate limit</h2><span class="cfg" id="cfgA">retry: &#123; maxRetries: 3 &#125;</span></header>
       <canvas id="laneA" aria-label="Animation: client without a rate limit"></canvas>
       <div class="stats">
         <div class="stat"><span class="v" id="aSent">0</span><span class="k">attempts sent to the API</span></div>
@@ -71,7 +54,7 @@
       </div>
     </article>
     <article class="panel lane">
-      <header><h2>With a rate limit</h2><span class="cfg" id="cfgB">rateLimit: { tokensPerSec: 15, burst: 5, maxWaitMs: 5000 }</span></header>
+      <header><h2>With a rate limit</h2><span class="cfg" id="cfgB">rateLimit: &#123; tokensPerSec: 15, burst: 5, maxWaitMs: 5000 &#125;</span></header>
       <canvas id="laneB" aria-label="Animation: client with a token bucket"></canvas>
       <div class="stats">
         <div class="stat"><span class="v" id="bWait">0</span><span class="k">waiting for a token</span></div>
@@ -118,19 +101,19 @@
     </section>
     <section>
       <h2>In Vereda</h2>
-      <div class="formula">HttpClient.create({
-  timeout: { attemptMs: 5_000 },
-  rateLimit: {
+      <div class="formula">HttpClient.create(&#123;
+  timeout: &#123; attemptMs: 5_000 &#125;,
+  rateLimit: &#123;
     tokensPerSec: 15,
     burst: 5,          // default: max(1, tokensPerSec)
     maxWaitMs: 5_000,  // omit to wait as long as needed
-  },
-  partitions: {
-    "api.partner.com": {
-      rateLimit: { tokensPerSec: 10, burst: 20 },
-    },
-  },
-})</div>
+  &#125;,
+  partitions: &#123;
+    "api.partner.com": &#123;
+      rateLimit: &#123; tokensPerSec: 10, burst: 20 &#125;,
+    &#125;,
+  &#125;,
+&#125;)</div>
       <p class="note">This page runs the same bucket as <code>TokenBucket</code> in <code>src/queue/rate-limiter.ts</code>. An attempt reserves its token when it arrives, and the balance can go below zero. That is why waiting is first in, first out without a queue object. A request over <code>maxWaitMs</code> reserves nothing.</p>
       <p class="note">Each attempt calls <code>takeToken</code> in <code>src/queue/bulkhead.ts</code>: the first one in <code>src/core/client.ts</code>, retries in <code>src/queue/retry.ts</code>. The token comes before any bulkhead slot or global permit, so a waiting attempt holds no concurrency. If you call <code>cancel()</code> or <code>timeout.totalMs</code> passes while it waits, the token goes back to the bucket.</p>
       <p class="note">Simplified model: the API counts attempts per calendar second, sends no <code>Retry-After</code> and answers each in about 80 ms. Retries wait 0.3 to 0.5 s. The real retry delay comes from your <code>backoff</code> setting. A test (<code>test/demos/rate-limiter.parity.test.ts</code>) runs this page's model against the real <code>HttpClient</code>, so the page has to change when the library does.</p>
@@ -138,10 +121,10 @@
   </div>
 </div>
 
-<script type="module">
-import { dot, legend, mix, playedLine, roundRect, sizeCanvas, timeAxes } from "./engine/draw.js";
-import { mountDemo } from "./engine/player.js";
-import { API_LIMIT, END, simulate } from "./models/rate-limiter.js";
+<script>
+import { dot, legend, mix, playedLine, roundRect, sizeCanvas, timeAxes } from "../../../demos/engine/draw.js";
+import { mountDemo } from "../../../demos/engine/player.js";
+import { API_LIMIT, END, simulate } from "../../../demos/models/rate-limiter.js";
 
 const G = 0.25; // sim seconds a dot spends travelling
 const GIN = 0.15;
@@ -448,4 +431,3 @@ $("burst").addEventListener("input", (e) => {
 $("maxWait").addEventListener("change", (e) => demo.rerun({ maxWaitMs: e.target.value === "none" ? undefined : Number(e.target.value) }));
 $("retries").addEventListener("change", (e) => demo.rerun({ retries: e.target.value === "on" }));
 </script>
-</html>

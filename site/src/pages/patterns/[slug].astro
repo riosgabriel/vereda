@@ -1,0 +1,40 @@
+---
+// One page per pattern simulator, inside the site's layout (header, search, sidebar, theme).
+import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
+import BackoffJitter from "../../components/demos/BackoffJitter.astro";
+import Bulkhead from "../../components/demos/Bulkhead.astro";
+import CircuitBreaker from "../../components/demos/CircuitBreaker.astro";
+import RateLimiter from "../../components/demos/RateLimiter.astro";
+import RetryBudget from "../../components/demos/RetryBudget.astro";
+import Timeouts from "../../components/demos/Timeouts.astro";
+import { PATTERNS } from "../../patterns.ts";
+import "../../styles/demo.css";
+
+/** Each demo's page title: the question it answers. */
+const PAGES = {
+	timeouts: { Demo: Timeouts, heading: "Per-attempt timeout or total deadline?" },
+	"backoff-jitter": { Demo: BackoffJitter, heading: "Why retries need jitter" },
+	"retry-budget": { Demo: RetryBudget, heading: "Why a retry budget saves a slow host" },
+	"circuit-breaker": { Demo: CircuitBreaker, heading: "What a circuit breaker does when a host goes down" },
+	bulkhead: { Demo: Bulkhead, heading: "What a bulkhead does when one service gets slow" },
+	"rate-limiter": { Demo: RateLimiter, heading: "How a token bucket protects an API from your own burst" },
+} as const;
+
+export function getStaticPaths() {
+	return PATTERNS.map((p) => ({ params: { slug: p.slug }, props: { pattern: p } }));
+}
+
+const { pattern } = Astro.props;
+const { Demo, heading } = PAGES[pattern.slug];
+---
+
+<StarlightPage
+	frontmatter={{
+		title: heading,
+		description: pattern.blurb.replaceAll("`", ""),
+		tableOfContents: false,
+		editUrl: false,
+	}}
+>
+	<Demo />
+</StarlightPage>

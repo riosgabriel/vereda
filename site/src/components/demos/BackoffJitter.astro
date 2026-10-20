@@ -1,27 +1,10 @@
-<!doctype html>
-<html lang="en">
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<script>
-  // Follow the theme picked on vereda.dev (Starlight stores it under this key).
-  try {
-    const t = localStorage.getItem("starlight-theme");
-    if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
-  } catch {}
-</script>
-<title>Retry Backoff Simulator</title>
-<meta name="claude:viewport-fit-sides" content="cover">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@600;800&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
-<link rel="stylesheet" href="engine/demo.css">
+---
+// Why retries need jitter
+// The simulation is in site/demos/models/, the player and drawing helpers in site/demos/engine/.
+---
 
-<div class="wrap">
-  <div>
-    <div class="eyebrow"><a href="./">Vereda patterns</a> · retry backoff</div>
-    <h1>Why retries need jitter</h1>
-    <p class="lede"><span id="ledeN">100</span> clients call the same host at the same moment. The host is down for the first second. After that it can serve <span id="ledeCap">40</span> requests per second. Every failed client retries up to <span id="ledeR">5</span> times, with exponential backoff. The clients on the left wait the same time between tries. The clients on the right use Vereda's jitter. Press Play. The page slows down at key moments and says what happened.</p>
-  </div>
+<div class="demo not-content">
+  <p class="lede"><span id="ledeN">100</span> clients call the same host at the same moment. The host is down for the first second. After that it can serve <span id="ledeCap">40</span> requests per second. Every failed client retries up to <span id="ledeR">5</span> times, with exponential backoff. The clients on the left wait the same time between tries. The clients on the right use Vereda's jitter. Press Play. The page slows down at key moments and says what happened.</p>
 
   <div class="controls">
     <button id="play" type="button">Play</button>
@@ -49,7 +32,7 @@
 
   <div class="lanes">
     <article class="panel lane">
-      <header><h2>Backoff, no jitter</h2><span class="cfg" id="cfgA">backoff: { jitter: false }</span></header>
+      <header><h2>Backoff, no jitter</h2><span class="cfg" id="cfgA">backoff: &#123; jitter: false &#125;</span></header>
       <canvas id="laneA" aria-label="Animation: clients retrying without jitter"></canvas>
       <div class="stats">
         <div class="stat"><span class="v" id="aPeak">0</span><span class="k">peak load after outage, attempts/s</span></div>
@@ -59,7 +42,7 @@
       </div>
     </article>
     <article class="panel lane">
-      <header><h2>Backoff + jitter</h2><span class="cfg" id="cfgB">backoff: { jitter: true }</span></header>
+      <header><h2>Backoff + jitter</h2><span class="cfg" id="cfgB">backoff: &#123; jitter: true &#125;</span></header>
       <canvas id="laneB" aria-label="Animation: clients retrying with jitter"></canvas>
       <div class="stats">
         <div class="stat"><span class="v" id="bPeak">0</span><span class="k">peak load after outage, attempts/s</span></div>
@@ -103,17 +86,17 @@
     </section>
     <section>
       <h2>In Vereda</h2>
-      <div class="formula">HttpClient.create({
-  timeout: { attemptMs: 5_000 },
-  retry: {
+      <div class="formula">HttpClient.create(&#123;
+  timeout: &#123; attemptMs: 5_000 &#125;,
+  retry: &#123;
     maxRetries: 5,
-    backoff: {
+    backoff: &#123;
       baseDelayMs: 200,
       maxDelayMs: 30_000,
       jitter: true, // the default
-    },
-  },
-})</div>
+    &#125;,
+  &#125;,
+&#125;)</div>
       <p class="note"><code>src/core/backoff.ts</code> builds the delay for retry number <code>attempt</code>, counted from 0. First it takes <code>baseDelayMs * 2 ** attempt</code> and caps it at <code>maxDelayMs</code>. With <code>jitter: true</code> (the default) it returns <code>Math.random() * capped</code>. This is full jitter: a random value from 0 to the capped delay.</p>
       <p class="note">A <code>Retry-After</code> header changes this. When a retryable status (for example 429 or 503) comes with that header, <code>resolveRetryDelay</code> in <code>src/queue/retry.ts</code> uses the header value, capped at <code>maxDelayMs</code>, and adds no jitter. If the host tells every client the same number of seconds, they all come back together. This page shows plain failures with no header. A <code>backoff</code> function you write yourself is used as it is, with no jitter added.</p>
       <p class="note">Simplified model: the host answers each request at once, and it serves up to its capacity in every 100 ms step. The page shows a retry as soon as the failure is known. In Vereda a retry also waits for a free slot in the bulkhead. A test (<code>test/demos/backoff-jitter.parity.test.ts</code>) runs this page's model against the real <code>HttpClient</code>, so the page has to change when the library does.</p>
@@ -121,11 +104,10 @@
   </div>
 </div>
 
-
-<script type="module">
-import { dot, legend, mix, playedLine, roundRect, sizeCanvas, timeAxes } from "./engine/draw.js";
-import { mountDemo } from "./engine/player.js";
-import { STEP, simulate } from "./models/backoff-jitter.js";
+<script>
+import { dot, legend, mix, playedLine, roundRect, sizeCanvas, timeAxes } from "../../../demos/engine/draw.js";
+import { mountDemo } from "../../../demos/engine/player.js";
+import { STEP, simulate } from "../../../demos/models/backoff-jitter.js";
 
 // ---- Drawing --------------------------------------------------------------
 const $ = (id) => document.getElementById(id);
@@ -385,4 +367,3 @@ bind("maxRetries", "maxRetries", String);
 bind("capDelay", "maxDelay", (v) => `${v} s`);
 bind("capacity", "capacity", (v) => `${v}/s`);
 </script>
-</html>

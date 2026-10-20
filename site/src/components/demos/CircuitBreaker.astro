@@ -1,44 +1,10 @@
-<!doctype html>
-<html lang="en">
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<script>
-  // Follow the theme picked on vereda.dev (Starlight stores it under this key).
-  try {
-    const t = localStorage.getItem("starlight-theme");
-    if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
-  } catch {}
-</script>
-<title>Circuit Breaker Simulator</title>
-<meta name="claude:viewport-fit-sides" content="cover">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@600;800&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
-<link rel="stylesheet" href="engine/demo.css">
-<style>
-/* Page-specific: the breaker's state machine and its log. */
-.dot.ring { background: transparent; border: 2px solid var(--retry); }
-.machine { display: grid; grid-template-columns: 3fr 2fr; gap: 16px; }
-.machine svg { width: 100%; height: auto; display: block; }
-.machine svg text { font-family: var(--mono); }
-.log { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-family: var(--mono); font-size: 0.8rem; }
-.log li { display: grid; grid-template-columns: 4.5ch 1fr; gap: 10px; align-items: baseline; }
-.log .t { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
-.log .why { color: var(--muted); display: block; font-size: 0.76rem; }
-.log .empty { color: var(--muted); grid-template-columns: 1fr; }
-.chip { display: inline-block; padding: 1px 8px; border-radius: 99px; font-weight: 600; font-size: 0.78rem; }
-.chip.closed { background: color-mix(in srgb, var(--ok) 20%, var(--surface)); color: var(--ok); }
-.chip.open { background: color-mix(in srgb, var(--fail) 20%, var(--surface)); color: var(--fail); }
-.chip.half-open { background: color-mix(in srgb, var(--retry) 22%, var(--surface)); color: var(--retry); }
-@media (max-width: 900px) { .machine { grid-template-columns: 1fr; } }
-</style>
+---
+// What a circuit breaker does when a host goes down
+// The simulation is in site/demos/models/, the player and drawing helpers in site/demos/engine/.
+---
 
-<div class="wrap">
-  <div>
-    <div class="eyebrow"><a href="./">Vereda patterns</a> · circuitBreaker</div>
-    <h1>What a circuit breaker does when a host goes down</h1>
-    <p class="lede">Two clients send the same 10 requests per second to the same host, with a 1 second timeout. At 6 s the host breaks, and at 20 s it is fixed. The right client has a circuit breaker. Retries are off, so each dot is one request. Press Play. When a phase starts or the breaker changes state, the page slows down for a moment and tells you what happened.</p>
-  </div>
+<div class="demo not-content">
+  <p class="lede">Two clients send the same 10 requests per second to the same host, with a 1 second timeout. At 6 s the host breaks, and at 20 s it is fixed. The right client has a circuit breaker. Retries are off, so each dot is one request. Press Play. When a phase starts or the breaker changes state, the page slows down for a moment and tells you what happened.</p>
 
   <div class="controls">
     <button id="play" type="button">Play</button>
@@ -136,33 +102,51 @@
         <li>After the host is fixed, the breaker keeps rejecting requests until the next trial, which can take up to a full reset timeout. Look at the gap right after 20 s.</li>
         <li>On a flaky host, an open breaker also rejects requests that would have worked.</li>
       </ul>
-      <p class="note">Things to try: choose the flaky host with "5 failures in a row". The breaker almost never opens, because 5 timeouts in a row happen only about 1% of the time (0.4⁵). Switch to the failure rate and it opens. A flaky host that never trips the breaker is the case the <a href="retry-budget.html">retry budget</a> covers.</p>
+      <p class="note">Things to try: choose the flaky host with "5 failures in a row". The breaker almost never opens, because 5 timeouts in a row happen only about 1% of the time (0.4⁵). Switch to the failure rate and it opens. A flaky host that never trips the breaker is the case the <a href="/patterns/retry-budget/">retry budget</a> covers.</p>
     </section>
     <section>
       <h2>In Vereda</h2>
-      <div class="formula">HttpClient.create({
-  timeout: { attemptMs: 1_000 },
-  circuitBreaker: {
+      <div class="formula">HttpClient.create(&#123;
+  timeout: &#123; attemptMs: 1_000 &#125;,
+  circuitBreaker: &#123;
     enabled: true,
     failureThreshold: 5,
     resetTimeoutMs: 30_000,
     halfOpenMaxAttempts: 1,
     // or, instead of failureThreshold:
-    // window: { sizeMs: 3_000,
+    // window: &#123; sizeMs: 3_000,
     //   failureRatePercent: 30,
-    //   minimumRequests: 10 },
-  },
-})</div>
+    //   minimumRequests: 10 &#125;,
+  &#125;,
+&#125;)</div>
       <p class="note">This page follows the state machine in <code>src/queue/circuit-breaker.ts</code>, one breaker per partition. In Vereda every attempt asks the breaker, retries included. Only network errors, timeouts and retryable statuses count as failures. A 404 counts as a success, because the host answered.</p>
       <p class="note">Times are shortened so you don't have to wait: the default reset timeout is 30 s, and here it is 1 to 8 s. In 1.x the breaker does nothing unless <code>enabled: true</code> is set. When the breaker closes, its failure window starts empty, so the breaker opens again only after new failures. A test (<code>test/demos/circuit-breaker.parity.test.ts</code>) runs this page's model against the real <code>HttpClient</code>, so the page has to change when the library does.</p>
     </section>
   </div>
 </div>
 
-<script type="module">
-import { dot, legend, mix, playedLine, roundRect, sizeCanvas, timeAxes, valueAt } from "./engine/draw.js";
-import { mountDemo } from "./engine/player.js";
-import { isBad, PCT, simulate, TIMEOUT, WINDOW_SEC } from "./models/circuit-breaker.js";
+<style is:global>
+	/* Page-specific: the breaker's state machine and its log. */
+	.demo .dot.ring { background: transparent; border: 2px solid var(--retry); }
+	.demo .machine { display: grid; grid-template-columns: 3fr 2fr; gap: 16px; }
+	.demo .machine svg { width: 100%; height: auto; display: block; }
+	.demo .machine svg text { font-family: var(--mono); }
+	.demo .log { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-family: var(--mono); font-size: 0.8rem; }
+	.demo .log li { display: grid; grid-template-columns: 4.5ch 1fr; gap: 10px; align-items: baseline; }
+	.demo .log .t { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+	.demo .log .why { color: var(--muted); display: block; font-size: 0.76rem; }
+	.demo .log .empty { color: var(--muted); grid-template-columns: 1fr; }
+	.demo .chip { display: inline-block; padding: 1px 8px; border-radius: 99px; font-weight: 600; font-size: 0.78rem; }
+	.demo .chip.closed { background: color-mix(in srgb, var(--ok) 20%, var(--surface)); color: var(--ok); }
+	.demo .chip.open { background: color-mix(in srgb, var(--fail) 20%, var(--surface)); color: var(--fail); }
+	.demo .chip.half-open { background: color-mix(in srgb, var(--retry) 22%, var(--surface)); color: var(--retry); }
+	@container demo (max-width: 760px) { .demo .machine { grid-template-columns: 1fr; } }
+</style>
+
+<script>
+import { dot, legend, mix, playedLine, roundRect, sizeCanvas, timeAxes, valueAt } from "../../../demos/engine/draw.js";
+import { mountDemo } from "../../../demos/engine/player.js";
+import { isBad, PCT, simulate, TIMEOUT, WINDOW_SEC } from "../../../demos/models/circuit-breaker.js";
 
 // ---- Drawing --------------------------------------------------------------
 const $ = (id) => document.getElementById(id);
@@ -459,4 +443,3 @@ $("reset").addEventListener("input", (e) => {
   demo.rerun({ resetSec: Number(e.target.value) });
 });
 </script>
-</html>

@@ -166,7 +166,7 @@ so "retry 0" is the second try. For the same moment, then, your predicate sees `
 
 ## How long to wait?
 
-> **See it run:** the [backoff and jitter simulator](https://vereda.dev/patterns/backoff-jitter.html) plays this with and without the pattern.
+> **See it run:** the [backoff and jitter simulator](https://vereda.dev/patterns/backoff-jitter/) plays this with and without the pattern.
 
 ### Backoff
 
