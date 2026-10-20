@@ -4,7 +4,7 @@
 ---
 
 <div class="demo not-content">
-  <p class="lede">One client talks to two services. <code>payments</code> is fast. <code>search</code> gets slow at 6 s and is fixed at 20 s. Both clients send the same traffic and share one global limit.</p>
+  <p class="lede">One client talks to two services. <code>payments</code> is fast. <code>search</code> gets slow at 6 s and is fixed at 20 s. Both clients send the same traffic. In each client, payments and search share one global limit.</p>
   <p class="lede">Only the right client also gives <code>search</code> its own partition limit. Retries are off here, so each box is one request. Press Play. The page slows down at key moments and says what happened.</p>
 
   <div class="controls">
@@ -29,21 +29,21 @@
 
   <div class="lanes">
     <article class="panel lane">
-      <header><h2>Global limit only</h2><span class="cfg" id="cfgA">concurrency: 8, maxQueueSize: 20</span></header>
+      <header><h2>Global limit only</h2><span class="cfg" id="cfgA">concurrency: 8, maxQueueSize: 20, maxRetries: 0</span></header>
       <canvas id="laneA" class="tall" aria-label="Animation: client with only the global limit"></canvas>
       <div class="stats">
         <div class="stat"><span class="v" id="aWait">0</span><span class="k">payments waiting right now</span></div>
-        <div class="stat"><span class="v" id="aAvg">0 ms</span><span class="k">payments average wait, last 2 s</span></div>
+        <div class="stat"><span class="v" id="aAvg">0 ms</span><span class="k">payments average wait, last 2 s, including those still waiting</span></div>
         <div class="stat"><span class="v" id="aRej">0</span><span class="k">payments rejected</span></div>
         <div class="stat"><span class="v" id="aSrch">0</span><span class="k">search rejected</span></div>
       </div>
     </article>
     <article class="panel lane">
-      <header><h2>With a search partition limit</h2><span class="cfg" id="cfgB">search: concurrency 3, limitFirstAttempts</span></header>
+      <header><h2>With a search partition limit</h2><span class="cfg" id="cfgB">search: concurrency 3, limitFirstAttempts; maxRetries: 0</span></header>
       <canvas id="laneB" class="tall" aria-label="Animation: client with a partition limit for search"></canvas>
       <div class="stats">
         <div class="stat"><span class="v" id="bWait">0</span><span class="k">payments waiting right now</span></div>
-        <div class="stat"><span class="v" id="bAvg">0 ms</span><span class="k">payments average wait, last 2 s</span></div>
+        <div class="stat"><span class="v" id="bAvg">0 ms</span><span class="k">payments average wait, last 2 s, including those still waiting</span></div>
         <div class="stat"><span class="v" id="bRej">0</span><span class="k">payments rejected</span></div>
         <div class="stat"><span class="v" id="bSrch">0</span><span class="k">search rejected</span></div>
       </div>
@@ -54,7 +54,7 @@
     <div class="panel chart">
       <h3>How long each payments request waited to start</h3>
       <canvas id="chartWait" aria-label="Scatter chart of payments wait time per request"></canvas>
-      <p>Each point is one payments request, and it is placed where the request started. Dots on the top line were rejected by a full queue. Waiting here means waiting for a global permit.</p>
+      <p>Each point is one payments request, and it is placed where the request started. A red ring on the top line marks a request rejected by a full queue; the dot inside shows its lane. Waiting here means waiting for a global permit.</p>
     </div>
     <div class="panel chart">
       <h3>Global permits held by search</h3>
@@ -67,7 +67,7 @@
     <section>
       <h2>What the bulkhead gives you</h2>
       <ol>
-        <li><strong>Search cannot take every permit.</strong> With 3 search slots and 8 global permits, search holds at most 3 permits. Payments always has the other 5.</li>
+        <li><strong>Search cannot take every permit.</strong> Search holds at most as many permits as it has slots. With this page's defaults, 3 slots and 8 permits, payments always has the other 5.</li>
         <li><strong>The overflow waits in search's own queue.</strong> A search request in that queue holds no global permit. It does not block the global queue that payments uses.</li>
         <li><strong>Only search sees the errors.</strong> When the search queue is full, new search requests fail at once with <code>QueueFullError</code> and <code>scope: "partition"</code>. Payments keeps working.</li>
       </ol>
@@ -87,6 +87,7 @@
       <h2>In Vereda</h2>
       <div class="formula">HttpClient.create(&#123;
   timeout: &#123; attemptMs: 6_000 &#125;,
+  retry: &#123; maxRetries: 0 &#125;, // retries off, as on this page
   concurrency: 8,      // global permits
   maxQueueSize: 20,    // global queue
   partitions: &#123;
@@ -159,12 +160,6 @@ function boxes(ctx, x0, y, n, size, gap, items, col) {
     if (it) {
       ctx.fillStyle = partColor(it, col);
       ctx.fill();
-      if (it.outcome === "timeout") {
-        ctx.strokeStyle = col.fail;
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        ctx.lineWidth = 1;
-      }
     } else {
       ctx.strokeStyle = col.line;
       ctx.lineWidth = 1;
@@ -266,11 +261,14 @@ function drawWait(trace, simT, col) {
       const alpha = 0.9;
       dot(ctx, X(x), Y(rej ? waitMax : a.start - a.sent) + dy, rej ? 2 : 2.3, color, alpha);
       if (rej) {
+        // A red ring marks a rejection, as in the page legend and the lanes.
         ctx.globalAlpha = alpha;
-        ctx.strokeStyle = color;
+        ctx.strokeStyle = col.fail;
+        ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(X(x), Y(waitMax) + dy, 4.5, 0, Math.PI * 2);
         ctx.stroke();
+        ctx.lineWidth = 1;
         ctx.globalAlpha = 1;
       }
     }
@@ -320,8 +318,13 @@ function laneStats(attempts, simT) {
       continue;
     }
     if (a.partition !== "payments") continue;
-    if (simT < a.start) waiting++;
-    else if (a.start > simT - 2) {
+    // A payment still waiting counts with its wait so far, so the average rises while payments
+    // are stuck instead of reading 0 until they start.
+    if (simT < a.start) {
+      waiting++;
+      sum += simT - a.sent;
+      n++;
+    } else if (a.start > simT - 2) {
       sum += a.start - a.sent;
       n++;
     }
