@@ -7,13 +7,14 @@
 <h3 align="center">Make <code>fetch</code> resilient.</h3>
 
 <p align="center">
-  Retries, backoff, timeouts, per-host isolation, and circuit breaking for Node.js <code>fetch</code> — with typed results instead of thrown errors.
+  Retries, backoff, timeouts, per-host isolation, and circuit breaking for <code>fetch</code> on Node.js, Bun and Cloudflare Workers — with typed results instead of thrown errors.
 </p>
 
 <p align="center">
   <a href="https://github.com/riosgabriel/vereda/actions/workflows/ci.yml"><img src="https://github.com/riosgabriel/vereda/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://github.com/riosgabriel/vereda/blob/main/LICENSE"><img src="https://img.shields.io/github/license/riosgabriel/vereda" alt="License" /></a>
   <a href="https://nodejs.org/en/about/previous-releases"><img src="https://img.shields.io/badge/node-22%2B-green" alt="Node 22+" /></a>
+  <a href="#versioning-and-support"><img src="https://img.shields.io/badge/runs%20on-Bun%20%7C%20Cloudflare%20Workers-orange" alt="Runs on Bun and Cloudflare Workers" /></a>
   <a href="https://github.com/riosgabriel/vereda"><img src="https://img.shields.io/badge/ESM-only-blue" alt="ESM only" /></a>
   <a href="https://github.com/riosgabriel/vereda"><img src="https://img.shields.io/badge/TypeScript-6.0-blue" alt="TypeScript" /></a>
   <a href="https://github.com/riosgabriel/vereda/blob/main/package.json"><img src="https://img.shields.io/badge/dependencies-0-brightgreen" alt="Zero runtime dependencies" /></a>
@@ -76,7 +77,34 @@ Even once that loop is correct, it has no limit on how many retries pile onto a 
 | You need to know what happened | emits typed lifecycle events (with attempt counts and queue time) and [metrics](docs/guide/observability.md#metrics) (requests, retries, latency, in-flight, queue depth, breaker trips), tagged per partition |
 | You need auth headers, logging, URL rewriting | runs onion middleware around every attempt |
 
-**What Vereda does not do.** No response caching, no request deduplication, no streaming helpers, no browser support. It targets Node.js 22+ services that depend on other services; for a handful of calls in a script, plain `fetch` is fine.
+### Compared with other libraries
+
+Most HTTP clients retry. Fewer protect the host you're calling, or the rest of your service, once retrying stops helping:
+
+| | Vereda | ky | axios | got | ofetch | cockatiel | opossum |
+| --- | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
+| Built on `fetch` | ✅ | ✅ | ⚠️ | ❌ | ✅ | — | — |
+| Jittered backoff | ✅ | ✅ | ⚠️ | ⚠️ | ❌ | ✅ | ❌ |
+| `Retry-After` | ✅ | ✅ | ✅ | ✅ | ❌ | ⚠️ | — |
+| Attempt *and* total timeout | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ | ✅ | ⚠️ |
+| Circuit breaker | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
+| Per-host concurrency | ✅ | ❌ | ❌ | ❌ | ❌ | ⚠️ | ⚠️ |
+| Retry budget | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | — |
+| Rate limit | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Errors as values | ✅ | ❌ | ❌ | ❌ | ❌ | — | — |
+| Dependencies | 0 | 0 | 5 | 10 | 3 | 0 | 0 |
+
+✅ built in · ⚠️ partial (see below) · ❌ no · — not applicable
+
+- **axios** (with axios-retry): `fetch` is one adapter among several; exponential delay with no jitter; `timeout` bounds either the whole request or, with `shouldResetTimeout`, each attempt, not both. 4 dependencies plus 1 for axios-retry.
+- **got**: a fixed ±100 ms of noise instead of jitter; one overall `timeout.request`.
+- **ofetch**: a per-attempt timeout, but no deadline across retries.
+- **cockatiel**: `Retry-After` needs a custom backoff; per-host limits need one `bulkhead` per host.
+- **opossum**: a per-call timeout and no retries; its `capacity` limit applies per breaker, so per host means one breaker per host.
+
+ky, axios, got and ofetch are HTTP clients; cockatiel and opossum are resilience policies you wrap around any async function, `fetch` included. If retries are all you need, ky is an excellent choice. Vereda is for services where one slow dependency must not take the others down with it. Checked against ky 2.2.0, axios 1.20.0 with axios-retry 4.5.0, got 16.1.0, ofetch 1.5.1, cockatiel 4.0.0 and opossum 10.0.0 in October 2026, from each project's docs and source; if a row is out of date, please [open an issue](https://github.com/riosgabriel/vereda/issues).
+
+**What Vereda does not do.** No response caching, no request deduplication, no streaming helpers, no browser support. It targets services that depend on other services, on Node.js 22+, Bun or Cloudflare Workers (no `nodejs_compat` needed); for a handful of calls in a script, plain `fetch` is fine.
 
 ## Quick start
 
