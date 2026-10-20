@@ -44,6 +44,8 @@ By default, a failed attempt is retried only when the error is transient **and**
 | Rate limit wait over `maxWaitMs` | `rate_limited` | Never |
 | Invalid configuration | `configuration` | Never |
 
+"If idempotent" means `GET`, `HEAD`, `OPTIONS`, `PUT` or `DELETE`, or a `POST`/`PATCH` sent with `retry: { idempotent: true }` or an `Idempotency-Key` header (see [Idempotent methods](#idempotent-methods)).
+
 A [retry budget](#retry-budget), when configured, can also refuse a retry the policy allowed.
 
 The busy-status list is `retry.retryOnStatus`. The underlying `defaultRetryPolicy` is exported, so you can inspect it or call it from inside `retryWhen`.

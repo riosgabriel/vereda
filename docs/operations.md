@@ -18,6 +18,8 @@ Each limit has a wait queue behind it, sized by `maxQueueSize` (default 100). Wh
 **Example** (limits for one host)
 
 ```typescript
+import { HttpClient } from "@vereda/http";
+
 const client = HttpClient.create({
   timeout: { attemptMs: 5_000 },
   concurrency: 50, // the whole process
@@ -50,6 +52,8 @@ A listed partition doesn't inherit from it. Its entry is the whole config for th
 **Example**
 
 ```typescript
+import { HttpClient } from "@vereda/http";
+
 const client = HttpClient.create({
   timeout: { attemptMs: 5_000 },
   defaultPartition: { concurrency: 5, maxQueueSize: 50 },
@@ -65,7 +69,12 @@ const client = HttpClient.create({
 Bulkheads cap how many retries run *at once*, not how many run in total. To cap a failing host's retry volume, set a [retry budget](guide/resilience.md#retry-budget).
 
 ```typescript
-retryBudget: { ratio: 0.1, windowMs: 10_000 }
+import { HttpClient } from "@vereda/http";
+
+const client = HttpClient.create({
+  timeout: { attemptMs: 5_000 },
+  retryBudget: { ratio: 0.1, windowMs: 10_000 },
+});
 ```
 
 - `ratio` is the extra load you accept during an outage: `0.1` means 10%.
@@ -79,7 +88,12 @@ Watch `vereda.retry_budget_exhausted`. A steady rate of refusals means the host 
 For a host with a requests-per-second quota, set a [rate limit](guide/resilience.md#rate-limiting) a little under the quota, so a `429` stays rare.
 
 ```typescript
-rateLimit: { tokensPerSec: 90, maxWaitMs: 2_000 } // the host allows 100/s
+import { HttpClient } from "@vereda/http";
+
+const client = HttpClient.create({
+  timeout: { attemptMs: 5_000 },
+  rateLimit: { tokensPerSec: 90, maxWaitMs: 2_000 }, // the host allows 100/s
+});
 ```
 
 Set `maxWaitMs` below `timeout.totalMs` if you'd rather fail fast with `RateLimitedError` than spend most of the deadline waiting for a token.
@@ -106,6 +120,8 @@ They compose. A request can time out on single attempts several times and still 
 **Example**
 
 ```typescript
+import { HttpClient } from "@vereda/http";
+
 const client = HttpClient.create({
   timeout: {
     attemptMs: 2_000, // about your p99 for a healthy call
