@@ -3,6 +3,7 @@ import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
 import starlightTypeDoc, { typeDocSidebarGroup } from "starlight-typedoc";
 import { PATTERNS } from "./src/patterns.ts";
+import { remarkCallouts } from "./src/remark/callouts.ts";
 import { remarkDocLinks } from "./src/remark/doc-links.ts";
 import { remarkDropTitle } from "./src/remark/drop-title.ts";
 import { remarkMermaid } from "./src/remark/mermaid.ts";
@@ -18,7 +19,7 @@ export default defineConfig({
 	// starlight-typedoc puts the API overview at /api/readme/; keep the short URL working.
 	redirects: { "/api/": "/api/readme/" },
 	markdown: {
-		processor: unified({ remarkPlugins: [remarkDropTitle, remarkDocLinks, remarkMermaid] }),
+		processor: unified({ remarkPlugins: [remarkDropTitle, remarkDocLinks, remarkMermaid, remarkCallouts] }),
 	},
 	integrations: [
 		starlight({

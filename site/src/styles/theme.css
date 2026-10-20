@@ -97,6 +97,43 @@ h2 {
 	font-size: 0.9em;
 }
 
+/* Callouts (src/remark/callouts.ts tags the blockquotes). Quiet boxes with a rule on the left,
+   like a book's margin notes: the accent for the chapter's question and the simulator links,
+   gray and a size smaller for asides, Starlight's caution red for warnings. Never italic. */
+.sl-markdown-content blockquote.callout {
+	padding: 0.75rem 1rem;
+	border-inline-start: 3px solid var(--sl-color-gray-5);
+	border-radius: 0 var(--v-radius-sm) var(--v-radius-sm) 0;
+	background: var(--sl-color-gray-6);
+	font-style: normal;
+	color: var(--sl-color-gray-2);
+}
+.sl-markdown-content blockquote.callout :is(p, li) {
+	font-style: normal;
+}
+.sl-markdown-content blockquote.callout--crux,
+.sl-markdown-content blockquote.callout--demo {
+	border-color: var(--sl-color-accent);
+	background: color-mix(in srgb, var(--sl-color-accent-low) 45%, transparent);
+}
+.sl-markdown-content blockquote.callout--aside {
+	font-size: var(--sl-text-sm);
+}
+.sl-markdown-content blockquote.callout--warning {
+	border-color: var(--sl-color-red);
+	background: color-mix(in srgb, var(--sl-color-red-low) 55%, transparent);
+}
+.sl-markdown-content blockquote.callout strong:first-child {
+	color: var(--sl-color-white);
+}
+
+/* The "What to notice" line under a diagram is its caption, not body text. */
+.sl-markdown-content pre.mermaid + p:has(> em:only-child) {
+	margin-top: 0.5rem;
+	font-size: var(--sl-text-sm);
+	color: var(--sl-color-gray-3);
+}
+
 /* Code blocks share the cards' radius. */
 .expressive-code {
 	--ec-brdRad: var(--v-radius);
