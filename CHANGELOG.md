@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-10-20
+
 ### Fixed
 
 - A circuit breaker in `window` mode now starts an empty window when a half-open trial closes it. Before, the failures that opened the breaker stayed in the window, so with a `resetTimeoutMs` shorter than `window.sizeMs` a single new failure could open it again before `minimumRequests` new outcomes came in. `circuits()` reports `failures: 0` right after the circuit closes.
@@ -218,7 +220,8 @@ of this project before today.
 - The circuit breaker counted an attempt that never reached the host (a body factory that threw before the request was dispatched) as a success — it reset the consecutive-failure count, counted as a non-failure in the rolling window, and could close a half-open trial, all without the host ever being contacted. Such an outcome is now ignored entirely: no change to the failure count, the rolling window, or open/closed state, and in half-open it frees the trial slot without deciding it.
 - A user-supplied circuit-breaker `isFailure` was called twice for every attempt it classified as a failure — once to classify the outcome, then again while recording it — so a classifier that counts, logs, or samples saw each real failure twice. It's now called exactly once per reported outcome.
 
-[Unreleased]: https://github.com/riosgabriel/vereda/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/riosgabriel/vereda/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/riosgabriel/vereda/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/riosgabriel/vereda/compare/v1.0.2...v1.1.0
 [1.0.2]: https://github.com/riosgabriel/vereda/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/riosgabriel/vereda/compare/v1.0.0...v1.0.1
