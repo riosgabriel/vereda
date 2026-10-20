@@ -220,6 +220,8 @@ const client = HttpClient.create({
 });
 ```
 
+When a half-open trial closes the circuit, the window starts empty. The breaker trips again only after `minimumRequests` new outcomes, not on the failures that opened it.
+
 `client.circuits()` returns a snapshot of every enabled breaker that has seen a request, and `[]` when none is configured. Each entry is a copy, so changing it has no effect on the breaker:
 
 ```typescript
