@@ -85,9 +85,10 @@
 }
 .demo button {
 	font: 600 var(--sl-text-sm) var(--sans);
-	color: var(--bg);
-	background: var(--first);
-	border: 1px solid var(--first);
+	/* Controls take the brand accent; --first is a data color (a request) and stays in the charts. */
+	color: var(--sl-color-black);
+	background: var(--sl-color-accent);
+	border: 1px solid var(--sl-color-accent);
 	border-radius: var(--v-radius-sm);
 	padding: 8px 16px;
 	cursor: pointer;
@@ -101,7 +102,7 @@
 .demo button:focus-visible,
 .demo input:focus-visible,
 .demo select:focus-visible {
-	outline: 2px solid var(--first);
+	outline: 2px solid var(--sl-color-accent);
 	outline-offset: 2px;
 }
 .demo .field {
@@ -124,11 +125,11 @@
 	padding: 6px 8px;
 }
 .demo input[type="range"] {
-	accent-color: var(--first);
+	accent-color: var(--sl-color-accent);
 	width: 110px;
 }
 .demo input[type="checkbox"] {
-	accent-color: var(--first);
+	accent-color: var(--sl-color-accent);
 	width: 16px;
 	height: 16px;
 }

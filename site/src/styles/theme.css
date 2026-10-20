@@ -22,9 +22,11 @@
 	--v-radius-sm: 6px;
 	--v-radius: 10px;
 
-	--sl-color-accent-low: #15264a;
-	--sl-color-accent: #6d9eff;
-	--sl-color-accent-high: #c9dbff;
+	/* Brand accent from the logo: ochre on dark, forest on light. Blue (--v-first) is a data
+	   color, "a request", and stays in the charts. */
+	--sl-color-accent-low: #3a2f10;
+	--sl-color-accent: #e8b84a;
+	--sl-color-accent-high: #f2cf7a;
 
 	--v-first: #6d9eff;
 	--v-retry: #f0a63a;
@@ -44,9 +46,9 @@
 }
 
 :root[data-theme="light"] {
-	--sl-color-accent-low: #dce8fb;
-	--sl-color-accent: #2f6fdb;
-	--sl-color-accent-high: #173a78;
+	--sl-color-accent-low: #d9e6dc;
+	--sl-color-accent: #1f5c4f;
+	--sl-color-accent-high: #173d35;
 
 	--v-first: #2f6fdb;
 	--v-retry: #d0820a;
