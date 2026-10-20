@@ -1,62 +1,194 @@
 # Operations guide
 
-This guide is for running Vereda in production: sizing its knobs, reading its runtime state, and shutting it down cleanly. For the API itself, see the [README](../README.md), the [feature guides](guide/resilience.md), and the [API reference](https://vereda.dev/api/).
+This guide covers running Vereda in production: how to size its limits, how to read its runtime state, and how to shut it down cleanly.
+
+For the API itself, see the [README](../README.md), the [feature guides](guide/resilience.md) and the [API reference](https://vereda.dev/api/).
 
 ## Sizing concurrency and queues
 
-Vereda has two independent concurrency limits:
+Vereda has two concurrency limits, and they work independently.
 
-- **Global (`concurrency`, default `50`)** — a semaphore shared across every partition. It bounds total in-flight executions (first attempts and retries alike) against your process, regardless of how many hosts you talk to. Up to `maxQueueSize` (default `100`) more may wait for a permit; beyond that a request resolves with `QueueFullError` (`scope: "global"`).
-- **Per-partition (`partitions[name].concurrency`, default `5`)** — how many retries may run at once for a single partition (host). `partitions[name].maxQueueSize` (default `100`) bounds how many more retries may wait behind that limit before a request is rejected with `QueueFullError`.
+| Limit | Option | Default | Applies to |
+| --- | --- | --- | --- |
+| Global | `concurrency` | 50 | Every attempt, across all hosts |
+| Per partition | `partitions[name].concurrency` | 5 | Retries to one host |
 
-The per-partition limit applies **only to retries**: the first attempt for every request skips the partition bulkhead — this is deliberate (see [Design philosophy](../README.md#design-philosophy) in the README): a struggling downstream should throttle its own retry traffic, not new work. The global limit applies to every attempt, so a host that fails *slowly* can hold global permits and delay or reject requests to healthy hosts under enough load; keep `attemptMs` short for such hosts, or set `limitFirstAttempts`.
+Each limit has a wait queue behind it, sized by `maxQueueSize` (default 100). When a queue is full, the request resolves with `QueueFullError`. For the global queue, the error's `scope` is `"global"`.
 
-Ballpark sizing:
+**Example** (limits for one host)
 
-- Set per-partition `concurrency` close to what the downstream service can actually sustain concurrently (its own connection pool, rate limit, or known capacity). Too high and a struggling host's retries pile pressure back onto it; too low and legitimate retry traffic queues behind slow ones unnecessarily.
-- Set `maxQueueSize` based on how much retry backlog is acceptable before you'd rather fail fast. A small queue (`10`–`50`) surfaces backpressure quickly; a large one absorbs bursts but risks stale-by-the-time-they-run retries.
-- Set the global `concurrency` as a process-wide ceiling — the sum of what you're willing to have in flight across all partitions at once, informed by your own outbound connection limits or memory budget, not by any single downstream's capacity.
-- With many hosts, set `defaultPartition` instead of listing each one. It applies to every partition not named in `partitions`, with the same fields (`concurrency`, `maxQueueSize`, `retry`, `timeout`, `circuitBreaker`, `retryBudget`, `rateLimit`, `limitFirstAttempts`). A listed partition doesn't inherit from it, so a listed entry is the whole config for that host on top of the client-level settings.
-- Bulkheads cap how many retries run **at once**, not how many run in total. To cap a failing host's retry volume, set a [retry budget](guide/resilience.md#retry-budget): `ratio` is the extra load you'll accept during an outage (`0.1` = 10%). Keep `windowMs` well above your backoff delays so retries are counted against the same window as the traffic that funded them. Lower `minRetriesPerSec` for hosts that see only a few requests per second, or the floor will admit more retries than the ratio would. Watch `vereda.retry_budget_exhausted`: a steady rate of refusals means the host is degraded, not just having an occasional failure.
-- For a host with a requests-per-second quota, set a [rate limit](guide/resilience.md#rate-limiting) a little under the quota, so a `429` stays the exception. Set `maxWaitMs` below `timeout.totalMs` when you'd rather fail fast with `RateLimitedError` than spend most of a request's deadline waiting for a token. A rate limit applies per process: with N replicas calling the same host, divide the quota by N.
-- Turn on `partition.limitFirstAttempts: true` only if a partition's downstream is fragile enough that *even first attempts* need throttling (R6). Off by default because it changes latency for fresh traffic, not just retries.
+```typescript
+const client = HttpClient.create({
+  timeout: { attemptMs: 5_000 },
+  concurrency: 50, // the whole process
+  partitions: {
+    "api.example.com": { concurrency: 5, maxQueueSize: 20 },
+  },
+});
+```
 
-When a partition fills up, `client.partitions()` (below) is how you observe it before it becomes an incident.
+### Why first attempts skip the partition limit
+
+The partition limit applies only to retries. The first attempt of every request skips it.
+
+This is deliberate: a struggling host should slow down its own retry traffic, not new work. See [Design philosophy](../README.md#design-philosophy) in the README.
+
+The global limit does apply to every attempt. So a host that fails *slowly* can hold global permits and, under enough load, delay or reject requests to healthy hosts. Keep `attemptMs` short for such hosts, or turn on [`limitFirstAttempts`](#fragile-hosts-limitfirstattempts).
+
+### Picking the numbers
+
+- **Partition concurrency.** Close to what the host can really serve at once: its connection pool, rate limit or known capacity. Too high, and a struggling host's retries pile back onto it. Too low, and good retries wait behind slow ones.
+- **Queue size.** How much retry backlog you accept before you'd rather fail fast. A small queue (10 to 50) shows backpressure quickly. A large one absorbs bursts, but its retries may be stale by the time they run.
+- **Global concurrency.** A ceiling for the whole process. Base it on your own outbound connection limits or memory budget, not on any one host's capacity.
+
+### Many hosts: `defaultPartition`
+
+Instead of listing every host, set `defaultPartition`. It applies to every partition not named in `partitions` and takes the same fields: concurrency, queue size, retry, timeout, circuit breaker, retry budget, rate limit and `limitFirstAttempts`.
+
+A listed partition doesn't inherit from it. Its entry is the whole config for that host, on top of the client-level settings.
+
+**Example**
+
+```typescript
+const client = HttpClient.create({
+  timeout: { attemptMs: 5_000 },
+  defaultPartition: { concurrency: 5, maxQueueSize: 50 },
+  partitions: {
+    // replaces defaultPartition for this host: nothing is merged
+    "payments.example.com": { concurrency: 2, maxQueueSize: 10 },
+  },
+});
+```
+
+### Capping retry volume: retry budget
+
+Bulkheads cap how many retries run *at once*, not how many run in total. To cap a failing host's retry volume, set a [retry budget](guide/resilience.md#retry-budget).
+
+```typescript
+retryBudget: { ratio: 0.1, windowMs: 10_000 }
+```
+
+- `ratio` is the extra load you accept during an outage: `0.1` means 10%.
+- Keep `windowMs` well above your backoff delays, so retries count against the same window as the traffic that paid for them.
+- For hosts that see only a few requests per second, lower `minRetriesPerSec`. Otherwise the floor admits more retries than the ratio would.
+
+Watch `vereda.retry_budget_exhausted`. A steady rate of refusals means the host is degraded, not just failing now and then.
+
+### Hosts with a quota: rate limit
+
+For a host with a requests-per-second quota, set a [rate limit](guide/resilience.md#rate-limiting) a little under the quota, so a `429` stays rare.
+
+```typescript
+rateLimit: { tokensPerSec: 90, maxWaitMs: 2_000 } // the host allows 100/s
+```
+
+Set `maxWaitMs` below `timeout.totalMs` if you'd rather fail fast with `RateLimitedError` than spend most of the deadline waiting for a token.
+
+The limit is per process. With N replicas calling the same host, divide the quota by N.
+
+### Fragile hosts: `limitFirstAttempts`
+
+Set `limitFirstAttempts: true` on a partition only if its host is so fragile that even first attempts need throttling. It's off by default because it changes latency for fresh traffic, not just retries.
+
+When a partition fills up, [`client.partitions()`](#reading-partitions) shows it before it becomes an incident.
 
 ## `attemptMs` vs. `totalMs`
 
-Two different timeouts. `attemptMs` is required on the client-level `timeout` (pass `Infinity` to opt out explicitly); `totalMs` is optional and disabled by default:
+Vereda has two timeouts, and they measure different things.
 
-- **`timeout.attemptMs`** — a per-attempt deadline. Each individual attempt (the first one and every retry) is aborted if it runs longer than this, and the result folds into the normal retry loop as a `TimeoutError` (retried like any other transient failure).
-- **`timeout.totalMs`** — a whole-ticket deadline, starting when `request()`/`get()`/etc. is called. It covers time spent queued, sleeping in backoff, and executing — everywhere. On expiry the ticket resolves with `DeadlineExceededError`, a terminal error; no further retries happen even if attempts remain. A retry whose delay would run to or past the deadline isn't slept on: the ticket fails right away with the same error, with the last attempt's error as `cause`. Only the delay is compared, not delay + `attemptMs`, because `attemptMs` is an upper bound and a retry that answers quickly can still fit.
+| | Bounds | Required | On expiry |
+| --- | --- | --- | --- |
+| `attemptMs` | One attempt: the first, or any retry | Yes, on the client (`Infinity` opts out) | `TimeoutError`, retried like any transient failure |
+| `totalMs` | The whole call, retries included | No, off by default | `DeadlineExceededError`, and no more retries |
 
-Use `attemptMs` to bound a single slow call (protects you from a hung connection). Use `totalMs` to bound how long a caller is willing to wait for an eventual answer at all, independent of how many retries that took. They compose: a request can time out on an individual attempt several times and still be retried, right up until `totalMs` cuts it off entirely.
+They compose. A request can time out on single attempts several times and still be retried, until `totalMs` ends it.
 
-A reasonable starting point: set `attemptMs` to your p99 expected latency for a healthy call, and `totalMs` to the longest you're willing to make the caller wait end-to-end (factoring in `maxRetries` × backoff).
+**Example**
 
-Both deadlines also bound reading the body of a Response Vereda hands back unread — a success with neither `parse` nor `responseType`, or an `HttpError`'s `.response` — capped at whichever is sooner, measured from that attempt's start: the remaining `attemptMs`, or the ticket's `totalMs`. This matches the bound a `parse`d body (or one read via `responseType`) already gets for free: it's read, and `parse` run, inside the attempt; without it, a server that sends headers then stalls the body would let `raw.json()` or `error.response.text()` hang past both deadlines. Whichever bound fires aborts the read with Vereda's own error as the rejection — a `TimeoutError` when `attemptMs` fired first (or was the only bound), a `DeadlineExceededError` when `totalMs` fired first — so the rejection is `instanceof` the right class and `.kind`-narrowable, same as any other error the client produces. If you need to stream or read a body later than that — long-lived downloads, deferred processing — set `timeout: { attemptMs: Infinity }` for that request (and no `totalMs`), or bring your own `AbortSignal` via `options.signal` instead.
+```typescript
+const client = HttpClient.create({
+  timeout: {
+    attemptMs: 2_000, // about your p99 for a healthy call
+    totalMs: 10_000, // the longest the caller should wait
+  },
+});
+```
+
+A good starting point: set `attemptMs` to your p99 latency for a healthy call, and `totalMs` to the longest you'll make the caller wait end to end. Count in `maxRetries` × backoff.
+
+### What `totalMs` covers
+
+The deadline starts when you call `request()`, `get()` or any other method. It covers everything after that: time in a queue, backoff sleeps and the attempts themselves.
+
+If a retry's backoff delay would reach the deadline, Vereda doesn't sleep on it. The ticket fails at once with `DeadlineExceededError`, with the last attempt's error as its `cause`.
+
+Only the delay is compared, not the delay plus `attemptMs`. `attemptMs` is an upper bound, and a retry that answers quickly can still fit.
+
+### Reading the body later
+
+Both deadlines also bound reading a body that Vereda hands back unread. That's a success with neither `parse` nor `responseType`, or an `HttpError`'s `.response`.
+
+The read has to finish within the remaining `attemptMs` or the ticket's `totalMs`, whichever ends first, counted from that attempt's start. A parsed body already gets this bound, because it's read inside the attempt. Without it, a server that sends headers and then stalls the body would let `raw.json()` or `error.response.text()` hang past both deadlines.
+
+When the bound fires, the read rejects with Vereda's own error:
+
+- `TimeoutError` when `attemptMs` fired first, or was the only bound.
+- `DeadlineExceededError` when `totalMs` fired first.
+
+Both are ordinary Vereda errors, so `instanceof` and `.kind` work as usual.
+
+To stream a body or read it later (long downloads, deferred processing), set `timeout: { attemptMs: Infinity }` on that request with no `totalMs`. Or pass your own `AbortSignal` as `options.signal`.
 
 ## Reading `partitions()`
 
 ```typescript
 const snapshots = client.partitions();
-// [{ partition: "api.example.com", running: 2, queued: 5, concurrency: 5, maxQueueSize: 100, tokens: 3 }, ...]
+// [{ partition: "api.example.com", running: 2, queued: 5,
+//    concurrency: 5, maxQueueSize: 100, tokens: 3 }, ...]
 ```
 
-One entry per partition that has seen a request. Each entry also carries `name`, the same value as `partition`; it is deprecated and goes away in 2.0. `tokens`, present only for a partition with a `rateLimit`, is how many tokens are free right now; `0` with requests stalling means that partition is held back by its rate limit, not by concurrency. `running` and `queued` are point-in-time counts of retry traffic only (first attempts never appear here, by design). Poll this on an interval and feed it into your metrics sink's gauges, or check it directly when debugging why a specific host's requests seem stuck — `queued` near `maxQueueSize` means that partition is saturated and new retries for it will start failing with `QueueFullError`.
+There's one entry per partition that has seen a request.
+
+- `running` and `queued` count retry traffic only, at that moment. First attempts never appear here, by design.
+- `queued` near `maxQueueSize` means the partition is saturated. New retries to it will start failing with `QueueFullError`.
+- `tokens` appears only for a partition with a rate limit: how many tokens are free right now. `0` while requests stall means the rate limit is holding them back, not concurrency.
+- `name` holds the same value as `partition`. It's deprecated and goes away in 2.0.
+
+Poll it on an interval and feed it to your metrics, or check it when a host's requests seem stuck.
 
 ## Reading `circuits()`
 
 ```typescript
 const circuits = client.circuits();
-// [{ partition: "api.example.com", state: "open", failures: 5, openedAt: 1767225600000, nextAttemptAt: 1767225630000 }, ...]
+// [{ partition: "api.example.com", state: "open", failures: 5,
+//    openedAt: 1767225600000, nextAttemptAt: 1767225630000 }, ...]
 ```
 
-One entry per partition with an enabled circuit breaker that has seen a request; `[]` when no breaker is configured. Pair it with the `circuitOpen`/`circuitClose` events: the events tell you when a circuit changes, and the snapshot tells you where every circuit is right now (useful for a health endpoint). An `open` entry whose `nextAttemptAt` is in the past hasn't had a request since its reset timeout ran out. The next request becomes the half-open trial.
+There's one entry per partition with an enabled circuit breaker that has seen a request. With no breaker configured, it returns `[]`.
+
+Use it together with the `circuitOpen` and `circuitClose` events. The events tell you when a circuit changes. The snapshot tells you where every circuit is right now, which suits a health endpoint.
+
+An `open` entry whose `nextAttemptAt` is in the past hasn't had a request since its reset timeout ran out. The next request becomes the half-open trial.
 
 ## Wiring a metrics sink
 
-Implement `MetricsSink` (`counter`, `histogram`, `gauge` — all synchronous, non-blocking) and pass it as `metrics` in `ClientConfig`. Vereda emits the series in `METRICS` (`src/core/metrics.ts`), exported so you don't have to hardcode the string names:
+Implement `MetricsSink` and pass it as `metrics`. Its three methods, `counter`, `histogram` and `gauge`, must be synchronous and must not block.
+
+**Example** (a sink that logs every data point)
+
+```typescript
+import { HttpClient, type MetricsSink } from "@vereda/http";
+
+const sink: MetricsSink = {
+  counter: (name, value, tags) => console.log("counter", name, value, tags),
+  histogram: (name, value, tags) => console.log("histogram", name, value, tags),
+  gauge: (name, value, tags) => console.log("gauge", name, value, tags),
+};
+
+const client = HttpClient.create({ timeout: { attemptMs: 5_000 }, metrics: sink });
+```
+
+Vereda emits these series. Match on the exported `METRICS` constants rather than the string names.
 
 | Series | Type | Tags | Meaning |
 | --- | --- | --- | --- |
@@ -64,38 +196,75 @@ Implement `MetricsSink` (`counter`, `histogram`, `gauge` — all synchronous, no
 | `METRICS.RETRIES`<br>`vereda.retries` | counter | `partition`, `kind` | One per retry attempt, tagged by the error `kind` that triggered it |
 | `METRICS.DURATION`<br>`vereda.duration_ms` | histogram | `partition`, `kind` | Total ticket duration at settlement |
 | `METRICS.QUEUE_DEPTH`<br>`vereda.queue_depth` | gauge | `partition` | Current per-partition queue size |
-| `METRICS.GLOBAL_QUEUE_DEPTH`<br>`vereda.global_queue_depth` | gauge | — | Callers currently waiting for a permit under the global concurrency cap (D1) |
+| `METRICS.GLOBAL_QUEUE_DEPTH`<br>`vereda.global_queue_depth` | gauge | — | Callers currently waiting for a permit under the global concurrency cap |
 | `METRICS.IN_FLIGHT`<br>`vereda.in_flight` | gauge | — | Tickets started but not yet finished, across all partitions |
 | `METRICS.CIRCUIT_OPEN`<br>`vereda.circuit_open` | counter | `partition` | One per circuit breaker trip to open |
 | `METRICS.RETRY_BUDGET_EXHAUSTED`<br>`vereda.retry_budget_exhausted` | counter | `partition` | One per retry the partition's retry budget refused |
 
-- **`DURATION` tags:** `partition` is absent only when the URL couldn't be resolved; `kind` is `success`, `cancelled`, or the error `kind`.
-- **`QUEUE_DEPTH`** has the same retries-only caveat as `partitions()` above: a partition only shows queued first attempts if `limitFirstAttempts` is enabled for it.
-- **`GLOBAL_QUEUE_DEPTH`** is the signal that you're throttled by `concurrency`/`ClientConfig.concurrency` rather than downstream latency.
+- **`DURATION` tags.** `partition` is absent only when the URL couldn't be resolved. `kind` is `success`, `cancelled` or the error `kind`.
+- **`QUEUE_DEPTH`** counts retries only, like `partitions()`. A partition shows queued first attempts only if `limitFirstAttempts` is on for it.
+- **`GLOBAL_QUEUE_DEPTH`** is the signal that the global `concurrency` is throttling you, not downstream latency.
 - **`IN_FLIGHT`** is reported when a ticket starts and when it finishes, so it returns to `0` when the client is idle.
-- **`CIRCUIT_OPEN` and `RETRY_BUDGET_EXHAUSTED`** come from opt-in features: they stay silent unless `circuitBreaker.enabled` or `retryBudget` is set.
+- **`CIRCUIT_OPEN` and `RETRY_BUDGET_EXHAUSTED`** come from opt-in features. They stay silent unless `circuitBreaker.enabled` or `retryBudget` is set.
 
-For OpenTelemetry, `otelMetricsSink` from `@vereda/http/otel` is a ready-made `MetricsSink`: counters and the duration histogram map directly, and gauges become observable gauges reporting the latest value per tag set. See the [OpenTelemetry](guide/observability.md#opentelemetry) section of the Observability guide, which also covers tracing. Lifecycle events (`client.on("request" | "retry" | "success" | "failure" | "cancelled" | "retryBudgetExhausted" | "circuitOpen" | "circuitClose", ...)`) are the complementary hook for structured logging or alerting rather than metrics — see [Lifecycle events](guide/observability.md#lifecycle-events).
+For OpenTelemetry, use `otelMetricsSink` from `@vereda/http/otel`. Counters and the duration histogram map directly, and gauges become observable gauges that report the latest value per tag set. See [OpenTelemetry](guide/observability.md#opentelemetry) in the Observability guide, which also covers tracing.
 
-**`QUEUE_DEPTH`/`GLOBAL_QUEUE_DEPTH` are polled, not pushed on change** — they're read at request-start and at each ticket's terminal event, not at the moment a caller actually joins or leaves the wait queue. That reliably shows a *sustained* backlog (a dashboard/alert on "depth > N for 5 minutes" works as expected), but a single request that's briefly queued and released between those two polling points can be invisible to the gauge. For guaranteed per-request visibility regardless of backlog size, use `queuedMs` on the lifecycle events instead — it's measured at the point of acquisition, not polled.
+For logging and alerting, use [lifecycle events](guide/observability.md#lifecycle-events) instead: `request`, `retry`, `success`, `failure`, `cancelled`, `retryBudgetExhausted`, `circuitOpen` and `circuitClose`.
+
+### Queue gauges are sampled
+
+The two queue-depth gauges aren't pushed when a queue changes. Vereda reads them when a request starts and when a ticket finishes.
+
+That reliably shows a *sustained* backlog: an alert on "depth > N for 5 minutes" works as expected. But a request that queues briefly between two readings can go unseen.
+
+For per-request visibility, use `queuedMs` on the lifecycle events. It's measured when the permit is acquired, not sampled.
 
 ## Shutdown sequence
 
+There are two ways to close a client.
+
+| Call | What happens | Use it for |
+| --- | --- | --- |
+| `close()` | Cancels every in-flight ticket at once | A hard, fast exit |
+| `close({ drain: true, timeoutMs })` | Waits for in-flight tickets up to `timeoutMs`, then cancels the rest | Graceful shutdown, so requests about to succeed can finish |
+
+**Example**
+
 ```typescript
-await client.close({ drain: true, timeoutMs: 30_000 });
+process.on("SIGTERM", async () => {
+  await client.close({ drain: true, timeoutMs: 30_000 });
+});
 ```
 
-- **`close()`** with no `drain` (or `drain: false`) cancels every in-flight ticket immediately and rejects new requests with `ConfigurationError("client closed")`. Use this for a hard, fast shutdown (e.g. `SIGKILL`-adjacent paths where you just need the process to exit without lingering timers).
-- **`close({ drain: true, timeoutMs })`** waits for in-flight tickets to settle naturally, up to `timeoutMs` (a finite number up to 2,147,483,647 ms), then cancels whatever's left. Use this on graceful shutdown (`SIGTERM` handler) so requests that are about to succeed get the chance to.
+Either way, new requests after `close()` fail with `ConfigurationError("client closed")`.
 
-Either way, all internal timers (backoff sleeps, `attemptMs`/`totalMs` deadlines) are `unref()`ed from the moment they're created, so a Vereda client never by itself keeps the Node event loop alive — `close()` is about resolving in-flight *tickets* cleanly, not about unblocking process exit.
+`timeoutMs` must be a finite number from 1 to 2,147,483,647 ms, the longest delay a timer honours (about 24.8 days). Otherwise `close({ drain: true })` rejects with a `ConfigurationError` and the client stays open.
 
-Call `close()` once per client, before the process exits, in whichever shutdown handler your deployment already uses. Extra calls are harmless: a `close()` that arrives while a drain is in progress returns the same promise, so it resolves only when the shutdown actually finishes. `close({ drain: true })` without a finite `timeoutMs` between 1 and 2,147,483,647 ms (the largest delay a timer honours, about 24.8 days) rejects with a `ConfigurationError` and leaves the client open.
+Call `close()` once per client before the process exits, in the shutdown handler you already use. Extra calls are harmless: a `close()` during a drain returns the same promise, which resolves when the shutdown finishes.
+
+You don't need `close()` for the process to exit. Every internal timer (backoff sleeps, both deadlines) is `unref()`ed when it's created, so a Vereda client never keeps the Node event loop alive on its own. `close()` is about settling in-flight tickets cleanly.
 
 ## Redaction
 
-`redactQuery` defaults to `true`. With it on, every URL that appears in a lifecycle event, is passed to your `logger`, or is embedded in an error (`TimeoutError`/`DeadlineExceededError`'s `message` and `url`, and so `MaxRetriesExceededError.message` too) has its query *values* replaced with `[redacted]` (keys are preserved, so `?token=abc123` becomes `?token=[redacted]`), and any userinfo credentials (`https://user:pass@host`) replaced with `[redacted]@`. This covers the common case of API keys, session tokens, or PII passed in the URL. Request/response *headers* are never logged or emitted by Vereda regardless of this setting, so an `Authorization` header is never at risk of leaking into logs via the library itself.
+`redactQuery` is on by default. It hides secrets in the URLs that Vereda shows you:
 
-Redaction only touches what Vereda itself surfaces (event payloads, log calls, error messages). The bundled `requestLogger()` middleware redacts the same way by default. Middleware can't see the client's config, so pass `requestLogger({ redactQuery: false })` to turn it off there too. If your own middleware logs `ctx`/`options` directly, or the raw `Response` (including `HttpError.response.url`) or request body contains sensitive data, redact that yourself before logging it. `redactUrl` is exported from `@vereda/http` for that.
+- Query *values* become `[redacted]` and keys stay: `?token=abc123` becomes `?token=[redacted]`.
+- Credentials in the URL become `[redacted]@`: `https://user:pass@host` becomes `https://[redacted]@host`.
 
-Set `redactQuery: false` only in trusted environments (e.g. local development against a mock server) where seeing full URLs in logs is worth more than the leak risk.
+That covers API keys, session tokens and personal data passed in the URL. It applies to every URL in a lifecycle event, in a call to your `logger`, and in an error: the `message` and `url` of `TimeoutError` and `DeadlineExceededError`, and so `MaxRetriesExceededError.message` too.
+
+Vereda never logs or emits request or response *headers*, whatever this setting says. An `Authorization` header can't leak into logs through the library.
+
+### What it doesn't cover
+
+Redaction only touches what Vereda itself surfaces. Redact the rest yourself:
+
+- Your own middleware that logs `ctx` or `options`.
+- The raw `Response`, including `HttpError.response.url`.
+- Request bodies with sensitive data.
+
+`redactUrl` is exported from `@vereda/http` for that.
+
+The bundled `requestLogger()` middleware redacts the same way by default. Middleware can't see the client's config, so to turn it off there too, pass `requestLogger({ redactQuery: false })`.
+
+Set `redactQuery: false` only in trusted environments, such as local development against a mock server.
