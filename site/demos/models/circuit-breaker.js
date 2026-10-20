@@ -44,7 +44,7 @@ function phases(o) {
 	const down = o.scenario === "down";
 	const trip =
 		o.mode === "window"
-			? `more than ${PCT}% of the last ${WINDOW_SEC} s fail`
+			? `more than ${PCT}% of the last ${WINDOW_SEC} s fail, counting at least ${MIN_REQ} requests`
 			: `${o.threshold} requests in a row fail`;
 	return [
 		{
@@ -69,7 +69,7 @@ function phases(o) {
 			to: END,
 			tone: "good",
 			label: "Host fixed",
-			caption: `The host works again. The left lane recovers at once. The right lane keeps rejecting requests until its next trial, up to ${o.resetSec} s later. That gap is the price of the breaker.`,
+			caption: `The host works again. The left lane recovers as soon as its last hung requests time out, about ${TIMEOUT} s later. The right lane keeps rejecting requests until a trial is answered: up to the ${o.resetSec} s reset timeout plus the ${TIMEOUT} s a trial sent just before the fix takes to time out. That gap is the price of the breaker.`,
 		},
 	];
 }
@@ -99,6 +99,8 @@ export function simulate(o) {
 	const states = [{ t: 0, state: "closed" }];
 	const failures = [[0, 0]];
 	const failRate = [[0, 0]];
+	// Requests in the window, so the page can say when there are too few to trip it.
+	const winTotal = [[0, 0]];
 	const attempts = [];
 	const pending = [];
 	const setState = (s, t, reason) => {
@@ -116,8 +118,10 @@ export function simulate(o) {
 		return { total: br.win.length, rate: br.win.length ? (f / br.win.length) * 100 : 0 };
 	};
 	const count = (t) => {
+		const w = winStats(t);
 		failures.push([t, br.consec]);
-		failRate.push([t, winStats(t).rate]);
+		failRate.push([t, w.rate]);
+		winTotal.push([t, w.total]);
 	};
 	const trips = (t) => {
 		if (o.mode === "window") {
@@ -222,7 +226,13 @@ export function simulate(o) {
 		})),
 		lanes: {
 			without: { config: "timeout: 1 s", attempts: plain, results: plain.map(resultOf) },
-			with: { config: cfg, attempts, results: attempts.map(resultOf), states, series: { failures, failRate } },
+			with: {
+				config: cfg,
+				attempts,
+				results: attempts.map(resultOf),
+				states,
+				series: { failures, failRate, winTotal },
+			},
 		},
 	};
 }

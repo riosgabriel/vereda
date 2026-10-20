@@ -84,7 +84,7 @@
     <div class="panel chart">
       <h3>Requests reaching the host (per second)</h3>
       <canvas id="chartHost" aria-label="Chart of requests reaching the host per second, with the breaker state below"></canvas>
-      <p>The strip at the bottom is the breaker's state. While it is open, the host gets almost no traffic, only one trial request each reset timeout.</p>
+      <p>The strip at the bottom is the breaker's state. While it is open, the host gets almost no traffic: one trial request about every reset timeout plus 1 s, because a failed trial reopens the breaker only when it times out.</p>
     </div>
   </div>
 
@@ -93,7 +93,7 @@
       <h2>What the breaker gives you</h2>
       <ol>
         <li><strong>Callers find out at once.</strong> When the breaker is open, a request fails with <code>CircuitOpenError</code> in about 0 ms instead of waiting 1 s for a timeout. Waiting requests don't pile up.</li>
-        <li><strong>The broken host gets a break.</strong> It sees one trial request per reset timeout instead of 10 per second, so it has room to restart or catch up.</li>
+        <li><strong>The broken host gets a break.</strong> It sees one trial request about every reset timeout plus the trial's own 1 s timeout, instead of 10 per second, so it has room to restart or catch up.</li>
         <li><strong>It checks by itself.</strong> After the reset timeout, one trial goes through (half-open). If it works, the breaker closes. If not, it opens again and waits.</li>
       </ol>
     </section>
@@ -101,10 +101,11 @@
       <h2>What it costs</h2>
       <ul>
         <li>It doesn't make anything succeed while the host is down. Both lanes fail every request. The breaker only makes those failures fast and cheap.</li>
-        <li>After the host is fixed, the breaker keeps rejecting requests until the next trial, which can take up to a full reset timeout. Look at the gap right after 20 s.</li>
+        <li>After the host is fixed, the breaker keeps rejecting requests until a trial is answered. That can take up to a full reset timeout plus 1 s, when a trial sent just before the fix still times out. Look at the gap right after 20 s.</li>
         <li>On a flaky host, an open breaker also rejects requests that would have worked.</li>
       </ul>
-      <p class="note">Things to try: choose the flaky host with "5 failures in a row". The breaker almost never opens, because 5 timeouts in a row happen only about 1% of the time (0.4⁵).</p>
+      <p class="note">Things to try: choose the flaky host with "5 failures in a row". Any given 5 requests all time out only about 1% of the time (0.4⁵). But the host is flaky for 140 requests, and somewhere in 140 a run of 5 happens 58% of the time. In this run the longest is 4, so the breaker stays closed by luck of the draw.</p>
+      <p class="note">Switch to the failure rate and it opens every time: 40% of the last 3 s fail, which is over 30%. A rate catches a flaky host reliably; a run of failures in a row may or may not come.</p>
       <p class="note">Switch to the failure rate and it opens. A flaky host that never trips the breaker is the case the <a href="/patterns/retry-budget/">retry budget</a> covers.</p>
     </section>
     <section>
@@ -154,7 +155,7 @@
 	// and models/*.js (excluded in tsconfig.json). Their behavior is pinned by test/demos/.
 import { dot, legend, mix, playedLine, roundRect, sizeCanvas, timeAxes, valueAt } from "../../../demos/engine/draw.js";
 import { mountDemo } from "../../../demos/engine/player.js";
-import { isBad, PCT, simulate, TIMEOUT, WINDOW_SEC } from "../../../demos/models/circuit-breaker.js";
+import { isBad, MIN_REQ, PCT, simulate, TIMEOUT, WINDOW_SEC } from "../../../demos/models/circuit-breaker.js";
 
 // ---- Drawing --------------------------------------------------------------
 const $ = (id) => document.getElementById(id);
@@ -168,7 +169,10 @@ const stateAt = (states, t) => {
   return s;
 };
 const stateColor = (s, col) => (s === "closed" ? col.ok : s === "open" ? col.fail : col.retry);
+// A dot's trip to the host is drawn as already made: it reaches the host at `sent` and leaves at
+// `end`, so what sits at the host is what the "callers waiting" stat counts.
 const G = 0.25; // sim seconds a dot spends travelling each way
+const BOUNCE = 0.15; // round trip of a request the open breaker rejects (it fails in ~2 ms)
 
 function drawLane(canvas, lane, simT, col, withBreaker) {
   const { ctx, w, h } = sizeCanvas(canvas);
@@ -227,11 +231,13 @@ function drawLane(canvas, lane, simT, col, withBreaker) {
       const left = Math.max(0, current.resetSec - (simT - st.t));
       note = left > 0 ? `trial in ${left.toFixed(1)} s` : "next request = trial";
     } else if (st.state === "closed") {
+      const total = valueAt(lane.series.winTotal, simT);
+      // Under MIN_REQ requests the rate can't trip the breaker, however high it is.
       note = current.mode === "window"
-        ? `fail rate ${Math.round(valueAt(lane.series.failRate, simT))}%`
+        ? `fail rate ${Math.round(valueAt(lane.series.failRate, simT))}%${total < MIN_REQ ? ` (${total} of ${MIN_REQ} needed)` : ""}`
         : `failures ${valueAt(lane.series.failures, simT)}/${current.threshold}`;
     } else {
-      note = "waiting for trial";
+      note = "trial in flight";
     }
     ctx.fillText(note, gateX, cy + 34);
   }
@@ -240,32 +246,33 @@ function drawLane(canvas, lane, simT, col, withBreaker) {
   const hostIn = hostL + 8;
   let waiting = 0;
   for (const a of lane.attempts) {
-    if (a.sent > simT) break;
-    if (simT - a.sent > TIMEOUT + 2 * G + 0.1) continue;
+    if (a.sent - G > simT) break;
+    if (simT > a.end + G) continue;
     const y = cy + (((a.request * 37) % 9) - 4) * 9;
     if (a.start === null) {
-      const go = (simT - a.sent) / (G / 2);
+      // To the gate and straight back: the breaker answers before the host is involved.
+      const half = BOUNCE / 2;
+      const go = (simT - (a.sent - half)) / half;
+      if (go < 0) continue;
       if (go < 1) dot(ctx, startX + (gateX - 22 - startX) * go, y, 3.4, col.first);
       else {
-        const back = (simT - a.sent - G / 2) / G;
+        const back = (simT - a.sent) / half;
         if (back < 1) dot(ctx, gateX - 22 - (gateX - 22 - startX) * back, y, 3.4, col.refused, 1 - back * 0.6);
       }
       continue;
     }
-    const tGo = a.sent + G;
-    const tBack = a.end + G;
     let x;
     let yy = y;
     let color = col.first;
     let alpha = 1;
-    if (simT < tGo) x = startX + (hostIn - startX) * ((simT - a.sent) / G);
-    else if (simT < tBack) {
+    if (simT < a.sent) x = startX + (hostIn - startX) * (1 - (a.sent - simT) / G);
+    else if (simT < a.end) {
       waiting++;
       const slot = a.request % 12;
       x = hostIn + 10 + (slot % 4) * 14;
       yy = cy - 26 + Math.floor(slot / 4) * 20;
     } else {
-      const back = (simT - tBack) / G;
+      const back = (simT - a.end) / G;
       if (back >= 1) continue;
       x = hostIn - (hostIn - startX) * back;
       color = a.outcome === "ok" ? col.ok : col.fail;
@@ -300,7 +307,7 @@ function drawFsm(state, col) {
     return `<g><rect x="${x - 62}" y="${y - 22}" width="124" height="44" rx="22" fill="${on ? c : col.surface}" stroke="${c}" stroke-width="2"/>
       <text x="${x}" y="${y + 5}" text-anchor="middle" font-size="14" font-weight="600" fill="${on ? col.surface : c}">${s}</text></g>`;
   };
-  const tripLabel = current.mode === "window" ? `fail rate > ${PCT}%` : `${current.threshold} failures in a row`;
+  const tripLabel = current.mode === "window" ? `fail rate > ${PCT}% (≥ ${MIN_REQ} requests)` : `${current.threshold} failures in a row`;
   const lbl = (x, y, t, anchor = "middle") => `<text x="${x}" y="${y}" text-anchor="${anchor}" font-size="12" fill="${col.muted}">${t}</text>`;
   $("fsm").innerHTML = `
     <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${col.muted}"/></marker></defs>
@@ -435,7 +442,7 @@ function build(o) {
 const demo = mountDemo({
   build,
   render,
-  settle: 2 * G, // a dot keeps moving this long after its attempt ends
+  settle: G, // a dot travels back for G after its attempt ends
   options: { scenario: "down", mode: "consec", threshold: 5, resetSec: 4 },
   speed: 1,
 });
