@@ -51,3 +51,6 @@ TRACKER.md
 # Per-developer Claude Code settings. Listed here, not just in a global git
 # excludes file, because biome's useIgnoreFile only reads the repo's .gitignore.
 .claude/settings.local.json
+
+# Website build output (site/)
+site/.astro/
