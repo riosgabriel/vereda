@@ -141,6 +141,7 @@ import { INF, runModel, SWEEP_MAX, simulate } from "../../../demos/models/timeou
 // ---- Drawing --------------------------------------------------------------
 const $ = (id) => document.getElementById(id);
 let sweep = [];
+let sweepShown = false;
 let currentTotal = 4;
 
 const hostBusy = (lane, t) => lane.attempts.reduce((s, a) => s + Math.max(0, Math.min(t, a.hostEnd ?? a.end) - a.start), 0);
@@ -290,8 +291,17 @@ function drawLane(canvas, lane, simT, col, { duration, rows, deadline }) {
   ctx.textAlign = "left";
 }
 
-function drawSweep(trace, col) {
+function drawSweep(trace, col, done) {
   const { ctx, w, h } = sizeCanvas($("chartSweep"));
+  // The what-if is the run's conclusion: shown once the run ends, so it doesn't answer the
+  // question before the lanes do.
+  if (!done) {
+    ctx.fillStyle = col.muted;
+    ctx.font = col.label;
+    ctx.textAlign = "center";
+    ctx.fillText("Play the run to see every totalMs compared.", w / 2, h / 2);
+    return;
+  }
   const L = 40;
   const R = 12;
   const T = 22;
@@ -448,7 +458,9 @@ function render(trace, simT, col) {
   const deadline = trace.phases[1]?.from;
   drawLane($("laneA"), without, simT, col, { duration: trace.duration, rows });
   drawLane($("laneB"), withD, simT, col, { duration: trace.duration, rows, deadline });
-  drawSweep(trace, col);
+  // Once one run has ended the chart stays: after that it's a tool for the totalMs control.
+  if (simT >= trace.duration) sweepShown = true;
+  drawSweep(trace, col, sweepShown);
   drawWaste(trace, simT, col);
   laneStats("a", without, simT, trace.duration);
   laneStats("b", withD, simT, trace.duration);
