@@ -60,14 +60,20 @@ Implement `MetricsSink` (`counter`, `histogram`, `gauge` — all synchronous, no
 
 | Series | Type | Tags | Meaning |
 | --- | --- | --- | --- |
-| `METRICS.REQUESTS` (`vereda.requests`) | counter | `partition`, `method` | One per request initiated |
-| `METRICS.RETRIES` (`vereda.retries`) | counter | `partition`, `kind` | One per retry attempt, tagged by the error `kind` that triggered it |
-| `METRICS.DURATION` (`vereda.duration_ms`) | histogram | `partition` (absent only when the URL couldn't be resolved), `kind` (`success`, `cancelled`, or the error `kind`) | Total ticket duration at settlement |
-| `METRICS.QUEUE_DEPTH` (`vereda.queue_depth`) | gauge | `partition` | Current per-partition queue size — same retries-only caveat as `partitions()` above: a partition only shows queued first attempts if `limitFirstAttempts` is enabled for it |
-| `METRICS.GLOBAL_QUEUE_DEPTH` (`vereda.global_queue_depth`) | gauge | — | Callers currently waiting for a permit under the global concurrency cap (D1) — the signal that you're throttled by `concurrency`/`ClientConfig.concurrency` rather than downstream latency |
-| `METRICS.IN_FLIGHT` (`vereda.in_flight`) | gauge | — | Tickets started but not yet finished, across all partitions. Reported when a ticket starts and when it finishes, so it returns to `0` when the client is idle |
-| `METRICS.CIRCUIT_OPEN` (`vereda.circuit_open`) | counter | `partition` | One per circuit breaker trip to open (opt-in feature; silent unless `circuitBreaker.enabled`) |
-| `METRICS.RETRY_BUDGET_EXHAUSTED` (`vereda.retry_budget_exhausted`) | counter | `partition` | One per retry the partition's retry budget refused (opt-in feature; silent unless `retryBudget` is set) |
+| `METRICS.REQUESTS`<br>`vereda.requests` | counter | `partition`, `method` | One per request initiated |
+| `METRICS.RETRIES`<br>`vereda.retries` | counter | `partition`, `kind` | One per retry attempt, tagged by the error `kind` that triggered it |
+| `METRICS.DURATION`<br>`vereda.duration_ms` | histogram | `partition`, `kind` | Total ticket duration at settlement |
+| `METRICS.QUEUE_DEPTH`<br>`vereda.queue_depth` | gauge | `partition` | Current per-partition queue size |
+| `METRICS.GLOBAL_QUEUE_DEPTH`<br>`vereda.global_queue_depth` | gauge | — | Callers currently waiting for a permit under the global concurrency cap (D1) |
+| `METRICS.IN_FLIGHT`<br>`vereda.in_flight` | gauge | — | Tickets started but not yet finished, across all partitions |
+| `METRICS.CIRCUIT_OPEN`<br>`vereda.circuit_open` | counter | `partition` | One per circuit breaker trip to open |
+| `METRICS.RETRY_BUDGET_EXHAUSTED`<br>`vereda.retry_budget_exhausted` | counter | `partition` | One per retry the partition's retry budget refused |
+
+- **`DURATION` tags:** `partition` is absent only when the URL couldn't be resolved; `kind` is `success`, `cancelled`, or the error `kind`.
+- **`QUEUE_DEPTH`** has the same retries-only caveat as `partitions()` above: a partition only shows queued first attempts if `limitFirstAttempts` is enabled for it.
+- **`GLOBAL_QUEUE_DEPTH`** is the signal that you're throttled by `concurrency`/`ClientConfig.concurrency` rather than downstream latency.
+- **`IN_FLIGHT`** is reported when a ticket starts and when it finishes, so it returns to `0` when the client is idle.
+- **`CIRCUIT_OPEN` and `RETRY_BUDGET_EXHAUSTED`** come from opt-in features: they stay silent unless `circuitBreaker.enabled` or `retryBudget` is set.
 
 For OpenTelemetry, `otelMetricsSink` from `@vereda/http/otel` is a ready-made `MetricsSink`: counters and the duration histogram map directly, and gauges become observable gauges reporting the latest value per tag set. See the [OpenTelemetry](guide/observability.md#opentelemetry) section of the Observability guide, which also covers tracing. Lifecycle events (`client.on("request" | "retry" | "success" | "failure" | "cancelled" | "retryBudgetExhausted" | "circuitOpen" | "circuitClose", ...)`) are the complementary hook for structured logging or alerting rather than metrics — see [Lifecycle events](guide/observability.md#lifecycle-events).
 
