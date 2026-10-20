@@ -251,6 +251,10 @@
 	height: 200px;
 	display: block;
 }
+/* The bulkhead's partition lane stacks four rows of boxes above its QueueFullError row. */
+.demo .lane canvas.tall {
+	height: 236px;
+}
 .demo .stats {
 	display: grid;
 	grid-template-columns: repeat(4, 1fr);

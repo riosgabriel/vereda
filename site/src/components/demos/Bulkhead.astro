@@ -30,7 +30,7 @@
   <div class="lanes">
     <article class="panel lane">
       <header><h2>Global limit only</h2><span class="cfg" id="cfgA">concurrency: 8, maxQueueSize: 20</span></header>
-      <canvas id="laneA" aria-label="Animation: client with only the global limit"></canvas>
+      <canvas id="laneA" class="tall" aria-label="Animation: client with only the global limit"></canvas>
       <div class="stats">
         <div class="stat"><span class="v" id="aWait">0</span><span class="k">payments waiting right now</span></div>
         <div class="stat"><span class="v" id="aAvg">0 ms</span><span class="k">payments average wait, last 2 s</span></div>
@@ -40,7 +40,7 @@
     </article>
     <article class="panel lane">
       <header><h2>With a search partition limit</h2><span class="cfg" id="cfgB">search: concurrency 3, limitFirstAttempts</span></header>
-      <canvas id="laneB" aria-label="Animation: client with a partition limit for search"></canvas>
+      <canvas id="laneB" class="tall" aria-label="Animation: client with a partition limit for search"></canvas>
       <div class="stats">
         <div class="stat"><span class="v" id="bWait">0</span><span class="k">payments waiting right now</span></div>
         <div class="stat"><span class="v" id="bAvg">0 ms</span><span class="k">payments average wait, last 2 s</span></div>
