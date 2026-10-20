@@ -40,10 +40,12 @@ export function mountDemo({ build, render, options, speed = 1, settle = 0 }) {
 	// The run stops once everything on screen has come to rest, not at `duration`: traffic runs
 	// to the scenario's last second, so requests sent then are still in flight, or their dots
 	// still travelling, when the timeline ends. The timeline and captions still end at `duration`.
+	// Only what the client sees counts: `hostEnd` is host work after the client gave up, which
+	// nothing on screen waits for.
 	const runEnd = () => {
 		let t = trace.duration;
 		for (const lane of [trace.lanes.without, trace.lanes.with]) {
-			for (const a of lane.attempts) t = Math.max(t, a.hostEnd ?? a.end);
+			for (const a of lane.attempts) t = Math.max(t, a.end);
 			for (const r of lane.results) t = Math.max(t, r.t);
 		}
 		return t + settle;
