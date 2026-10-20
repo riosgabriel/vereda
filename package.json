@@ -37,7 +37,7 @@
 		"check": "biome check --error-on-warnings",
 		"check:fix": "biome check --write",
 		"ci": "biome ci --error-on-warnings",
-		"docs": "typedoc",
+		"docs": "bun run --cwd site build",
 		"release:prepare": "tsx scripts/release-prepare.ts",
 		"book:check": "tsx scripts/book-check.ts",
 		"book:drift": "tsx scripts/book-check.ts drift"
@@ -105,7 +105,6 @@
 		"husky": "^9.1.7",
 		"publint": "^0.3.24",
 		"tsx": "^4.23.15",
-		"typedoc": "^0.28.20",
 		"typescript": "^6.0.0",
 		"undici": "^8.12.2",
 		"vitest": "^5.0.5",

@@ -4,7 +4,10 @@ import { docsSchema } from "@astrojs/starlight/schema";
 import { glob, type Loader } from "astro/loaders";
 import { DOC_PATTERNS, idFor } from "./doc-ids.ts";
 
-const DOCS = "../docs";
+// One glob over the repo root covers both sources. Two loaders can't share a collection: each
+// glob deletes the entries it didn't load itself.
+const REPO = "..";
+const API = "site/src/content/docs/api"; // written by starlight-typedoc (astro.config.ts)
 
 const FIRST_H1 = /^#\s+(.+)$/m;
 
@@ -16,9 +19,17 @@ const FIRST_H1 = /^#\s+(.+)$/m;
  */
 function docsFromRepo(): Loader {
 	const inner = glob({
-		base: DOCS,
-		pattern: DOC_PATTERNS,
-		generateId: ({ entry }) => idFor(entry),
+		base: REPO,
+		pattern: [...DOC_PATTERNS.map((p) => `docs/${p}`), `${API}/**/*.md`],
+		// API pages keep Starlight's plain path ids (README included), which is what
+		// starlight-typedoc links to.
+		generateId: ({ entry }) =>
+			entry.startsWith(`${API}/`)
+				? entry
+						.slice(API.length - "api".length)
+						.replace(/\.md$/, "")
+						.toLowerCase()
+				: idFor(entry.slice("docs/".length)),
 	});
 	return {
 		name: "vereda-docs",

@@ -34,15 +34,11 @@ jobs:
         working-directory: site
         run: bun install --frozen-lockfile
 
-      # The site reads docs/book, docs/guide and docs/operations.md in place.
+      # The site reads docs/book, docs/guide and docs/operations.md in place, and
+      # starlight-typedoc generates the API pages from src/ (no dist/ build needed).
       - name: Build site
         working-directory: site
         run: bun run build
-
-      # TypeDoc reads types straight from src/ — no dist/ build needed. Until the API
-      # reference moves into the site itself, it is served as is under /api/.
-      - name: Generate API reference
-        run: npx typedoc --out site/dist/api
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5

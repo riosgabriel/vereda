@@ -266,7 +266,7 @@ Each card links into one of four guides: [Resilience](docs/guide/resilience.md) 
   - [Observability](docs/guide/observability.md) — lifecycle events, metrics, OpenTelemetry.
 - **[Operations guide](docs/operations.md)** — sizing concurrency and queues, `attemptMs` vs. `totalMs`, reading `partitions()` and `circuits()`, wiring a metrics sink, the shutdown sequence, and log redaction.
 - **[The Vereda Book](docs/book/README.md)** — how the library works inside: the request lifecycle, the invariants, and the bugs that shaped them. For contributors.
-- **[API reference](https://riosgabriel.github.io/vereda/)** — generated from source via TypeDoc on every push to `main`; every public option documents its default.
+- **[API reference](https://vereda.dev/api/)** — generated from source via TypeDoc on every push to `main`; every public option documents its default.
 
 ## Versioning and support
 

@@ -57,9 +57,9 @@ under Node, so it will not reproduce a Bun-only failure.
 
 Tests are self-contained: integration tests spin up `node:http` servers on ephemeral localhost ports. No network, services, or env vars needed. Keep timing-sensitive tests fast — the suite uses tiny backoff delays (e.g. `baseDelayMs: 10`, `jitter: false`).
 
-## API reference site
+## Website
 
-`npm run docs` generates the TypeDoc reference into `docs-site/`. On every push to `main`, `.github/workflows/docs.yml` builds it and deploys it to [GitHub Pages](https://riosgabriel.github.io/vereda/).
+The website at [vereda.dev](https://vereda.dev) is an Astro + Starlight project in `site/`. It reads `docs/book/`, `docs/guide/` and `docs/operations.md` where they are, and generates the API reference from `src/` with TypeDoc. Run `cd site && bun install` once, then `npm run docs` to build it into `site/dist/` (or `bun run dev` in `site/` for a live preview). On every push to `main`, `.github/workflows/docs.yml` builds it and deploys it to GitHub Pages.
 
 The repo's Pages source (Settings → Pages → Build and deployment) must stay set to **GitHub Actions**. If it's set to "Deploy from a branch" (`main` `/docs`), Pages serves the hand-written `docs/` folder, which has no `index.html`, and the site 404s even though the workflow passes. To check the setting and fix it:
 
