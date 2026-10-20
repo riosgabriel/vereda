@@ -1,11 +1,11 @@
 ---
 name: update-docs
-description: Review and update Vereda's hand-written documentation (README.md, docs/guide/*.md, AGENTS.md, ONBOARDING.md, CONTRIBUTING.md, GOOD_FIRST_ISSUES.md, docs/operations.md, CHANGELOG.md) after a code change so they stay accurate. Use before finishing/merging a branch that touches public API surface, behavior, invariants, config, or setup steps, or when asked to "update the docs" / "check docs are current". Does NOT touch the auto-generated API reference (TypeDoc via `npm run docs`, deployed by .github/workflows/docs.yml on every push to main) — that already stays current on its own.
+description: Review and update Vereda's hand-written documentation (README.md, docs/guide/*.md, AGENTS.md, ONBOARDING.md, CONTRIBUTING.md, GOOD_FIRST_ISSUES.md, docs/operations.md, CHANGELOG.md) after a code change so they stay accurate. Use before finishing/merging a branch that touches public API surface, behavior, invariants, config, or setup steps, or when asked to "update the docs" / "check docs are current". Does NOT touch the auto-generated API reference (TypeDoc, built into the site in site/ by `npm run docs` and deployed by .github/workflows/docs.yml on every push to main) — that already stays current on its own.
 ---
 
 # update-docs — keep the hand-written docs honest
 
-GitHub Pages already redeploys the TypeDoc API reference automatically on every push to `main`. What doesn't self-update is the prose: README, architecture notes, onboarding path, contributor setup, the changelog. This skill's job is to catch drift between those docs and the code that just changed — not to write new docs from scratch.
+GitHub Pages already redeploys the website, API reference included, automatically on every push to `main`. What doesn't self-update is the prose: README, architecture notes, onboarding path, contributor setup, the changelog. This skill's job is to catch drift between those docs and the code that just changed — not to write new docs from scratch.
 
 ## In scope
 - `README.md` — pitch, quick start, defaults table, badges, `## Features` card index
@@ -18,7 +18,7 @@ GitHub Pages already redeploys the TypeDoc API reference automatically on every 
 - `CHANGELOG.md` — Keep a Changelog format, entries land under `[Unreleased]`
 
 ## Out of scope
-- The TypeDoc API reference / GitHub Pages deploy — CI already handles this
+- The generated API reference / GitHub Pages deploy — CI already handles this
 - `CODE_OF_CONDUCT.md`, `SECURITY.md` — static policy, not tied to code changes
 
 ## Method

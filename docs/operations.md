@@ -1,6 +1,6 @@
 # Operations guide
 
-This guide is for running Vereda in production: sizing its knobs, reading its runtime state, and shutting it down cleanly. For the API itself, see the [README](../README.md), the [feature guides](guide/resilience.md), and the [API reference](https://riosgabriel.github.io/vereda/).
+This guide is for running Vereda in production: sizing its knobs, reading its runtime state, and shutting it down cleanly. For the API itself, see the [README](../README.md), the [feature guides](guide/resilience.md), and the [API reference](https://vereda.dev/api/).
 
 ## Sizing concurrency and queues
 

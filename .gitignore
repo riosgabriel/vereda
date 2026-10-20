@@ -10,7 +10,6 @@ pnpm-debug.log*
 
 # Build output
 dist/
-docs-site/
 *.tsbuildinfo
 
 # Testing
@@ -54,3 +53,4 @@ TRACKER.md
 
 # Website build output (site/)
 site/.astro/
+site/src/content/docs/api/
