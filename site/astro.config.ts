@@ -28,6 +28,13 @@ export default defineConfig({
 			editLink: { baseUrl: "https://github.com/riosgabriel/vereda/edit/main/docs/" },
 			components: { Head: "./src/components/Head.astro", SiteTitle: "./src/components/SiteTitle.astro" },
 			customCss: ["./src/styles/theme.css"],
+			// Starlight's Markdown transforms (heading anchor links, code block defaults) only run on
+			// its own content folder unless listed here, and the docs load from the repo's docs/.
+			// Rendered Markdown is cached in .astro/data-store.json: clear it after changing these.
+			markdown: { processedDirs: ["../docs"] },
+			// Long code lines wrap, keeping their indent, instead of scrolling sideways. The book
+			// quotes source as written, so its excerpts keep their real line lengths.
+			expressiveCode: { defaultProps: { wrap: true } },
 			logo: { src: "./src/assets/logo.png" },
 			favicon: "/favicon.png",
 			head: [

@@ -97,18 +97,6 @@ h2 {
 	font-size: 0.9em;
 }
 
-/* Long code lines wrap instead of scrolling sideways, keeping their indent: Expressive Code's
-   own `wrap` rules, for every block. Its `wrap` default prop doesn't reach the docs, which load
-   from the repo's docs/ outside Starlight's content folder. The book quotes source as written,
-   so its excerpts keep their real line lengths. */
-.expressive-code pre .ec-line .code {
-	white-space: pre-wrap;
-	overflow-wrap: break-word;
-}
-.expressive-code pre .ec-line .code span.indent {
-	white-space: pre;
-}
-
 /* Code blocks share the cards' radius. */
 .expressive-code {
 	--ec-brdRad: var(--v-radius);
