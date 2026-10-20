@@ -26,7 +26,7 @@ export default defineConfig({
 			description: "Resilient HTTP for TypeScript: retries, timeouts, bulkheads, circuit breakers.",
 			social: [{ icon: "github", label: "GitHub", href: "https://github.com/riosgabriel/vereda" }],
 			editLink: { baseUrl: "https://github.com/riosgabriel/vereda/edit/main/docs/" },
-			components: { Head: "./src/components/Head.astro" },
+			components: { Head: "./src/components/Head.astro", SiteTitle: "./src/components/SiteTitle.astro" },
 			customCss: ["./src/styles/theme.css"],
 			logo: { src: "./src/assets/logo.png" },
 			favicon: "/favicon.png",
