@@ -29,8 +29,15 @@ export function remarkDocLinks() {
 	};
 }
 
+const SITE = "https://vereda.dev/";
+
 function rewrite(link: Link, from: string) {
 	const url = link.url;
+	// Absolute links to the site (they also work on GitHub) stay on whichever host serves the page.
+	if (url?.startsWith(SITE)) {
+		link.url = `/${url.slice(SITE.length)}`;
+		return;
+	}
 	if (!url || url.startsWith("#") || /^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith("/")) return;
 	const [path, anchor] = url.split("#", 2);
 	const repoPath = relative(REPO_ROOT, resolve(from, path)).split("\\").join("/");

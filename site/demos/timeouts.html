@@ -1,3 +1,14 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>
+  // Follow the theme picked on vereda.dev (Starlight stores it under this key).
+  try {
+    const t = localStorage.getItem("starlight-theme");
+    if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+  } catch {}
+</script>
 <title>Timeout Simulator</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -15,7 +26,7 @@
 
 <div class="wrap">
   <div>
-    <div class="eyebrow">Vereda · timeout</div>
+    <div class="eyebrow"><a href="./">Vereda patterns</a> · timeout</div>
     <h1>Per-attempt timeout or total deadline?</h1>
     <p class="lede">One request goes to a host that hangs. It never answers. Both clients wait 2 seconds per attempt and allow 3 retries. The right client also sets a total deadline of 4 seconds. Each row is one attempt. Press Play. The page slows down at key moments and says what happened.</p>
   </div>
@@ -485,3 +496,4 @@ $("retries").addEventListener("input", (e) => {
   demo.rerun({ maxRetries: Number(e.target.value) });
 });
 </script>
+</html>

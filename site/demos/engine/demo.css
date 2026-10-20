@@ -110,6 +110,12 @@ code {
 	letter-spacing: 0.08em;
 	color: var(--muted);
 }
+.eyebrow a {
+	color: inherit;
+}
+.eyebrow a:hover {
+	color: var(--ink);
+}
 
 .controls {
 	display: flex;

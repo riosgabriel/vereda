@@ -137,6 +137,8 @@ The running example registers no middleware, so the onion is just `fetch`.
 
 ## Waiting for a response, but not forever
 
+> **See it run:** the [timeout simulator](https://vereda.dev/patterns/timeouts.html) plays this with and without the pattern.
+
 Try 1 sends its request at 20 ms, and the fake server never answers. Here is the line that
 waits:
 

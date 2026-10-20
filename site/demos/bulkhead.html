@@ -1,3 +1,14 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>
+  // Follow the theme picked on vereda.dev (Starlight stores it under this key).
+  try {
+    const t = localStorage.getItem("starlight-theme");
+    if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+  } catch {}
+</script>
 <title>Bulkhead Simulator</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -11,7 +22,7 @@
 
 <div class="wrap">
   <div>
-    <div class="eyebrow">Vereda · bulkhead</div>
+    <div class="eyebrow"><a href="./">Vereda patterns</a> · bulkhead</div>
     <h1>What a bulkhead does when one service gets slow</h1>
     <p class="lede">One client talks to two services. <code>payments</code> is fast. <code>search</code> gets slow at 6 s and is fixed at 20 s. Both clients send the same traffic and share one global limit. The right client also gives <code>search</code> its own partition limit. Retries are off here, so each box is one request. Press Play. The page slows down at key moments and says what happened.</p>
   </div>
@@ -368,3 +379,4 @@ $("slots").addEventListener("input", (e) => {
   demo.rerun({ C: Number(e.target.value) });
 });
 </script>
+</html>
