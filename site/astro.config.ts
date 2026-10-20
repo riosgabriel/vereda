@@ -58,7 +58,9 @@ export default defineConfig({
 				}),
 			],
 			sidebar: [
-				{ label: "Guide", items: [{ autogenerate: { directory: "guide" } }] },
+				// autogenerate matches each entry's filePath, and these load from the repo's docs/
+				// (src/content.config.ts), so the directories are ../docs/guide and ../docs/book.
+				{ label: "Guide", items: [{ autogenerate: { directory: "../docs/guide" } }] },
 				{ label: "Operations", link: "/operations/" },
 				{
 					label: "Patterns, animated",
@@ -67,7 +69,7 @@ export default defineConfig({
 						...PATTERNS.map((p) => ({ label: p.title, link: `/patterns/${p.slug}/` })),
 					],
 				},
-				{ label: "The Vereda Book", items: [{ autogenerate: { directory: "book" } }] },
+				{ label: "The Vereda Book", items: [{ autogenerate: { directory: "../docs/book" } }] },
 				typeDocSidebarGroup,
 			],
 		}),
