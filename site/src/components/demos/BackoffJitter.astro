@@ -105,6 +105,8 @@
 </div>
 
 <script>
+	// @ts-nocheck: ported from the standalone demo pages, plain JavaScript like engine/*.js
+	// and models/*.js (excluded in tsconfig.json). Their behavior is pinned by test/demos/.
 import { dot, legend, mix, playedLine, roundRect, sizeCanvas, timeAxes } from "../../../demos/engine/draw.js";
 import { mountDemo } from "../../../demos/engine/player.js";
 import { STEP, simulate } from "../../../demos/models/backoff-jitter.js";

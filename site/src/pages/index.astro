@@ -298,15 +298,22 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 
 	const canvas = document.getElementById("storm") as HTMLCanvasElement;
 	const trace = simulate({ maxRetries: 3, ratio: 0.1 });
-	const without = trace.lanes.without.series;
-	const withBudget = trace.lanes.with.series;
+	type Series = [number, number][];
+	// The model's series are optional in DemoTrace; fail loudly if the ones the hero draws go missing.
+	const series = (lane: "without" | "with", key: string): Series => {
+		const found = trace.lanes[lane].series?.[key];
+		if (!found) throw new Error(`retry-budget trace has no ${lane}.${key} series`);
+		return found;
+	};
+	const without = { load: series("without", "load"), capacity: series("without", "capacity") };
+	const withBudget = { load: series("with", "load") };
 	const END = trace.duration;
 	const SPEED = 2; // sim seconds per real second
 	const HOLD = 3; // real seconds the finished chart stays before the loop restarts
 	const Y_MAX = 320;
 
-	const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-	const at = (series, t) => {
+	const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+	const at = (series: Series, t: number) => {
 		let v = series[0][1];
 		for (const [st, sv] of series) {
 			if (st > t) break;
@@ -315,18 +322,24 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 		return v;
 	};
 
-	function draw(t) {
+	const setText = (id: string, text: string) => {
+		const el = document.getElementById(id);
+		if (el) el.textContent = text;
+	};
+
+	function draw(t: number) {
 		const dpr = window.devicePixelRatio || 1;
 		const w = canvas.clientWidth;
 		const h = canvas.clientHeight;
 		if (canvas.width !== Math.round(w * dpr)) canvas.width = Math.round(w * dpr);
 		if (canvas.height !== Math.round(h * dpr)) canvas.height = Math.round(h * dpr);
 		const ctx = canvas.getContext("2d");
+		if (!ctx) return;
 		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 		ctx.clearRect(0, 0, w, h);
 		const pad = { l: 34, r: 8, t: 8, b: 20 };
-		const X = (s) => pad.l + (s / END) * (w - pad.l - pad.r);
-		const Y = (v) => pad.t + (1 - Math.min(v, Y_MAX) / Y_MAX) * (h - pad.t - pad.b);
+		const X = (s: number) => pad.l + (s / END) * (w - pad.l - pad.r);
+		const Y = (v: number) => pad.t + (1 - Math.min(v, Y_MAX) / Y_MAX) * (h - pad.t - pad.b);
 		const muted = css("--sl-color-gray-4");
 		const mono = css("--sl-font-mono");
 
@@ -353,14 +366,15 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 		ctx.fillStyle = muted;
 		ctx.fillText("host capacity", X(END), Y(at(without.capacity, END)) - 5);
 
-		for (const [series, color] of [
+		const lines: [Series, string][] = [
 			[without.load, css("--v-fail")],
 			[withBudget.load, css("--v-first")],
-		]) {
+		];
+		for (const [series, color] of lines) {
 			ctx.strokeStyle = color;
 			ctx.lineWidth = 2.5;
 			ctx.beginPath();
-			let last;
+			let last: [number, number] | undefined;
 			for (const [s, v] of series) {
 				if (s > t) break;
 				if (last) ctx.lineTo(X(s), Y(v));
@@ -377,9 +391,9 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 		}
 		ctx.lineWidth = 1;
 
-		document.getElementById("storm-clock").textContent = `t = ${Math.floor(t)} s`;
-		document.getElementById("storm-a").textContent = `${(at(without.load, t) / RATE).toFixed(1)}×`;
-		document.getElementById("storm-b").textContent = `${(at(withBudget.load, t) / RATE).toFixed(1)}×`;
+		setText("storm-clock", `t = ${Math.floor(t)} s`);
+		setText("storm-a", `${(at(without.load, t) / RATE).toFixed(1)}×`);
+		setText("storm-b", `${(at(withBudget.load, t) / RATE).toFixed(1)}×`);
 	}
 
 	const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -388,7 +402,7 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 	} else {
 		const start = performance.now();
 		const loop = END / SPEED + HOLD;
-		const frame = (now) => {
+		const frame = (now: number) => {
 			const real = ((now - start) / 1000) % loop;
 			draw(Math.min(END, real * SPEED));
 			requestAnimationFrame(frame);

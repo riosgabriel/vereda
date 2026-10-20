@@ -117,6 +117,8 @@ client.get("/slow", &#123;
 </style>
 
 <script>
+	// @ts-nocheck: ported from the standalone demo pages, plain JavaScript like engine/*.js
+	// and models/*.js (excluded in tsconfig.json). Their behavior is pinned by test/demos/.
 import { mix, sizeCanvas } from "../../../demos/engine/draw.js";
 import { mountDemo } from "../../../demos/engine/player.js";
 import { INF, runModel, SWEEP_MAX, simulate } from "../../../demos/models/timeouts.js";

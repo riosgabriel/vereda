@@ -5,7 +5,8 @@
 	"scripts": {
 		"dev": "astro dev",
 		"build": "astro build",
-		"preview": "astro preview"
+		"preview": "astro preview",
+		"check": "astro check"
 	},
 	"dependencies": {
 		"@astrojs/markdown-remark": "7.3.3",
@@ -17,7 +18,9 @@
 		"typedoc-plugin-markdown": "4.14.1"
 	},
 	"devDependencies": {
+		"@astrojs/check": "^0.9.11",
 		"@types/mdast": "^4.0.4",
+		"typescript": "^6",
 		"vfile": "^6.0.3"
 	}
 }
