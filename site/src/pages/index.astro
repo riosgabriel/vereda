@@ -1,0 +1,17 @@
+---
+// Placeholder landing page. Step 4 of the site plan replaces it with the real one.
+import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
+---
+
+<StarlightPage frontmatter={{ title: "Vereda", description: "Resilient HTTP for TypeScript." }}>
+	<p>
+		Resilient HTTP for TypeScript: timeouts, retries with backoff, bulkheads, rate limits, circuit breakers and retry
+		budgets, in one client.
+	</p>
+	<pre><code>npm install @vereda/http</code></pre>
+	<ul>
+		<li><a href="/guide/requests/">Guide</a>: how to use it</li>
+		<li><a href="/book/">The Vereda Book</a>: how it works inside</li>
+		<li><a href="/api/">API reference</a></li>
+	</ul>
+</StarlightPage>

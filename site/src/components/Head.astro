@@ -1,0 +1,26 @@
+---
+import Default from "@astrojs/starlight/components/Head.astro";
+---
+
+<Default><slot /></Default>
+
+<script>
+	// Mermaid is large, so it is only fetched on pages that have a diagram (see remark/mermaid.ts).
+	const diagrams = document.querySelectorAll<HTMLElement>("pre.mermaid");
+	if (diagrams.length) {
+		const { default: mermaid } = await import("mermaid");
+		const sources = [...diagrams].map((el) => el.textContent ?? "");
+		const draw = async () => {
+			const dark = document.documentElement.dataset.theme === "dark";
+			mermaid.initialize({ startOnLoad: false, theme: dark ? "dark" : "default" });
+			diagrams.forEach((el, i) => {
+				el.removeAttribute("data-processed");
+				el.textContent = sources[i];
+			});
+			await mermaid.run({ nodes: [...diagrams] });
+		};
+		await draw();
+		// Starlight's theme picker flips data-theme; redraw so diagrams match.
+		new MutationObserver(draw).observe(document.documentElement, { attributeFilter: ["data-theme"] });
+	}
+</script>
