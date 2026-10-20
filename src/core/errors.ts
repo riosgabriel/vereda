@@ -120,7 +120,8 @@ export class CancelledError extends RequestError {
 
 export class QueueFullError extends RequestError {
 	declare readonly kind: "queue_full";
-	/** Which queue was full: a partition's retry queue, or the global queue
+	/** Which queue was full: a partition's queue (retries, plus first attempts
+	 *  when the partition sets `limitFirstAttempts`), or the global queue
 	 *  for a `concurrency` permit. Check this rather than `partition`, since a
 	 *  partition may itself be named `"global"`. */
 	public readonly scope: "partition" | "global";
