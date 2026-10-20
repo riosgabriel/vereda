@@ -34,6 +34,18 @@ export default defineConfig({
 			social: [{ icon: "github", label: "GitHub", href: "https://github.com/riosgabriel/vereda" }],
 			editLink: { baseUrl: "https://github.com/riosgabriel/vereda/edit/main/docs/" },
 			components: { Head: "./src/components/Head.astro" },
+			customCss: ["./src/styles/theme.css"],
+			head: [
+				{ tag: "link", attrs: { rel: "preconnect", href: "https://fonts.googleapis.com" } },
+				{ tag: "link", attrs: { rel: "preconnect", href: "https://fonts.gstatic.com", crossorigin: true } },
+				{
+					tag: "link",
+					attrs: {
+						rel: "stylesheet",
+						href: "https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@600;800&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap",
+					},
+				},
+			],
 			plugins: [
 				starlightTypeDoc({
 					entryPoints: ENTRY_POINTS.map((p) => `../${p}`),
