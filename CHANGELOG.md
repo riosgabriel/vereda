@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A circuit breaker in `window` mode now starts an empty window when a half-open trial closes it. Before, the failures that opened the breaker stayed in the window, so with a `resetTimeoutMs` shorter than `window.sizeMs` a single new failure could open it again before `minimumRequests` new outcomes came in. `circuits()` reports `failures: 0` right after the circuit closes.
+
 ## [1.1.0] - 2026-10-17
 
 ### Added
