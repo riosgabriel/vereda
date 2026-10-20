@@ -272,6 +272,12 @@ input[type="checkbox"] {
 	gap: 10px;
 	flex-wrap: wrap;
 }
+/* Both lanes share the row heights of .lanes (header, canvas, stats), so a config line that
+   wraps in one lane can't push that lane's canvas and stats below the other's. */
+.lane {
+	grid-row: span 3;
+	grid-template-rows: subgrid;
+}
 .lane canvas {
 	width: 100%;
 	height: 200px;
