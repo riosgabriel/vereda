@@ -45,6 +45,10 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 				<a class="primary" href="/guide/requests/">Get started</a>
 				<a class="secondary" href="/patterns/">See the patterns</a>
 			</div>
+			<p class="proof">
+				Every PR runs the suite on <a href="https://github.com/riosgabriel/vereda/blob/main/.github/workflows/ci.yml">Node 22, Node 24 and Bun, and a smoke test in workerd</a>.{" "}
+				<a href="https://github.com/riosgabriel/vereda#versioning-and-support">Support policy →</a>
+			</p>
 		</div>
 
 		<figure class="storm" aria-labelledby="storm-caption">
@@ -90,7 +94,7 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 
 	<section class="band">
 		<h2>Patterns, animated</h2>
-		<p class="sub">Each simulator runs the same traffic with and without the pattern. A test checks every model against the real client.</p>
+		<p class="sub">Each simulator runs the same traffic with and without the pattern. <a href="https://github.com/riosgabriel/vereda/tree/main/test/demos">A test</a> checks every model against the real client.</p>
 		<ul class="cards">
 			{
 				PATTERNS.map((p) => (
@@ -185,6 +189,13 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 	.actions .secondary {
 		border: 1px solid var(--sl-color-gray-4);
 		color: var(--sl-color-white);
+	}
+	.proof {
+		font-size: var(--sl-text-sm);
+		color: var(--sl-color-gray-3);
+	}
+	.proof a {
+		color: inherit;
 	}
 
 	.storm {
