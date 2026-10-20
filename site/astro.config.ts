@@ -24,7 +24,8 @@ export default defineConfig({
 	integrations: [
 		starlight({
 			title: "Vereda",
-			description: "Resilient HTTP for TypeScript: retries, timeouts, bulkheads, circuit breakers.",
+			description:
+				"Retries, backoff, timeouts, per-host isolation and circuit breaking for fetch on Node.js, Bun and Cloudflare Workers.",
 			social: [{ icon: "github", label: "GitHub", href: "https://github.com/riosgabriel/vereda" }],
 			editLink: { baseUrl: "https://github.com/riosgabriel/vereda/edit/main/docs/" },
 			components: {
