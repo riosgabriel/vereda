@@ -143,7 +143,7 @@
   },
 })</div>
       <p class="note">This page follows the state machine in <code>src/queue/circuit-breaker.ts</code>, one breaker per partition. In Vereda every attempt asks the breaker, retries included. Only network errors, timeouts and retryable statuses count as failures. A 404 counts as a success, because the host answered.</p>
-      <p class="note">Times are shortened so you don't have to wait: the default reset timeout is 30 s, and here it is 1 to 8 s. In 1.x the breaker does nothing unless <code>enabled: true</code> is set. Like the library today, the page keeps old failures in the window after the breaker closes, so with a reset timeout shorter than the window the breaker can open again quickly. That is a known issue. A test (<code>test/demos/circuit-breaker.parity.test.ts</code>) runs this page's model against the real <code>HttpClient</code>, so the page has to change when the library does.</p>
+      <p class="note">Times are shortened so you don't have to wait: the default reset timeout is 30 s, and here it is 1 to 8 s. In 1.x the breaker does nothing unless <code>enabled: true</code> is set. When the breaker closes, its failure window starts empty, so the breaker opens again only after new failures. A test (<code>test/demos/circuit-breaker.parity.test.ts</code>) runs this page's model against the real <code>HttpClient</code>, so the page has to change when the library does.</p>
     </section>
   </div>
 </div>

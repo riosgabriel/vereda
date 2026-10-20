@@ -135,9 +135,8 @@ export function simulate(o) {
 			if (br.state === "half-open") {
 				br.inflight = Math.max(0, br.inflight - 1);
 				br.consec = 0;
-				// Like resetCounters() today, closing keeps the window's old
-				// failures. If the library starts clearing them, the parity test
-				// fails here first.
+				// Like resetCounters(), closing starts an empty window (#219).
+				br.win = [];
 				setState("closed", t, "trial request answered");
 				count(t);
 			} else if (br.state === "closed") {

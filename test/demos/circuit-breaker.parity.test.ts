@@ -82,8 +82,9 @@ describe("circuit breaker demo model matches the real HttpClient", () => {
 		{ scenario: "flaky", mode: "consec", threshold: 2, resetSec: 2 },
 		{ scenario: "flaky", mode: "window", threshold: 5, resetSec: 4 },
 		{ scenario: "down", mode: "window", threshold: 5, resetSec: 2 },
-		// Reset shorter than the window: a closed breaker still holds the failures
-		// that opened it (resetCounters keeps the window), so it can re-open fast.
+		// Reset shorter than the window: the failures that opened the breaker are
+		// still inside the window when it closes, so this checks that closing
+		// starts an empty window (#219).
 		{ scenario: "flaky", mode: "window", threshold: 5, resetSec: 1 },
 	];
 
