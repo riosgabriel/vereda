@@ -70,7 +70,7 @@
 	"bugs": {
 		"url": "https://github.com/riosgabriel/vereda/issues"
 	},
-	"homepage": "https://github.com/riosgabriel/vereda#readme",
+	"homepage": "https://vereda.dev",
 	"engines": {
 		"node": ">=22"
 	},
