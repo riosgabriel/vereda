@@ -1,6 +1,7 @@
 ---
 import { Code } from "@astrojs/starlight/components";
 import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
+import Horizon from "../components/Horizon.astro";
 import { PATTERNS } from "../patterns.ts";
 
 // The README's quickstart, word for word.
@@ -62,7 +63,9 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 		</figure>
 	</section>
 
-	<section class="band">
+	<Horizon />
+
+	<section class="band first">
 		<div class="split">
 			<div>
 				<h2>One call, every safeguard</h2>
@@ -236,6 +239,10 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 	.band {
 		padding-block: 2.5rem;
 		border-top: 1px solid var(--sl-color-gray-6);
+	}
+	/* The horizon above it already divides the page. */
+	.band.first {
+		border-top: 0;
 	}
 	.sub {
 		color: var(--sl-color-gray-2);
