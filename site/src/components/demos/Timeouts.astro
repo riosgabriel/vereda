@@ -395,15 +395,6 @@ function drawWaste(trace, simT, col) {
   for (const v of ticksFor(END)) ctx.fillText(`${v}s`, X(v), h - 8);
   const line = (arr, color) => {
     ctx.strokeStyle = color;
-    ctx.globalAlpha = 0.22;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    arr.forEach((s, i) => {
-      if (i) ctx.lineTo(X(s.t), Y(s.v));
-      else ctx.moveTo(X(s.t), Y(s.v));
-    });
-    ctx.stroke();
-    ctx.globalAlpha = 1;
     ctx.lineWidth = 2.5;
     ctx.beginPath();
     let lp = null;

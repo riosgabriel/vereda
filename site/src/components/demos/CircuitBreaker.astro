@@ -339,7 +339,7 @@ function drawWait(trace, simT, col) {
   const pad = [22, 10, 22, 50];
   const { X, Y } = timeAxes(ctx, { w, h, pad, end: trace.duration, yMax: 1.2, ticks: [0, 0.4, 0.8, 1.2], fmt: (v) => `${Math.round(v * 1000)}ms`, phases: trace.phases, col });
   const pts = (attempts, color, dy) => {
-    for (const a of attempts) dot(ctx, X(a.end), Y(a.end - a.sent) + dy, 2.3, color, a.end <= simT ? 0.9 : 0.12);
+    for (const a of attempts) if (a.end <= simT) dot(ctx, X(a.end), Y(a.end - a.sent) + dy, 2.3, color, 0.9);
   };
   pts(trace.lanes.without.attempts, col.fail, -2);
   pts(trace.lanes.with.attempts, col.first, 2);
@@ -361,12 +361,11 @@ function drawHost(trace, simT, col) {
   const states = trace.lanes.with.states;
   const sy = h - pad[2] + 20;
   states.forEach((s, i) => {
-    const t1 = states[i + 1]?.t ?? trace.duration;
-    ctx.globalAlpha = s.t <= simT ? 1 : 0.25;
+    if (s.t > simT) return;
+    const t1 = Math.min(states[i + 1]?.t ?? trace.duration, simT);
     ctx.fillStyle = stateColor(s.state, col);
     ctx.fillRect(X(s.t), sy, Math.max(1.5, X(t1) - X(s.t)), 8);
   });
-  ctx.globalAlpha = 1;
   ctx.fillStyle = col.muted;
   ctx.font = col.label;
   ctx.textAlign = "right";

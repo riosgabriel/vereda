@@ -338,8 +338,9 @@ function drawWait(trace, simT, col) {
   const yMax = niceMax(Math.max(maxV, maxWaitMs === undefined ? 0 : maxWaitMs / 1000) + 0.2, 4);
   const { X, Y } = timeAxes(ctx, { w, h, pad: PAD, end: trace.duration, yMax, ticks: [0, 1, 2, 3, 4].map((i) => (yMax / 4) * i), fmt: (v) => `${+v.toFixed(1)}s`, phases: trace.phases, col });
   for (const a of lane.attempts) {
+    if (a.sent > simT) break;
     const rejected = a.outcome === "rejected";
-    ctx.globalAlpha = a.sent <= simT ? 0.9 : 0.12;
+    ctx.globalAlpha = 0.9;
     ctx.fillStyle = rejected ? col.refused : a.n ? col.retry : col.first;
     ctx.beginPath();
     ctx.arc(X(a.sent), Y(waitOf(a)), 2.3, 0, Math.PI * 2);

@@ -262,7 +262,8 @@ function drawWait(trace, simT, col) {
       if (a.partition !== "payments") continue;
       const rej = a.outcome === "rejected";
       const x = rej ? a.end : a.start;
-      const alpha = x <= simT ? 0.9 : 0.12;
+      if (x > simT) continue;
+      const alpha = 0.9;
       dot(ctx, X(x), Y(rej ? waitMax : a.start - a.sent) + dy, rej ? 2 : 2.3, color, alpha);
       if (rej) {
         ctx.globalAlpha = alpha;
