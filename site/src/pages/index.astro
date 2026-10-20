@@ -20,7 +20,6 @@ if (result.success) {
 }`;
 
 const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
-const slug = (file: string) => file.replace(/\.html$/, "");
 ---
 
 <StarlightPage
@@ -89,7 +88,7 @@ const slug = (file: string) => file.replace(/\.html$/, "");
 			{
 				PATTERNS.map((p) => (
 					<li>
-						<a href={`/patterns/${slug(p.file)}/`}>
+						<a href={`/patterns/${p.slug}/`}>
 							<strong>{p.title}</strong>
 							<span set:html={code(p.blurb)} />
 						</a>
@@ -293,10 +292,11 @@ const slug = (file: string) => file.replace(/\.html$/, "");
 	}
 </style>
 
-<!-- Plain module, not bundled: it imports the demo's own model, served at /patterns/. -->
-<script is:inline type="module">
-	const canvas = document.getElementById("storm");
-	const { simulate, RATE, BAD_FROM, BAD_TO } = await import("/patterns/models/retry-budget.js");
+<script>
+	// The retry-budget demo's own model, so the hero shows the numbers its parity test checks.
+	import { BAD_FROM, BAD_TO, RATE, simulate } from "../../demos/models/retry-budget.js";
+
+	const canvas = document.getElementById("storm") as HTMLCanvasElement;
 	const trace = simulate({ maxRetries: 3, ratio: 0.1 });
 	const without = trace.lanes.without.series;
 	const withBudget = trace.lanes.with.series;

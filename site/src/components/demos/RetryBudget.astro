@@ -1,31 +1,10 @@
-<!doctype html>
-<html lang="en">
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<script>
-  // Follow the theme picked on vereda.dev (Starlight stores it under this key).
-  try {
-    const t = localStorage.getItem("starlight-theme");
-    if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
-  } catch {}
-</script>
-<title>Retry Storm Simulator</title>
-<meta name="claude:viewport-fit-sides" content="cover">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@600;800&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
-<link rel="stylesheet" href="engine/demo.css">
-<style>
-/* Page-specific: the explanation text is a little denser than the other pages. */
-.explain .formula { font-size: 0.8rem; }
-</style>
+---
+// Why a retry budget saves a slow host
+// The simulation is in site/demos/models/, the player and drawing helpers in site/demos/engine/.
+---
 
-<div class="wrap">
-  <div>
-    <div class="eyebrow"><a href="./">Vereda patterns</a> · retryBudget</div>
-    <h1>Why a retry budget saves a slow host</h1>
-    <p class="lede">Two clients send the same 80 requests per second to the same host. At 8 s the host slows down and can serve only 60 per second. At 24 s it is fixed. Both clients retry failed requests up to 3 times. Only the right one has a retry budget. Press Play. The page slows down at key moments and says what happened.</p>
-  </div>
+<div class="demo not-content">
+  <p class="lede">Two clients send the same 80 requests per second to the same host. At 8 s the host slows down and can serve only 60 per second. At 24 s it is fixed. Both clients retry failed requests up to 3 times. Only the right one has a retry budget. Press Play. The page slows down at key moments and says what happened.</p>
 
   <div class="controls">
     <button id="play" type="button">Play</button>
@@ -50,7 +29,7 @@
 
   <div class="lanes">
     <article class="panel lane">
-      <header><h2>Retries, no budget</h2><span class="cfg" id="cfgA">retry: { maxRetries: 3 }</span></header>
+      <header><h2>Retries, no budget</h2><span class="cfg" id="cfgA">retry: &#123; maxRetries: 3 &#125;</span></header>
       <canvas id="laneA" aria-label="Animation: client without a retry budget"></canvas>
       <div class="stats">
         <div class="stat"><span class="v" id="aLoad">0</span><span class="k">attempts/s hitting the host</span></div>
@@ -60,7 +39,7 @@
       </div>
     </article>
     <article class="panel lane">
-      <header><h2>Retries + retry budget</h2><span class="cfg" id="cfgB">retryBudget: { ratio: 0.1, windowMs: 1000 }</span></header>
+      <header><h2>Retries + retry budget</h2><span class="cfg" id="cfgB">retryBudget: &#123; ratio: 0.1, windowMs: 1000 &#125;</span></header>
       <canvas id="laneB" aria-label="Animation: client with a retry budget"></canvas>
       <div class="stats">
         <div class="stat"><span class="v" id="bLoad">0</span><span class="k">attempts/s hitting the host</span></div>
@@ -106,25 +85,30 @@ retry allowed only while  retriesInWindow &lt; allowed</div>
     </section>
     <section>
       <h2>In Vereda</h2>
-      <div class="formula">HttpClient.create({
-  timeout: { attemptMs: 1_000 },
-  retry: { maxRetries: 3 },
-  retryBudget: {
+      <div class="formula">HttpClient.create(&#123;
+  timeout: &#123; attemptMs: 1_000 &#125;,
+  retry: &#123; maxRetries: 3 &#125;,
+  retryBudget: &#123;
     ratio: 0.1,
     windowMs: 1_000,
     minRetriesPerSec: 1,
-  },
-})</div>
+  &#125;,
+&#125;)</div>
       <p class="note">This page follows the logic in <code>src/queue/retry-budget.ts</code> (<code>tryWithdraw</code>). A test (<code>test/demos/retry-budget.parity.test.ts</code>) checks the budget rule on this page against the real <code>RetryBudget</code>. The host is a model: its capacity, overload collapse, random failures and retry delay are invented for the demo, and no test checks them.</p>
       <p class="note">Simplified model: the host's real throughput drops as it gets overloaded (down to 30% at 2.2× its capacity), 5% of requests fail at random, and retries wait 0.3 s before they go out. Here <code>minRetriesPerSec</code> is 1 instead of Vereda's default of 10, so the ratio is what you see working.</p>
     </section>
   </div>
 </div>
 
-<script type="module">
-import { dot, legend, mix, playedLine, roundRect, sizeCanvas, timeAxes, valueAt } from "./engine/draw.js";
-import { mountDemo } from "./engine/player.js";
-import { DT, RATE, simulate } from "./models/retry-budget.js";
+<style is:global>
+	/* Page-specific: the explanation text is a little denser than the other pages. */
+	.demo .explain .formula { font-size: 0.8rem; }
+</style>
+
+<script>
+import { dot, legend, mix, playedLine, roundRect, sizeCanvas, timeAxes, valueAt } from "../../../demos/engine/draw.js";
+import { mountDemo } from "../../../demos/engine/player.js";
+import { DT, RATE, simulate } from "../../../demos/models/retry-budget.js";
 
 // ---- Drawing --------------------------------------------------------------
 const $ = (id) => document.getElementById(id);
@@ -356,4 +340,3 @@ $("ratio").addEventListener("input", (e) => {
   demo.rerun({ ratio });
 });
 </script>
-</html>

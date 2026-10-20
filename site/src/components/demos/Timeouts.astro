@@ -1,35 +1,10 @@
-<!doctype html>
-<html lang="en">
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<script>
-  // Follow the theme picked on vereda.dev (Starlight stores it under this key).
-  try {
-    const t = localStorage.getItem("starlight-theme");
-    if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
-  } catch {}
-</script>
-<title>Timeout Simulator</title>
-<meta name="claude:viewport-fit-sides" content="cover">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@600;800&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
-<link rel="stylesheet" href="engine/demo.css">
-<style>
-/* Page-specific: legend swatches and the small error text in the stats. */
-.bar { width: 18px; height: 6px; border-radius: 2px; display: inline-block; }
-.bar.dash { background: transparent; border-top: 2px dashed var(--muted); height: 0; }
-.bar.host { background: color-mix(in srgb, var(--fail) 38%, var(--surface)); }
-.bar.deadline { background: transparent; border-left: 2px dashed var(--ink); width: 0; height: 12px; }
-.stat .v.sm { font-size: 0.92rem; padding-block: 3px; }
-</style>
+---
+// Per-attempt timeout or total deadline?
+// The simulation is in site/demos/models/, the player and drawing helpers in site/demos/engine/.
+---
 
-<div class="wrap">
-  <div>
-    <div class="eyebrow"><a href="./">Vereda patterns</a> · timeout</div>
-    <h1>Per-attempt timeout or total deadline?</h1>
-    <p class="lede">One request goes to a host that hangs. It never answers. Both clients wait 2 seconds per attempt and allow 3 retries. The right client also sets a total deadline of 4 seconds. Each row is one attempt. Press Play. The page slows down at key moments and says what happened.</p>
-  </div>
+<div class="demo not-content">
+  <p class="lede">One request goes to a host that hangs. It never answers. Both clients wait 2 seconds per attempt and allow 3 retries. The right client also sets a total deadline of 4 seconds. Each row is one attempt. Press Play. The page slows down at key moments and says what happened.</p>
 
   <div class="controls">
     <button id="play" type="button">Play</button>
@@ -56,7 +31,7 @@
 
   <div class="lanes">
     <article class="panel lane">
-      <header><h2>Per-attempt timeout only</h2><span class="cfg" id="cfgA">timeout: { attemptMs: 2000 }</span></header>
+      <header><h2>Per-attempt timeout only</h2><span class="cfg" id="cfgA">timeout: &#123; attemptMs: 2000 &#125;</span></header>
       <canvas id="laneA" aria-label="Animation: attempts of a client with only a per-attempt timeout"></canvas>
       <div class="stats">
         <div class="stat"><span class="v" id="aWait">0.0 s</span><span class="k">caller has waited</span></div>
@@ -66,7 +41,7 @@
       </div>
     </article>
     <article class="panel lane">
-      <header><h2>Per-attempt timeout + total deadline</h2><span class="cfg" id="cfgB">timeout: { attemptMs: 2000, totalMs: 4000 }</span></header>
+      <header><h2>Per-attempt timeout + total deadline</h2><span class="cfg" id="cfgB">timeout: &#123; attemptMs: 2000, totalMs: 4000 &#125;</span></header>
       <canvas id="laneB" aria-label="Animation: attempts of a client with a per-attempt timeout and a total deadline"></canvas>
       <div class="stats">
         <div class="stat"><span class="v" id="bWait">0.0 s</span><span class="k">caller has waited</span></div>
@@ -111,20 +86,20 @@
     </section>
     <section>
       <h2>In Vereda</h2>
-      <div class="formula">import { HttpClient } from "@vereda/http";
+      <div class="formula">import &#123; HttpClient &#125; from "@vereda/http";
 
-const client = HttpClient.create({
-  timeout: {
+const client = HttpClient.create(&#123;
+  timeout: &#123;
     attemptMs: 2_000, // required, or Infinity
     totalMs: 4_000,   // optional deadline
-  },
-  retry: { maxRetries: 3 },
-})
+  &#125;,
+  retry: &#123; maxRetries: 3 &#125;,
+&#125;)
 
 // per request:
-client.get("/slow", {
-  timeout: { totalMs: 10_000 },
-})</div>
+client.get("/slow", &#123;
+  timeout: &#123; totalMs: 10_000 &#125;,
+&#125;)</div>
       <p class="note">This page follows <code>src/queue/retry.ts</code> (the deadline check before each backoff, and the abort path), <code>src/queue/executor.ts</code> (the attempt timer and the body read) and <code>src/core/client.ts</code> (the deadline timer, armed in <code>send()</code>). Errors are in <code>src/core/errors.ts</code>: <code>TimeoutError</code> has <code>kind: "timeout"</code>, <code>DeadlineExceededError</code> has <code>kind: "deadline"</code>, and <code>MaxRetriesExceededError</code> has <code>kind: "max_retries"</code>.</p>
       <p class="note">A test (<code>test/demos/timeouts.parity.test.ts</code>) checks this page's model against the real <code>HttpClient</code>: when each attempt starts and ends, when the caller hears back, and which error it gets. The page has to change when the library does. The host's 6 s of extra work is invented for the chart and is not checked.</p>
       <p class="note">Model choices: backoff is 200 ms, 400 ms, 800 ms and so on, with jitter off so the numbers repeat. Vereda's default has full jitter, so each real wait is a random value up to that size. Finite timeouts must fit in 2<sup>31</sup>-1 ms, and <code>Infinity</code> uses its own path, so it never fires early (<code>src/core/timer.ts</code>, #203). A user <code>cancel()</code> ends the ticket at once with <code>CancelledError</code> and also aborts the attempt.</p>
@@ -132,10 +107,19 @@ client.get("/slow", {
   </div>
 </div>
 
-<script type="module">
-import { mix, sizeCanvas } from "./engine/draw.js";
-import { mountDemo } from "./engine/player.js";
-import { INF, runModel, SWEEP_MAX, simulate } from "./models/timeouts.js";
+<style is:global>
+	/* Page-specific: legend swatches and the small error text in the stats. */
+	.demo .bar { width: 18px; height: 6px; border-radius: 2px; display: inline-block; }
+	.demo .bar.dash { background: transparent; border-top: 2px dashed var(--muted); height: 0; }
+	.demo .bar.host { background: color-mix(in srgb, var(--fail) 38%, var(--surface)); }
+	.demo .bar.deadline { background: transparent; border-left: 2px dashed var(--ink); width: 0; height: 12px; }
+	.demo .stat .v.sm { font-size: 0.92rem; padding-block: 3px; }
+</style>
+
+<script>
+import { mix, sizeCanvas } from "../../../demos/engine/draw.js";
+import { mountDemo } from "../../../demos/engine/player.js";
+import { INF, runModel, SWEEP_MAX, simulate } from "../../../demos/models/timeouts.js";
 
 // ---- Drawing --------------------------------------------------------------
 const $ = (id) => document.getElementById(id);
@@ -496,4 +480,3 @@ $("retries").addEventListener("input", (e) => {
   demo.rerun({ maxRetries: Number(e.target.value) });
 });
 </script>
-</html>

@@ -20,7 +20,7 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 		{
 			PATTERNS.map((p) => (
 				<li>
-					<a href={p.file}>
+					<a href={`/patterns/${p.slug}/`}>
 						<strong>{p.title}</strong>
 					</a>
 					: <Fragment set:html={code(p.blurb)} />

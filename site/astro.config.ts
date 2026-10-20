@@ -2,7 +2,6 @@ import { unified } from "@astrojs/markdown-remark";
 import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
 import starlightTypeDoc, { typeDocSidebarGroup } from "starlight-typedoc";
-import { demos } from "./src/integrations/demos.ts";
 import { PATTERNS } from "./src/patterns.ts";
 import { remarkDocLinks } from "./src/remark/doc-links.ts";
 import { remarkDropTitle } from "./src/remark/drop-title.ts";
@@ -17,17 +16,11 @@ export default defineConfig({
 	site: "https://vereda.dev",
 	trailingSlash: "always",
 	// starlight-typedoc puts the API overview at /api/readme/; keep the short URL working.
-	// /patterns/<name>/ is the clean URL for each demo (and what Starlight's sidebar links to, since it
-	// adds a trailing slash); the demo itself is a plain file at /patterns/<name>.html.
-	redirects: {
-		"/api/": "/api/readme/",
-		...Object.fromEntries(PATTERNS.map((p) => [`/patterns/${p.file.replace(/\.html$/, "")}/`, `/patterns/${p.file}`])),
-	},
+	redirects: { "/api/": "/api/readme/" },
 	markdown: {
 		processor: unified({ remarkPlugins: [remarkDropTitle, remarkDocLinks, remarkMermaid] }),
 	},
 	integrations: [
-		demos(),
 		starlight({
 			title: "Vereda",
 			description: "Resilient HTTP for TypeScript: retries, timeouts, bulkheads, circuit breakers.",
@@ -68,7 +61,7 @@ export default defineConfig({
 					label: "Patterns, animated",
 					items: [
 						{ label: "Overview", link: "/patterns/" },
-						...PATTERNS.map((p) => ({ label: p.title, link: `/patterns/${p.file.replace(/\.html$/, "")}/` })),
+						...PATTERNS.map((p) => ({ label: p.title, link: `/patterns/${p.slug}/` })),
 					],
 				},
 				{ label: "The Vereda Book", items: [{ autogenerate: { directory: "book" } }] },

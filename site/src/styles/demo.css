@@ -1,131 +1,92 @@
-/* Shared look for every demo page: one instrument column with the controls,
-   scenario timeline, guided caption, two lanes, charts, then the explanation.
-   Page-specific styles stay in the page. */
+/* The pattern simulators (src/components/demos/), drawn inside the site's own layout.
+   Everything is scoped to .demo so the site's header, sidebar and prose keep their styles.
+   The tokens stay on :root because engine/draw.js reads them from the document element, and
+   stay hex because its mix() blends #rrggbb values. They follow Starlight's data-theme, which
+   is always set: dark by default, light under [data-theme="light"]. Surfaces match Starlight's
+   own grays, and the series colors match theme.css. */
 :root {
-	--bg: #eef2f6;
-	--surface: #ffffff;
-	--ink: #16202b;
-	--muted: #586474;
-	--line: #d5dce5;
-	--first: #2f6fdb;
-	--retry: #d0820a;
-	--fail: #d03f36;
-	--ok: #2b9459;
-	--refused: #98a2ae;
-	--cap: #16202b;
-	--display: "Schibsted Grotesk", "Segoe UI", system-ui, sans-serif;
-	--body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
-	--mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
-}
-@media (prefers-color-scheme: dark) {
-	:root:not([data-theme="light"]) {
-		--bg: #0f141b;
-		--surface: #17202a;
-		--ink: #e5ebf1;
-		--muted: #93a0ae;
-		--line: #2a3644;
-		--first: #6d9eff;
-		--retry: #f0a63a;
-		--fail: #ff6a5e;
-		--ok: #4cc285;
-		--refused: #6b7684;
-		--cap: #e5ebf1;
-		color-scheme: dark;
-	}
-}
-:root[data-theme="dark"] {
-	--bg: #0f141b;
-	--surface: #17202a;
-	--ink: #e5ebf1;
-	--muted: #93a0ae;
-	--line: #2a3644;
+	--bg: #17181c;
+	--surface: #1d1f25;
+	--ink: #edeef3;
+	--muted: #888c96;
+	--line: #353841;
 	--first: #6d9eff;
 	--retry: #f0a63a;
 	--fail: #ff6a5e;
 	--ok: #4cc285;
 	--refused: #6b7684;
-	--cap: #e5ebf1;
-	color-scheme: dark;
+	--cap: #edeef3;
+	--display: "Schibsted Grotesk", "Segoe UI", system-ui, sans-serif;
+	--body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+	--mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+	/* Two lanes side by side need more than Starlight's 45rem column. */
+	--sl-content-width: 72rem;
 }
-* {
-	box-sizing: border-box;
+:root[data-theme="light"] {
+	--bg: #ffffff;
+	--surface: #f6f7f9;
+	--ink: #17181c;
+	--muted: #555962;
+	--line: #c1c3c8;
+	--first: #2f6fdb;
+	--retry: #d0820a;
+	--fail: #d03f36;
+	--ok: #2b9459;
+	--refused: #98a2ae;
+	--cap: #17181c;
 }
-body {
-	margin: 0;
-	background: var(--bg);
-	color: var(--ink);
-	font-family: var(--body);
-	font-size: 16px;
-	line-height: 1.5;
-	padding-left: max(16px, env(safe-area-inset-left, 0px));
-	padding-right: max(16px, env(safe-area-inset-right, 0px));
-	padding-block: 28px 48px;
-}
-.wrap {
-	max-width: 1100px;
-	margin: 0 auto;
+
+.demo {
+	container: demo / inline-size;
 	display: grid;
 	gap: 22px;
+	color: var(--ink);
+	font-family: var(--body);
+	line-height: 1.5;
 }
-h1,
-h2,
-h3 {
+.demo * {
+	box-sizing: border-box;
+}
+.demo h2,
+.demo h3 {
 	font-family: var(--display);
 	text-wrap: balance;
 	margin: 0;
+	color: var(--ink);
 }
-h1 {
-	font-size: clamp(1.7rem, 4vw, 2.5rem);
-	font-weight: 800;
-	letter-spacing: -0.02em;
-	line-height: 1.1;
-}
-h2 {
+.demo h2 {
 	font-size: 1.25rem;
 	font-weight: 800;
 }
-h3 {
+.demo h3 {
 	font-size: 1.02rem;
 	font-weight: 600;
 }
-p {
+.demo p {
 	margin: 0;
 }
-a {
+.demo a {
 	color: var(--first);
 }
-.lede {
+.demo .lede {
 	color: var(--muted);
 	max-width: 70ch;
-	margin-top: 8px;
+	font-size: 1.05rem;
 }
-code {
+.demo code {
 	font-family: var(--mono);
 	font-size: 0.86em;
 }
-.eyebrow {
-	font-family: var(--mono);
-	font-size: 0.72rem;
-	text-transform: uppercase;
-	letter-spacing: 0.08em;
-	color: var(--muted);
-}
-.eyebrow a {
-	color: inherit;
-}
-.eyebrow a:hover {
-	color: var(--ink);
-}
 
-.controls {
+.demo .controls {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 14px 22px;
 	align-items: center;
 }
-button {
+.demo button {
 	font: 600 0.95rem var(--body);
-	color: var(--surface);
+	color: var(--bg);
 	background: var(--ink);
 	border: 0;
 	border-radius: 6px;
@@ -133,30 +94,30 @@ button {
 	cursor: pointer;
 	min-width: 6.5em;
 }
-button.ghost {
+.demo button.ghost {
 	background: transparent;
 	color: var(--ink);
 	border: 1px solid var(--line);
 }
-button:focus-visible,
-input:focus-visible,
-select:focus-visible {
+.demo button:focus-visible,
+.demo input:focus-visible,
+.demo select:focus-visible {
 	outline: 2px solid var(--first);
 	outline-offset: 2px;
 }
-.field {
+.demo .field {
 	display: flex;
 	align-items: center;
 	gap: 8px;
 	font-size: 0.92rem;
 	color: var(--muted);
 }
-.field output {
+.demo .field output {
 	font-family: var(--mono);
 	color: var(--ink);
 	min-width: 3.2ch;
 }
-select {
+.demo select {
 	font: 0.92rem var(--body);
 	color: var(--ink);
 	background: var(--surface);
@@ -164,16 +125,16 @@ select {
 	border-radius: 6px;
 	padding: 6px 8px;
 }
-input[type="range"] {
+.demo input[type="range"] {
 	accent-color: var(--first);
 	width: 110px;
 }
-input[type="checkbox"] {
+.demo input[type="checkbox"] {
 	accent-color: var(--first);
 	width: 16px;
 	height: 16px;
 }
-.clock {
+.demo .clock {
 	font-family: var(--mono);
 	font-size: 0.9rem;
 	color: var(--muted);
@@ -181,7 +142,7 @@ input[type="checkbox"] {
 	font-variant-numeric: tabular-nums;
 }
 
-.timeline {
+.demo .timeline {
 	position: relative;
 	display: grid;
 	height: 34px;
@@ -189,7 +150,7 @@ input[type="checkbox"] {
 	overflow: hidden;
 	border: 1px solid var(--line);
 }
-.timeline div {
+.demo .timeline div {
 	display: flex;
 	align-items: center;
 	padding-inline: 10px;
@@ -198,16 +159,16 @@ input[type="checkbox"] {
 	white-space: nowrap;
 	overflow: hidden;
 }
-.timeline .good {
+.demo .timeline .good {
 	background: color-mix(in srgb, var(--ok) 14%, var(--surface));
 }
-.timeline .bad {
+.demo .timeline .bad {
 	background: color-mix(in srgb, var(--fail) 16%, var(--surface));
 }
-.timeline .busy {
+.demo .timeline .busy {
 	background: color-mix(in srgb, var(--first) 14%, var(--surface));
 }
-.playhead {
+.demo .playhead {
 	position: absolute;
 	top: 0;
 	bottom: 0;
@@ -217,7 +178,7 @@ input[type="checkbox"] {
 	pointer-events: none;
 }
 
-.caption {
+.demo .caption {
 	background: color-mix(in srgb, var(--first) 9%, var(--surface));
 	border: 1px solid var(--line);
 	border-radius: 8px;
@@ -225,10 +186,10 @@ input[type="checkbox"] {
 	font-size: 1rem;
 	max-width: 80ch;
 }
-.caption strong {
+.demo .caption strong {
 	font-family: var(--display);
 }
-.caption .now {
+.demo .caption .now {
 	display: block;
 	margin-top: 6px;
 	font-family: var(--mono);
@@ -237,31 +198,31 @@ input[type="checkbox"] {
 	color: var(--first);
 }
 
-.legend {
+.demo .legend {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 6px 18px;
 	font-size: 0.86rem;
 	color: var(--muted);
 }
-.legend span {
+.demo .legend span {
 	display: inline-flex;
 	align-items: center;
 	gap: 6px;
 }
-.dot {
+.demo .dot {
 	width: 10px;
 	height: 10px;
 	border-radius: 50%;
 	display: inline-block;
 }
 
-.lanes {
+.demo .lanes {
 	display: grid;
 	grid-template-columns: 1fr 1fr;
 	gap: 16px;
 }
-.panel {
+.demo .panel {
 	background: var(--surface);
 	border: 1px solid var(--line);
 	border-radius: 10px;
@@ -271,7 +232,7 @@ input[type="checkbox"] {
 	min-width: 0;
 	align-content: start;
 }
-.panel header {
+.demo .panel header {
 	display: flex;
 	justify-content: space-between;
 	align-items: baseline;
@@ -280,83 +241,83 @@ input[type="checkbox"] {
 }
 /* Both lanes share the row heights of .lanes (header, canvas, stats), so a config line that
    wraps in one lane can't push that lane's canvas and stats below the other's. */
-.lane {
+.demo .lane {
 	grid-row: span 3;
 	grid-template-rows: subgrid;
 }
-.lane canvas {
+.demo .lane canvas {
 	width: 100%;
 	height: 200px;
 	display: block;
 }
-.stats {
+.demo .stats {
 	display: grid;
 	grid-template-columns: repeat(4, 1fr);
 	gap: 10px;
 }
-.stat {
+.demo .stat {
 	display: grid;
 	gap: 2px;
 	align-content: start;
 }
-.stat .v {
+.demo .stat .v {
 	font-family: var(--mono);
 	font-size: 1.15rem;
 	font-weight: 600;
 	font-variant-numeric: tabular-nums;
 }
-.stat .k {
+.demo .stat .k {
 	font-size: 0.78rem;
 	color: var(--muted);
 	line-height: 1.25;
 }
-.v.bad {
+.demo .v.bad {
 	color: var(--fail);
 }
-.v.good {
+.demo .v.good {
 	color: var(--ok);
 }
-.cfg {
+.demo .cfg {
 	font-family: var(--mono);
 	font-size: 0.78rem;
 	color: var(--muted);
 }
 
-.charts {
+.demo .charts {
 	display: grid;
 	grid-template-columns: 1fr 1fr;
 	gap: 16px;
 }
-.chart canvas {
+.demo .chart canvas {
 	width: 100%;
 	height: 210px;
 	display: block;
 }
-.chart p {
+.demo .chart p {
 	font-size: 0.88rem;
 	color: var(--muted);
 }
 
-.explain {
+.demo .explain {
 	display: grid;
 	grid-template-columns: repeat(3, 1fr);
 	gap: 28px;
 	padding-top: 6px;
 }
-.explain section {
+.demo .explain section {
 	display: grid;
 	gap: 10px;
 	align-content: start;
 	min-width: 0;
 }
-.explain ol,
-.explain ul {
+.demo .explain ol,
+.demo .explain ul {
 	margin: 0;
 	padding-left: 1.2em;
 	display: grid;
 	gap: 6px;
 }
-.formula {
+.demo .formula {
 	background: var(--surface);
 	border: 1px solid var(--line);
 	border-radius: 8px;
@@ -366,21 +327,22 @@ input[type="checkbox"] {
 	overflow-x: auto;
 	white-space: pre;
 }
-.note {
+.demo .note {
 	font-size: 0.85rem;
 	color: var(--muted);
 }
 
-@media (max-width: 900px) {
-	.lanes,
-	.charts,
-	.explain {
+/* The demo sits in the content column, beside the sidebar, so it adapts to its own width. */
+@container demo (max-width: 760px) {
+	.demo .lanes,
+	.demo .charts,
+	.demo .explain {
 		grid-template-columns: 1fr;
 	}
-	.stats {
+	.demo .stats {
 		grid-template-columns: repeat(2, 1fr);
 	}
-	.clock {
+	.demo .clock {
 		margin-left: 0;
 	}
 }

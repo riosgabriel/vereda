@@ -4,7 +4,7 @@ Retries, timeouts, per-host isolation, and circuit breaking: the settings that d
 
 ## Retries and backoff
 
-> **See it run:** the [backoff and jitter simulator](https://vereda.dev/patterns/backoff-jitter.html) plays this with and without the pattern.
+> **See it run:** the [backoff and jitter simulator](https://vereda.dev/patterns/backoff-jitter/) plays this with and without the pattern.
 
 Configure retries globally or per request. Per-request settings override global ones.
 
@@ -85,7 +85,7 @@ A request `body` may also be supplied as a factory (`() => BodyInit`); the facto
 
 ### Retry budget
 
-> **See it run:** the [retry budget simulator](https://vereda.dev/patterns/retry-budget.html) plays this with and without the pattern.
+> **See it run:** the [retry budget simulator](https://vereda.dev/patterns/retry-budget/) plays this with and without the pattern.
 
 `maxRetries` bounds retries per request, not per host: when a host fails every request, each one is still retried up to `maxRetries` times, so the host sees `1 + maxRetries` times its normal load right when it can least take it. A retry budget caps retries to a fraction of the partition's recent traffic instead:
 
@@ -109,7 +109,7 @@ The budget and the [circuit breaker](#circuit-breaker) work together. The budget
 
 ## Timeouts
 
-> **See it run:** the [timeout simulator](https://vereda.dev/patterns/timeouts.html) plays this with and without the pattern.
+> **See it run:** the [timeout simulator](https://vereda.dev/patterns/timeouts/) plays this with and without the pattern.
 
 ```typescript
 import { HttpClient } from "@vereda/http";
@@ -133,7 +133,7 @@ The [operations guide](../operations.md) covers how to choose the two together.
 
 ## Bulkhead isolation
 
-> **See it run:** the [bulkhead simulator](https://vereda.dev/patterns/bulkhead.html) plays this with and without the pattern.
+> **See it run:** the [bulkhead simulator](https://vereda.dev/patterns/bulkhead/) plays this with and without the pattern.
 
 Every request is assigned to a partition, keyed by URL host by default: the hostname, plus `:port` when it isn't the scheme's default. `http://api.example.com:8080` and `http://api.example.com:9090` land in separate partitions, and a `partitions` key for an https host on the default port is just `"api.example.com"`. Each partition owns a concurrency limit plus a waiting queue. A failing host's retries fill its own partition queue, not other hosts'.
 
@@ -174,7 +174,7 @@ When a partition's queue, or the global queue, is full, the ticket resolves with
 
 ## Rate limiting
 
-> **See it run:** the [rate limiter simulator](https://vereda.dev/patterns/rate-limiter.html) plays this with and without the pattern.
+> **See it run:** the [rate limiter simulator](https://vereda.dev/patterns/rate-limiter/) plays this with and without the pattern.
 
 A bulkhead caps how many attempts run at once. A rate limit caps how many start per second, which is what a third-party API with a requests-per-second quota needs. It is a token bucket per partition:
 
@@ -197,7 +197,7 @@ The limit is set on the client (applying to each partition separately) or per pa
 
 ## Circuit breaker
 
-> **See it run:** the [circuit breaker simulator](https://vereda.dev/patterns/circuit-breaker.html) plays this with and without the pattern.
+> **See it run:** the [circuit breaker simulator](https://vereda.dev/patterns/circuit-breaker/) plays this with and without the pattern.
 
 Opt-in, per-partition. Once a host is clearly failing, stop sending it requests instead of retrying into it. Disabled by default; enable it for every partition at the client level, or for specific hosts under `partitions`.
 

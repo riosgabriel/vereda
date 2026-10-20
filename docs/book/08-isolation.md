@@ -150,7 +150,7 @@ hung. The README's "one failing dependency" section and the
 
 ## The partition bulkhead
 
-> **See it run:** the [bulkhead simulator](https://vereda.dev/patterns/bulkhead.html) plays this with and without the pattern.
+> **See it run:** the [bulkhead simulator](https://vereda.dev/patterns/bulkhead/) plays this with and without the pattern.
 
 The partition bulkhead in `src/queue/bulkhead.ts` is a second semaphore with a name, a count of
 running tries, its own waiting line and, optionally, a token bucket. Its main method, `run`,
@@ -240,7 +240,7 @@ check them by different rules, and the code doesn't say why.
 
 ## The rate limiter
 
-> **See it run:** the [rate limiter simulator](https://vereda.dev/patterns/rate-limiter.html) plays this with and without the pattern.
+> **See it run:** the [rate limiter simulator](https://vereda.dev/patterns/rate-limiter/) plays this with and without the pattern.
 
 A bulkhead limits how many tries run *at once*. A rate limit limits how many *start each
 second*, which is what an API quota ("100 requests per second") actually measures. It's opt-in:

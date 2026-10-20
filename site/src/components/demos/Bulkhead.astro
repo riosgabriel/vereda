@@ -1,31 +1,10 @@
-<!doctype html>
-<html lang="en">
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<script>
-  // Follow the theme picked on vereda.dev (Starlight stores it under this key).
-  try {
-    const t = localStorage.getItem("starlight-theme");
-    if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
-  } catch {}
-</script>
-<title>Bulkhead Simulator</title>
-<meta name="claude:viewport-fit-sides" content="cover">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@600;800&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
-<link rel="stylesheet" href="engine/demo.css">
-<style>
-/* Page-specific: the legend ring for rejected requests. */
-.dot.ring { background: transparent; border: 2px solid var(--fail); }
-</style>
+---
+// What a bulkhead does when one service gets slow
+// The simulation is in site/demos/models/, the player and drawing helpers in site/demos/engine/.
+---
 
-<div class="wrap">
-  <div>
-    <div class="eyebrow"><a href="./">Vereda patterns</a> · bulkhead</div>
-    <h1>What a bulkhead does when one service gets slow</h1>
-    <p class="lede">One client talks to two services. <code>payments</code> is fast. <code>search</code> gets slow at 6 s and is fixed at 20 s. Both clients send the same traffic and share one global limit. The right client also gives <code>search</code> its own partition limit. Retries are off here, so each box is one request. Press Play. The page slows down at key moments and says what happened.</p>
-  </div>
+<div class="demo not-content">
+  <p class="lede">One client talks to two services. <code>payments</code> is fast. <code>search</code> gets slow at 6 s and is fixed at 20 s. Both clients send the same traffic and share one global limit. The right client also gives <code>search</code> its own partition limit. Retries are off here, so each box is one request. Press Play. The page slows down at key moments and says what happened.</p>
 
   <div class="controls">
     <button id="play" type="button">Play</button>
@@ -104,29 +83,34 @@
     </section>
     <section>
       <h2>In Vereda</h2>
-      <div class="formula">HttpClient.create({
-  timeout: { attemptMs: 6_000 },
+      <div class="formula">HttpClient.create(&#123;
+  timeout: &#123; attemptMs: 6_000 &#125;,
   concurrency: 8,      // global permits
   maxQueueSize: 20,    // global queue
-  partitions: {
-    search: {
+  partitions: &#123;
+    search: &#123;
       concurrency: 3,        // slots
       maxQueueSize: 10,      // own queue
       limitFirstAttempts: true,
-    },
-  },
-})</div>
+    &#125;,
+  &#125;,
+&#125;)</div>
       <p class="note">There are two limits. The global semaphore (<code>src/queue/semaphore.ts</code>) counts every attempt in the client. The partition bulkhead (<code>src/queue/bulkhead.ts</code>) counts attempts in one partition. A partition is the host unless you set <code>partition</code> on the request.</p>
       <p class="note">With <code>limitFirstAttempts: true</code>, an attempt takes a partition slot first and then a global permit (<code>src/core/client.ts</code>). The slot stays taken while it waits for the permit. A full queue gives <code>QueueFullError</code>, with <code>scope: "global"</code> or <code>"partition"</code>. Retries in <code>src/queue/retry.ts</code> always use both limits. Defaults: 50 permits and 100 queued globally, 5 slots and 100 queued per partition. Here the numbers are smaller so the effect is easy to see. A test (<code>test/demos/bulkhead.parity.test.ts</code>) runs this page's model against the real <code>HttpClient</code>, request by request, so the page has to change when the library does.</p>
     </section>
   </div>
 </div>
 
-<script type="module">
-import { dot, legend, playedLine, roundRect, sizeCanvas, timeAxes, valueAt } from "./engine/draw.js";
-import { mountDemo } from "./engine/player.js";
+<style is:global>
+	/* Page-specific: the legend ring for rejected requests. */
+	.demo .dot.ring { background: transparent; border: 2px solid var(--fail); }
+</style>
 
-import { GQ, PQ, simulate } from "./models/bulkhead.js";
+<script>
+import { dot, legend, playedLine, roundRect, sizeCanvas, timeAxes, valueAt } from "../../../demos/engine/draw.js";
+import { mountDemo } from "../../../demos/engine/player.js";
+
+import { GQ, PQ, simulate } from "../../../demos/models/bulkhead.js";
 
 // ---- Drawing --------------------------------------------------------------
 const $ = (id) => document.getElementById(id);
@@ -379,4 +363,3 @@ $("slots").addEventListener("input", (e) => {
   demo.rerun({ C: Number(e.target.value) });
 });
 </script>
-</html>

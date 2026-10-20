@@ -53,7 +53,7 @@ After the run, `client.circuits()` reports the partition's breaker:
 
 ## The breaker's states
 
-> **See it run:** the [circuit breaker simulator](https://vereda.dev/patterns/circuit-breaker.html) plays this with and without the pattern.
+> **See it run:** the [circuit breaker simulator](https://vereda.dev/patterns/circuit-breaker/) plays this with and without the pattern.
 
 ```mermaid
 stateDiagram-v2
@@ -246,7 +246,7 @@ an open or half-open one can't be evicted until its pause has passed.
 
 ## The retry budget
 
-> **See it run:** the [retry budget simulator](https://vereda.dev/patterns/retry-budget.html) plays this with and without the pattern.
+> **See it run:** the [retry budget simulator](https://vereda.dev/patterns/retry-budget/) plays this with and without the pattern.
 
 A breaker acts only once a host is clearly failing. Before that, there's a worse pattern. Every
 caller's request fails once, and every one of them retries, up to three times by default. A host
