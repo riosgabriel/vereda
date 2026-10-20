@@ -39,6 +39,15 @@ export default defineConfig({
 			favicon: "/favicon.png",
 			head: [
 				{ tag: "link", attrs: { rel: "apple-touch-icon", href: "/apple-touch-icon.png" } },
+				// Social preview for every page; regenerate it from scripts/og-image.html.
+				{ tag: "meta", attrs: { property: "og:image", content: "https://vereda.dev/og.png" } },
+				{ tag: "meta", attrs: { property: "og:image:width", content: "1200" } },
+				{ tag: "meta", attrs: { property: "og:image:height", content: "630" } },
+				{
+					tag: "meta",
+					attrs: { property: "og:image:alt", content: "Vereda: Make fetch resilient. npm install @vereda/http" },
+				},
+				{ tag: "meta", attrs: { name: "twitter:image", content: "https://vereda.dev/og.png" } },
 				{ tag: "link", attrs: { rel: "preconnect", href: "https://fonts.googleapis.com" } },
 				{ tag: "link", attrs: { rel: "preconnect", href: "https://fonts.gstatic.com", crossorigin: true } },
 				{

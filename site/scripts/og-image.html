@@ -1,0 +1,101 @@
+<!doctype html>
+<!--
+  The social preview image, public/og.png (1200×630). Regenerate after changing this file, from site/:
+    google-chrome --headless=new --hide-scrollbars --window-size=1200,630 \
+      --screenshot=public/og.png "file://$PWD/scripts/og-image.html"
+  The valley is the landing page's horizon (src/components/Horizon.astro), cropped to the notch.
+-->
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<link
+			rel="stylesheet"
+			href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;800&family=JetBrains+Mono:wght@400&display=block"
+		/>
+		<style>
+			html,
+			body {
+				margin: 0;
+				width: 1200px;
+				height: 630px;
+				overflow: hidden;
+				background: #fbf7ef;
+				font-family: "Schibsted Grotesk", sans-serif;
+				color: #17181c;
+			}
+			.text {
+				position: absolute;
+				top: 64px;
+				left: 72px;
+			}
+			.brand {
+				display: flex;
+				align-items: center;
+				gap: 18px;
+				font-size: 34px;
+				font-weight: 800;
+				color: #1f5c4f;
+			}
+			.brand img {
+				width: 72px;
+			}
+			h1 {
+				margin: 40px 0 0;
+				font-size: 84px;
+				line-height: 1.02;
+				font-weight: 800;
+				letter-spacing: -0.02em;
+			}
+			h1 code {
+				font-family: "JetBrains Mono", monospace;
+				font-size: 0.86em;
+				font-weight: 400;
+				color: #1f5c4f;
+			}
+			.pkg {
+				margin-top: 22px;
+				font-family: "JetBrains Mono", monospace;
+				font-size: 26px;
+				color: #545861;
+			}
+			svg {
+				position: absolute;
+				left: 0;
+				bottom: 0;
+				width: 1200px;
+				height: 250px;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="text">
+			<div class="brand"><img src="../src/assets/logo.png" alt="" />Vereda</div>
+			<h1>Make <code>fetch</code> resilient.</h1>
+			<div class="pkg">npm install @vereda/http</div>
+		</div>
+		<svg viewBox="330 0 1110 240" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+			<defs>
+				<radialGradient id="glow">
+					<stop offset="0" stop-color="#f37d18" stop-opacity="0.45" />
+					<stop offset="1" stop-color="#f37d18" stop-opacity="0" />
+				</radialGradient>
+			</defs>
+			<ellipse cx="930" cy="116" rx="480" ry="110" fill="url(#glow)" />
+			<path fill="#dbab33" opacity="0.28" d="M0 66 C 320 50, 700 70, 930 126 C 1150 72, 1400 52, 1440 54 L1440 240 L0 240 Z" />
+			<circle cx="930" cy="104" r="34" fill="#f37d18" />
+			<path
+				fill="#48754f"
+				d="M0 100 C 320 86, 690 94, 860 118 C 895 123, 918 127, 930 128 C 946 126, 985 116, 1080 106 C 1240 92, 1380 92, 1440 90 L1440 240 L0 240 Z"
+			/>
+			<path fill="#113b36" d="M0 158 C 260 124, 520 126, 760 148 C 860 157, 960 150, 1100 138 C 1260 124, 1380 128, 1440 132 L1440 240 L0 240 Z" />
+			<path
+				fill="#0c2b28"
+				d="M0 214 C 300 198, 500 206, 640 226 C 700 236, 860 238, 1000 222 C 1150 206, 1320 208, 1440 214 L1440 240 L0 240 Z"
+			/>
+			<path
+				fill="#f7e7c7"
+				d="M929 128 L925 131 L921 134 L918 137 L917 140 L916 142 L915 145 L915 148 L916 151 L916 154 L916 157 L916 160 L914 163 L912 166 L909 169 L904 172 L898 174 L890 177 L881 180 L869 183 L856 186 L842 189 L825 192 L807 195 L788 198 L768 200 L747 203 L726 206 L705 209 L683 212 L663 215 L643 218 L625 221 L609 224 L594 227 L582 230 L572 232 L566 235 L562 238 L561 241 L564 244 L721 244 L715 241 L711 238 L710 235 L713 232 L718 230 L726 227 L736 224 L749 221 L763 218 L778 215 L795 212 L812 209 L829 206 L846 203 L863 200 L879 198 L894 195 L908 192 L920 189 L931 186 L940 183 L947 180 L953 177 L957 174 L959 172 L960 169 L959 166 L958 163 L955 160 L952 157 L948 154 L944 151 L940 148 L936 145 L933 142 L931 140 L929 137 L928 134 L929 131 L931 128 Z"
+			/>
+		</svg>
+	</body>
+</html>
