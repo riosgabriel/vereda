@@ -74,10 +74,10 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 			<div>
 				<h2>One call, every safeguard</h2>
 				<p>
-					A dropped connection, a timeout or a <code>503</code> on that request is retried up to three times with jittered
-					exponential backoff before your code sees an error. Each attempt is bounded by <code>attemptMs</code>, and a
-					<code>totalMs</code> deadline can bound the whole call.
+					A dropped connection, a timeout or a <code>503</code> is retried up to three times, with jittered exponential
+					backoff, before your code sees an error.
 				</p>
+				<p><code>attemptMs</code> bounds each attempt. An optional <code>totalMs</code> deadline bounds the whole call.</p>
 				<p>
 					The result is a value, not an exception: <code>result.success</code> or a typed <code>result.error.kind</code>
 					you can <code>switch</code> on.

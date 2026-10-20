@@ -11,10 +11,10 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 		description: "Interactive simulators for each resilience pattern in Vereda.",
 	}}
 >
+	<p>Each page runs the same traffic through two clients, one without the pattern and one with it, and plays the result.</p>
 	<p>
-		Each page runs the same traffic through two clients, one without the pattern and one with it, and plays the result
-		in real time. The models follow the library's code, and a test checks each one against the real
-		<code>HttpClient</code>, so the pages change when the library does.
+		The models follow the library's code. A test checks each one against the real <code>HttpClient</code>, so the pages
+		change when the library does.
 	</p>
 	<ul>
 		{
