@@ -100,11 +100,6 @@ retry allowed only while  retriesInWindow &lt; allowed</div>
   </div>
 </div>
 
-<style is:global>
-	/* Page-specific: the explanation text is a little denser than the other pages. */
-	.demo .explain .formula { font-size: 0.8rem; }
-</style>
-
 <script>
 	// @ts-nocheck: ported from the standalone demo pages, plain JavaScript like engine/*.js
 	// and models/*.js (excluded in tsconfig.json). Their behavior is pinned by test/demos/.
@@ -149,7 +144,7 @@ function drawLane(canvas, lane, simT, col, laneId, withBudget) {
   ctx.fill();
   ctx.stroke();
   ctx.fillStyle = col.ink;
-  ctx.font = `600 12px ${col.mono}`;
+  ctx.font = col.strong;
   ctx.textAlign = "center";
   ctx.fillText("client", 8 + (clientR - 14) / 2, cy + 4);
 
@@ -163,7 +158,7 @@ function drawLane(canvas, lane, simT, col, laneId, withBudget) {
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.fillStyle = col.muted;
-    ctx.font = `600 11px ${col.mono}`;
+    ctx.font = col.strong;
     ctx.fillText("budget", gateX, cy - 62);
   }
 
@@ -178,7 +173,7 @@ function drawLane(canvas, lane, simT, col, laneId, withBudget) {
   ctx.fill();
   ctx.stroke();
   ctx.fillStyle = col.ink;
-  ctx.font = `600 12px ${col.mono}`;
+  ctx.font = col.strong;
   ctx.fillText("host", hostL + 34, hy + 18);
   const MAX = 400;
   const gx = hostL + hostW - 26;
@@ -201,12 +196,12 @@ function drawLane(canvas, lane, simT, col, laneId, withBudget) {
   ctx.stroke();
   ctx.lineWidth = 1;
   ctx.fillStyle = col.muted;
-  ctx.font = `10px ${col.mono}`;
+  ctx.font = col.label;
   ctx.textAlign = "right";
   ctx.fillText(`cap ${C}`, gx - 8, capY + 3);
   ctx.textAlign = "left";
   ctx.fillStyle = over ? col.fail : col.ink;
-  ctx.font = `600 13px ${col.mono}`;
+  ctx.font = col.big;
   ctx.fillText(`${Math.round(load)}/s`, hostL + 10, hy + hh - 14);
 
   // Dots. Each tick's series values say how many dots of each kind launch in it;

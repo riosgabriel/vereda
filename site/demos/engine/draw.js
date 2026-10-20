@@ -7,7 +7,11 @@ export function readColors() {
 	const cs = getComputedStyle(document.documentElement);
 	const col = {};
 	for (const k of TOKENS) col[k] = cs.getPropertyValue(`--${k}`).trim();
-	col.mono = cs.getPropertyValue("--mono").trim();
+	// Canvas text uses the page's sans in three roles, on the same scale as the page's labels.
+	const sans = cs.getPropertyValue("--sans").trim();
+	col.label = `12px ${sans}`;
+	col.strong = `600 12px ${sans}`;
+	col.big = `600 14px ${sans}`;
 	return col;
 }
 
@@ -74,7 +78,7 @@ export function timeAxes(ctx, { w, h, pad, end, yMax, ticks, fmt = String, phase
 	const [T, R, B, L] = pad;
 	const X = (t) => L + (Math.min(t, end) / end) * (w - L - R);
 	const Y = (v) => T + (1 - Math.min(v, yMax) / yMax) * (h - T - B);
-	ctx.font = `10px ${col.mono}`;
+	ctx.font = col.label;
 	ctx.fillStyle = col.muted;
 	ctx.strokeStyle = col.line;
 	ctx.lineWidth = 1;
@@ -124,7 +128,7 @@ export function playedLine(ctx, pts, X, Y, color, simT) {
 
 export function legend(ctx, x, y, items, col) {
 	ctx.textAlign = "left";
-	ctx.font = `600 11px ${col.mono}`;
+	ctx.font = col.strong;
 	for (const [text, color] of items) {
 		ctx.fillStyle = color;
 		ctx.fillText(text, x, y);

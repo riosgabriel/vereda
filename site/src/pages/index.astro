@@ -132,9 +132,7 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 	}
 	.eyebrow {
 		font-family: var(--sl-font-mono);
-		font-size: var(--sl-text-xs);
-		text-transform: uppercase;
-		letter-spacing: 0.08em;
+		font-size: var(--sl-text-sm);
 		color: var(--sl-color-gray-3);
 	}
 	.hero h1 {
@@ -158,8 +156,9 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 		display: inline-block;
 		padding: 0.6rem 1rem;
 		border: 1px solid var(--sl-color-gray-5);
-		border-radius: 0.5rem;
+		border-radius: var(--v-radius-sm);
 		font-family: var(--sl-font-mono);
+		font-size: var(--sl-text-sm);
 	}
 	.actions {
 		display: flex;
@@ -168,7 +167,7 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 	}
 	.actions a {
 		padding: 0.6rem 1.2rem;
-		border-radius: 999px;
+		border-radius: var(--v-radius-sm);
 		font-weight: 600;
 		text-decoration: none;
 	}
@@ -185,14 +184,13 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 		margin: 0;
 		padding: 1rem 1.1rem;
 		border: 1px solid var(--sl-color-gray-5);
-		border-radius: 0.9rem;
+		border-radius: var(--v-radius);
 		background: var(--v-panel);
 	}
 	.storm-head {
 		display: flex;
 		justify-content: space-between;
-		font-family: var(--sl-font-mono);
-		font-size: var(--sl-text-xs);
+		font-size: var(--sl-text-sm);
 		color: var(--sl-color-gray-3);
 	}
 	.storm-title {
@@ -216,10 +214,8 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 		flex-direction: column;
 	}
 	.storm-stats .v {
-		font-family: var(--sl-font-mono);
-		font-size: 1.6rem;
+		font-size: var(--sl-text-3xl);
 		font-weight: 600;
-		font-variant-numeric: tabular-nums;
 	}
 	.storm-stats .k {
 		font-size: var(--sl-text-sm);
@@ -246,7 +242,8 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 	}
 	.split {
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+		/* Wide enough for the quickstart's longest line, so its comments don't wrap. */
+		grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.35fr);
 		gap: 2.5rem;
 		align-items: start;
 	}
@@ -267,23 +264,31 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 		height: 100%;
 		padding: 1rem 1.1rem;
 		border: 1px solid var(--sl-color-gray-5);
-		border-radius: 0.75rem;
+		border-radius: var(--v-radius);
 		text-decoration: none;
-		color: var(--sl-color-gray-2);
+		font-size: var(--sl-text-sm);
+		color: var(--sl-color-gray-3);
 	}
 	.cards a:hover {
 		border-color: var(--sl-color-accent);
 	}
 	.cards strong {
-		font-family: var(--v-display);
 		color: var(--sl-color-white);
-		font-size: var(--sl-text-lg);
+		font-size: var(--sl-text-base);
+		font-weight: 600;
 	}
 
 	@media (max-width: 50rem) {
 		.hero,
 		.split {
 			grid-template-columns: 1fr;
+			gap: 2rem;
+		}
+		.hero {
+			padding-block: 0 2rem;
+		}
+		.band {
+			padding-block: 2rem;
 		}
 		.cards,
 		.cards.three {
@@ -337,17 +342,17 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 		if (!ctx) return;
 		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 		ctx.clearRect(0, 0, w, h);
-		const pad = { l: 34, r: 8, t: 8, b: 20 };
+		const pad = { l: 34, r: 14, t: 8, b: 20 };
 		const X = (s: number) => pad.l + (s / END) * (w - pad.l - pad.r);
 		const Y = (v: number) => pad.t + (1 - Math.min(v, Y_MAX) / Y_MAX) * (h - pad.t - pad.b);
 		const muted = css("--sl-color-gray-4");
-		const mono = css("--sl-font-mono");
+		const sans = css("--sl-font");
 
 		ctx.fillStyle = css("--v-fail");
-		ctx.globalAlpha = 0.08;
+		ctx.globalAlpha = 0.14;
 		ctx.fillRect(X(BAD_FROM), pad.t, X(BAD_TO) - X(BAD_FROM), h - pad.t - pad.b);
 		ctx.globalAlpha = 1;
-		ctx.font = `10px ${mono}`;
+		ctx.font = `12px ${sans}`;
 		ctx.fillStyle = muted;
 		ctx.textAlign = "right";
 		for (const v of [0, 80, 160, 240, 320]) ctx.fillText(String(v), pad.l - 6, Y(v) + 3);
