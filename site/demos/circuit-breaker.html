@@ -1,3 +1,14 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>
+  // Follow the theme picked on vereda.dev (Starlight stores it under this key).
+  try {
+    const t = localStorage.getItem("starlight-theme");
+    if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+  } catch {}
+</script>
 <title>Circuit Breaker Simulator</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -24,7 +35,7 @@
 
 <div class="wrap">
   <div>
-    <div class="eyebrow">Vereda · circuitBreaker</div>
+    <div class="eyebrow"><a href="./">Vereda patterns</a> · circuitBreaker</div>
     <h1>What a circuit breaker does when a host goes down</h1>
     <p class="lede">Two clients send the same 10 requests per second to the same host, with a 1 second timeout. At 6 s the host breaks, and at 20 s it is fixed. The right client has a circuit breaker. Retries are off, so each dot is one request. Press Play. When a phase starts or the breaker changes state, the page slows down for a moment and tells you what happened.</p>
   </div>
@@ -448,3 +459,4 @@ $("reset").addEventListener("input", (e) => {
   demo.rerun({ resetSec: Number(e.target.value) });
 });
 </script>
+</html>

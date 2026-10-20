@@ -1,3 +1,14 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>
+  // Follow the theme picked on vereda.dev (Starlight stores it under this key).
+  try {
+    const t = localStorage.getItem("starlight-theme");
+    if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+  } catch {}
+</script>
 <title>Rate Limiter Simulator</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -7,7 +18,7 @@
 
 <div class="wrap">
   <div>
-    <div class="eyebrow">Vereda · rateLimit</div>
+    <div class="eyebrow"><a href="./">Vereda patterns</a> · rateLimit</div>
     <h1>How a token bucket protects an API from your own burst</h1>
     <p class="lede">Two clients send the same traffic to an API that allows 20 requests per second and answers 429 above that. The traffic is quiet, then 100 requests arrive within 0.4 s at 6 s, then 12 per second. Retries are on. The right client has a rate limit. Press Play. The page slows down at key moments and says what happened.</p>
   </div>
@@ -437,3 +448,4 @@ $("burst").addEventListener("input", (e) => {
 $("maxWait").addEventListener("change", (e) => demo.rerun({ maxWaitMs: e.target.value === "none" ? undefined : Number(e.target.value) }));
 $("retries").addEventListener("change", (e) => demo.rerun({ retries: e.target.value === "on" }));
 </script>
+</html>

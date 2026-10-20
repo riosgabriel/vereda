@@ -1,3 +1,14 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>
+  // Follow the theme picked on vereda.dev (Starlight stores it under this key).
+  try {
+    const t = localStorage.getItem("starlight-theme");
+    if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+  } catch {}
+</script>
 <title>Retry Storm Simulator</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -11,7 +22,7 @@
 
 <div class="wrap">
   <div>
-    <div class="eyebrow">Vereda · retryBudget</div>
+    <div class="eyebrow"><a href="./">Vereda patterns</a> · retryBudget</div>
     <h1>Why a retry budget saves a slow host</h1>
     <p class="lede">Two clients send the same 80 requests per second to the same host. At 8 s the host slows down and can serve only 60 per second. At 24 s it is fixed. Both clients retry failed requests up to 3 times. Only the right one has a retry budget. Press Play. The page slows down at key moments and says what happened.</p>
   </div>
@@ -345,3 +356,4 @@ $("ratio").addEventListener("input", (e) => {
   demo.rerun({ ratio });
 });
 </script>
+</html>

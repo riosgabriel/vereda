@@ -1,3 +1,14 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>
+  // Follow the theme picked on vereda.dev (Starlight stores it under this key).
+  try {
+    const t = localStorage.getItem("starlight-theme");
+    if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+  } catch {}
+</script>
 <title>Retry Backoff Simulator</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -7,7 +18,7 @@
 
 <div class="wrap">
   <div>
-    <div class="eyebrow">Vereda · retry backoff</div>
+    <div class="eyebrow"><a href="./">Vereda patterns</a> · retry backoff</div>
     <h1>Why retries need jitter</h1>
     <p class="lede"><span id="ledeN">100</span> clients call the same host at the same moment. The host is down for the first second. After that it can serve <span id="ledeCap">40</span> requests per second. Every failed client retries up to <span id="ledeR">5</span> times, with exponential backoff. The clients on the left wait the same time between tries. The clients on the right use Vereda's jitter. Press Play. The page slows down at key moments and says what happened.</p>
   </div>
@@ -374,3 +385,4 @@ bind("maxRetries", "maxRetries", String);
 bind("capDelay", "maxDelay", (v) => `${v} s`);
 bind("capacity", "capacity", (v) => `${v}/s`);
 </script>
+</html>
