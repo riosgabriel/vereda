@@ -34,7 +34,7 @@
       <canvas id="laneA" aria-label="Animation: client without a retry budget"></canvas>
       <div class="stats">
         <div class="stat"><span class="v" id="aLoad">0</span><span class="k">attempts/s hitting the host</span></div>
-        <div class="stat"><span class="v" id="aX">1.0×</span><span class="k">times normal load</span></div>
+        <div class="stat"><span class="v" id="aX">1.00×</span><span class="k">times normal load</span></div>
         <div class="stat"><span class="v" id="aOk">0</span><span class="k">of 80 req/s succeed</span></div>
         <div class="stat"><span class="v" id="aRet">0</span><span class="k">retries sent/s</span></div>
       </div>
@@ -44,7 +44,7 @@
       <canvas id="laneB" aria-label="Animation: client with a retry budget"></canvas>
       <div class="stats">
         <div class="stat"><span class="v" id="bLoad">0</span><span class="k">attempts/s hitting the host</span></div>
-        <div class="stat"><span class="v" id="bX">1.0×</span><span class="k">times normal load</span></div>
+        <div class="stat"><span class="v" id="bX">1.00×</span><span class="k">times normal load</span></div>
         <div class="stat"><span class="v" id="bOk">0</span><span class="k">of 80 req/s succeed</span></div>
         <div class="stat"><span class="v" id="bRef">0</span><span class="k">retries refused/s</span></div>
       </div>
@@ -53,7 +53,7 @@
 
   <div class="charts">
     <div class="panel chart">
-      <h3>Load on the host (attempts per second)</h3>
+      <h3>Load on the host (attempts per second, over the last 1 s)</h3>
       <canvas id="chartLoad" aria-label="Chart of host load over time"></canvas>
       <p>The dashed line is what the host can serve. Above it, the host falls behind and requests time out.</p>
     </div>
@@ -82,7 +82,7 @@
       <div class="formula">allowed = max(minRetriesPerSec × windowMs/1000,
               ratio × firstAttemptsInWindow)
 retry allowed only while  retriesInWindow &lt; allowed</div>
-      <p>With <code>ratio: 0.1</code>, the host gets at most about 1.1× its normal load, however bad things get.</p>
+      <p>With <code>ratio: 0.1</code>, the host gets at most about 1.1× its normal load over any 1 s window, however bad things get.</p>
       <p>A refused retry fails right away with its last error, so the caller hears about it quickly instead of waiting.</p>
       <p>As soon as the host is fixed, load is already below capacity and everything succeeds.</p>
       <p class="note">Try moving the sliders: with 1 max retry, even the left lane recovers. With a budget ratio of 0.5, the right lane carries more load during the outage.</p>
@@ -101,6 +101,8 @@ retry allowed only while  retriesInWindow &lt; allowed</div>
       <p class="note">This page follows the logic of <code>tryWithdraw</code> in <code>src/queue/retry-budget.ts</code>. A test, <code>test/demos/retry-budget.parity.test.ts</code>, checks the budget rule on this page against the real <code>RetryBudget</code>.</p>
       <p class="note">The host is a model. Its capacity, overload collapse, random failures and retry delay are invented for the demo, and no test checks them.</p>
       <p class="note">In the model, the host's throughput drops as it gets overloaded, down to 30% at 2.2× its capacity. 5% of requests fail at random, and retries wait 0.3 s before they go out.</p>
+      <p class="note">The model has no client timeout: a request the overloaded host doesn't serve counts as failed, standing in for one that timed out.</p>
+      <p class="note">Load is shown over the last second, the window the budget counts in. Tick by tick, admitted retries arrive in bursts: a window's allowance goes out as soon as room frees up.</p>
       <p class="note">Here <code>minRetriesPerSec</code> is 1 instead of Vereda's default of 10, so the ratio is what you see working.</p>
     </section>
   </div>
@@ -115,12 +117,15 @@ import { DT, END, RATE, simulate } from "../../../demos/models/retry-budget.js";
 
 // ---- Drawing --------------------------------------------------------------
 const $ = (id) => document.getElementById(id);
-const DOT = 3; // attempts per drawn dot
-const GO = 1.0; // sim seconds a dot spends travelling to the host (half of it for a refused retry)
+const DOT = 1; // attempts per drawn dot
+// Sim seconds a dot spends travelling to the host (half of it for a refused retry). Shorter
+// than the model's 0.3 s retry delay minus a tick, so a failure is always drawn before its
+// retry leaves.
+const GO = 0.18;
 const OK_T = 0.5;
 const FAIL_T = 0.8;
 const DROP_T = 1.0;
-const LIFE = GO + Math.max(OK_T, FAIL_T, DROP_T) + 0.1;
+const AFTER = Math.max(OK_T, FAIL_T, DROP_T) + 0.1; // how long a dot stays after it arrives
 
 /** Seeded hash to a number in [0, 1). The same inputs always give the same output. */
 function hash(a, b, c) {
@@ -210,15 +215,18 @@ function drawLane(canvas, lane, simT, col, laneId, withBudget) {
   ctx.font = col.big;
   ctx.fillText(`${Math.round(load)}/s`, hostL + 10, hy + hh - 14);
 
-  // Dots. Each tick's series values say how many dots of each kind launch in it;
-  // a seeded hash fixes their launch times, heights and fates. A dot's place is a
-  // function of simT minus its launch time, so pause, replay and speed all agree.
+  // Dots. Each tick's series values say how many dots of each kind reach the host (or, for a
+  // refused retry, the budget gate) in it: a dot is timed to ARRIVE on the tick the model counts
+  // it, and its fate is that tick's failure rate, so a failure is drawn before the retry it
+  // causes leaves. A seeded hash fixes arrival times, heights and fates, and a dot's place is a
+  // function of simT, so pause, replay and speed all agree. Traffic was already flowing before
+  // t = 0, so the first second's dots are in flight from the start.
   const startX = clientR;
   const endX = hostL - 4;
   const rates = [RATE, null, null];
-  // Nothing launches after the scenario ends; the player runs on until the last dots land.
-  const k1 = Math.floor(Math.min(simT, END) / DT);
-  const k0 = Math.max(0, Math.floor((simT - LIFE) / DT));
+  // Nothing arrives after the scenario ends; the player runs on until the last dots fade.
+  const k1 = Math.floor(Math.min(simT + GO, END) / DT);
+  const k0 = Math.max(0, Math.floor((simT - AFTER) / DT));
   for (let k = k0; k <= k1; k++) {
     rates[1] = lane.series.retries[k]?.[1] ?? 0;
     rates[2] = lane.series.refused[k]?.[1] ?? 0;
@@ -226,9 +234,9 @@ function drawLane(canvas, lane, simT, col, laneId, withBudget) {
       const seed = laneId * 8 + kind;
       const count = Math.floor((rates[kind] * DT) / DOT + hash(seed, k, 0));
       for (let i = 0; i < count; i++) {
-        const age = simT - (k + hash(seed, k, i * 4 + 1)) * DT;
+        const arrival = (k + hash(seed, k, i * 4 + 1)) * DT;
+        const age = simT - (arrival - (kind === 2 ? GO / 2 : GO));
         if (age < 0) continue;
-        const launch = simT - age;
         const y = cy + (hash(seed, k, i * 4 + 2) - 0.5) * 70;
         let x;
         let yy = y;
@@ -249,7 +257,6 @@ function drawLane(canvas, lane, simT, col, laneId, withBudget) {
         } else if (age < GO) {
           x = startX + (endX - startX) * (age / GO);
         } else {
-          const arrival = launch + GO;
           const failed = hash(seed, k, i * 4 + 3) < valueAt(lane.series.failP, arrival);
           if (failed) {
             const d = (age - GO) / FAIL_T;
@@ -312,7 +319,9 @@ function render(trace, simT, col) {
     const ok = valueAt(s.ok, simT);
     const retries = valueAt(s.retries, simT);
     setStat(`${p}Load`, Math.round(load), load > valueAt(s.capacity, simT) ? "bad" : "");
-    setStat(`${p}X`, `${(load / RATE).toFixed(1)}×`, load / RATE > 1.5 ? "bad" : "");
+    // Two decimals: healthy traffic is 1.05× (the 5% random failures are retried), which one
+    // decimal would round up to the budget's 1.1×.
+    setStat(`${p}X`, `${(load / RATE).toFixed(2)}×`, load / RATE > 1.5 ? "bad" : "");
     setStat(`${p}Ok`, Math.round(ok), ok < 60 ? "bad" : "good");
     if (p === "a") setStat("aRet", Math.round(retries), retries > 40 ? "bad" : "");
     else setStat("bRef", Math.round(valueAt(s.refused, simT)), "");
@@ -330,7 +339,7 @@ function build(o) {
 const demo = mountDemo({
   build,
   render,
-  settle: LIFE, // nothing launches after the end, and a dot lives at most LIFE
+  settle: AFTER, // nothing arrives after the end, and a dot stays at most AFTER once it has
   options: { maxRetries: 3, ratio: 0.1 },
   speed: 2,
 });

@@ -57,8 +57,8 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 			</div>
 			<canvas id="storm" role="img" aria-label="Load on a slow host over 40 seconds: plain retries climb to over 3 times normal load and stay there after the host is fixed; with a retry budget the load stays near normal."></canvas>
 			<div class="storm-stats">
-				<div><span class="v fail" id="storm-a">1.0×</span><span class="k">load, plain retries</span></div>
-				<div><span class="v first" id="storm-b">1.0×</span><span class="k">load, with a retry budget</span></div>
+				<div><span class="v fail" id="storm-a">1.00×</span><span class="k">load, plain retries</span></div>
+				<div><span class="v first" id="storm-b">1.00×</span><span class="k">load, with a retry budget</span></div>
 			</div>
 			<figcaption id="storm-caption">
 				Both clients retry up to 3 times. Without a budget, retries keep the host overloaded even after it is fixed at 24 s.{" "}
@@ -426,8 +426,10 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 		ctx.lineWidth = 1;
 
 		setText("storm-clock", `t = ${Math.floor(t)} s`);
-		setText("storm-a", `${(at(without.load, t) / RATE).toFixed(1)}×`);
-		setText("storm-b", `${(at(withBudget.load, t) / RATE).toFixed(1)}×`);
+		// The model's load is a 1 s average, like the budget's window; two decimals so healthy
+		// traffic (1.05×, its random failures retried) doesn't read as the budget's 1.1×.
+		setText("storm-a", `${(at(without.load, t) / RATE).toFixed(2)}×`);
+		setText("storm-b", `${(at(withBudget.load, t) / RATE).toFixed(2)}×`);
 	}
 
 	// Motion longer than 5 s needs a way to stop it (WCAG 2.2.2), so the loop has a pause button.

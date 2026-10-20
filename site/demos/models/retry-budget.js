@@ -74,8 +74,17 @@ function run(budget, o) {
 		const p = L > 0 ? 1 - ok / L : 0;
 		for (const a of levels)
 			if (a.k < o.maxRetries && a.n * p > 1e-6) pending.push({ k: a.k + 1, n: a.n * p, at: i + DELAY });
-		out.push({ t, first, want, C, load: L / DT, retries: (L - first) / DT, ok: ok / DT, refused: refused / DT, p });
+		out.push({ t, first, want, C, loadTick: L / DT, retries: (L - first) / DT, ok: ok / DT, refused: refused / DT, p });
 	}
+	// What the page shows as load: the average over the last second, the window the budget
+	// itself counts in. Per tick, admitted retries arrive in bursts (a window's allowance is
+	// spent in the tick its room frees up), so the raw value jumps once a second.
+	out.forEach((s, i) => {
+		const from = Math.max(0, i - WINDOW_TICKS + 1);
+		let sum = 0;
+		for (let j = from; j <= i; j++) sum += out[j].loadTick;
+		s.load = sum / (i - from + 1);
+	});
 	return out;
 }
 
@@ -85,6 +94,7 @@ export const toLane = (ticks, config) => ({
 	results: [],
 	series: {
 		load: ticks.map((s) => [s.t, s.load]),
+		loadTick: ticks.map((s) => [s.t, s.loadTick]),
 		retries: ticks.map((s) => [s.t, s.retries]),
 		ok: ticks.map((s) => [s.t, s.ok]),
 		refused: ticks.map((s) => [s.t, s.refused]),
@@ -165,7 +175,7 @@ export function simulate(o) {
 		moments: momentsOf(a, b),
 		lanes: {
 			without: toLane(a, `retry: { maxRetries: ${o.maxRetries} }`),
-			with: toLane(b, `retryBudget: { ratio: ${ratio}, windowMs: 1000 }`),
+			with: toLane(b, `retryBudget: { ratio: ${ratio}, windowMs: 1000, minRetriesPerSec: 1 }`),
 		},
 	};
 }
