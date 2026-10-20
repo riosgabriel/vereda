@@ -262,11 +262,46 @@ jobs:
       - name: Run the smoke test in workerd
         run: node scripts/smoke/workers.mjs
 
+  # vereda.dev (site/): typechecks the Astro project, builds it the way the Docs workflow
+  # does, and checks every internal link and #anchor in the output. The docs are written
+  # for GitHub and the site rewrites their links (site/src/remark/doc-links.ts), so a
+  # renamed chapter or heading breaks here instead of on the live site.
+  site:
+    name: site
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install site dependencies
+        working-directory: site
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        working-directory: site
+        run: bun run check
+
+      - name: Build
+        working-directory: site
+        run: bun run build
+
+      - name: Check links
+        working-directory: site
+        run: bun run check:links
+
   ci:
     if: always()
-    needs: [lint, test, test-bun, smoke-workers]
+    needs: [lint, test, test-bun, smoke-workers, site]
     runs-on: ubuntu-latest
     steps:
       - name: Check job results
-        if: needs.lint.result != 'success' || needs.test.result != 'success' || needs['test-bun'].result != 'success' || needs['smoke-workers'].result != 'success'
+        if: needs.lint.result != 'success' || needs.test.result != 'success' || needs['test-bun'].result != 'success' || needs['smoke-workers'].result != 'success' || needs.site.result != 'success'
         run: exit 1
