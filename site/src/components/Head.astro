@@ -10,9 +10,45 @@ import Default from "@astrojs/starlight/components/Head.astro";
 	if (diagrams.length) {
 		const { default: mermaid } = await import("mermaid");
 		const sources = [...diagrams].map((el) => el.textContent ?? "");
+		// Mermaid's "base" theme takes its colors from these variables, so diagrams use the site's
+		// type, grays and accent instead of Mermaid's lavender. Starlight's grays are hsl(); a
+		// canvas hands any CSS color back as hex, which is what Mermaid expects.
+		const ctx = document.createElement("canvas").getContext("2d");
+		const token = (name: string) => {
+			const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+			if (!ctx) return value;
+			ctx.fillStyle = value;
+			return ctx.fillStyle;
+		};
+		const themeVariables = () => {
+			const surface = token("--sl-color-gray-6");
+			const ink = token("--sl-color-white");
+			const line = token("--sl-color-gray-3");
+			return {
+				fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--sl-font"),
+				fontSize: "14px",
+				background: token("--sl-color-black"),
+				primaryColor: surface,
+				primaryTextColor: ink,
+				primaryBorderColor: token("--sl-color-accent"),
+				secondaryColor: surface,
+				tertiaryColor: surface,
+				lineColor: line,
+				textColor: ink,
+				// Sequence diagrams
+				actorBkg: surface,
+				actorBorder: token("--sl-color-accent"),
+				actorTextColor: ink,
+				actorLineColor: line,
+				signalColor: ink,
+				signalTextColor: ink,
+				noteBkgColor: token("--sl-color-accent-low"),
+				noteTextColor: ink,
+				noteBorderColor: token("--sl-color-accent"),
+			};
+		};
 		const draw = async () => {
-			const dark = document.documentElement.dataset.theme === "dark";
-			mermaid.initialize({ startOnLoad: false, theme: dark ? "dark" : "default" });
+			mermaid.initialize({ startOnLoad: false, theme: "base", themeVariables: themeVariables() });
 			diagrams.forEach((el, i) => {
 				el.removeAttribute("data-processed");
 				el.textContent = sources[i];
