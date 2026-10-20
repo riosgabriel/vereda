@@ -4,7 +4,8 @@
 ---
 
 <div class="demo not-content">
-  <p class="lede"><span id="ledeN">100</span> clients call the same host at the same moment. The host is down for the first second. After that it can serve <span id="ledeCap">40</span> requests per second. Every failed client retries up to <span id="ledeR">5</span> times, with exponential backoff. The clients on the left wait the same time between tries. The clients on the right use Vereda's jitter. Press Play. The page slows down at key moments and says what happened.</p>
+  <p class="lede"><span id="ledeN">100</span> clients call the same host at the same moment. The host is down for the first second. After that it can serve <span id="ledeCap">40</span> requests per second.</p>
+  <p class="lede">Every failed client retries up to <span id="ledeR">5</span> times, with exponential backoff. On the left, all clients wait the same time. On the right, they use Vereda's jitter. Press Play: the page slows down at key moments to explain.</p>
 
   <div class="controls">
     <button id="play" type="button">Play</button>
@@ -82,7 +83,12 @@
         <li>Finish times are less predictable. One client with bad luck can wait longer than the rest.</li>
         <li>The host still has the same capacity. Jitter only gives its requests a better order. If the outage is longer than all the retries, every client still gives up.</li>
       </ul>
-      <p class="note">Things to try: set <code>baseDelayMs</code> to 50. The first retry windows become very narrow, so even jitter makes a short peak. Then raise <code>maxRetries</code>, and watch the no-jitter lane send the same wave again and again. Lower <code>maxDelayMs</code> to 1 s, and the waves get closer and closer.</p>
+      <p class="note">Things to try:</p>
+      <ul class="note">
+        <li>Set <code>baseDelayMs</code> to 50. The first retry windows become very narrow, so even jitter makes a short peak.</li>
+        <li>Raise <code>maxRetries</code>, and watch the no-jitter lane send the same wave again and again.</li>
+        <li>Lower <code>maxDelayMs</code> to 1 s, and the waves get closer and closer.</li>
+      </ul>
     </section>
     <section>
       <h2>In Vereda</h2>
@@ -97,9 +103,14 @@
     &#125;,
   &#125;,
 &#125;)</div>
-      <p class="note"><code>src/core/backoff.ts</code> builds the delay for retry number <code>attempt</code>, counted from 0. First it takes <code>baseDelayMs * 2 ** attempt</code> and caps it at <code>maxDelayMs</code>. With <code>jitter: true</code> (the default) it returns <code>Math.random() * capped</code>. This is full jitter: a random value from 0 to the capped delay.</p>
-      <p class="note">A <code>Retry-After</code> header changes this. When a retryable status (for example 429 or 503) comes with that header, <code>resolveRetryDelay</code> in <code>src/queue/retry.ts</code> uses the header value, capped at <code>maxDelayMs</code>, and adds no jitter. If the host tells every client the same number of seconds, they all come back together. This page shows plain failures with no header. A <code>backoff</code> function you write yourself is used as it is, with no jitter added.</p>
-      <p class="note">Simplified model: the host answers each request at once, and it serves up to its capacity in every 100 ms step. The page shows a retry as soon as the failure is known. In Vereda a retry also waits for a free slot in the bulkhead. A test (<code>test/demos/backoff-jitter.parity.test.ts</code>) runs this page's model against the real <code>HttpClient</code>, so the page has to change when the library does.</p>
+      <p class="note"><code>src/core/backoff.ts</code> builds the delay for retry number <code>attempt</code>, counted from 0. It takes <code>baseDelayMs * 2 ** attempt</code> and caps it at <code>maxDelayMs</code>.</p>
+      <p class="note">With <code>jitter: true</code>, the default, it returns <code>Math.random() * capped</code>. This is full jitter: a random value from 0 to the capped delay.</p>
+      <p class="note">A <code>Retry-After</code> header changes this. When a retryable status such as 429 or 503 comes with that header, <code>resolveRetryDelay</code> in <code>src/queue/retry.ts</code> uses the header value, capped at <code>maxDelayMs</code>, and adds no jitter.</p>
+      <p class="note">So if the host tells every client the same number of seconds, they all come back together. This page shows plain failures with no header.</p>
+      <p class="note">A <code>backoff</code> function you write yourself is used as it is, with no jitter added.</p>
+      <p class="note">Simplified model: the host answers each request at once, and it serves up to its capacity in every 100 ms step.</p>
+      <p class="note">The page shows a retry as soon as the failure is known. In Vereda, a retry also waits for a free slot in the bulkhead.</p>
+      <p class="note">A test (<code>test/demos/backoff-jitter.parity.test.ts</code>) runs this page's model against the real <code>HttpClient</code>, so the page has to change when the library does.</p>
     </section>
   </div>
 </div>

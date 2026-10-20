@@ -4,7 +4,8 @@
 ---
 
 <div class="demo not-content">
-  <p class="lede">One request goes to a host that hangs. It never answers. Both clients wait 2 seconds per attempt and allow 3 retries. The right client also sets a total deadline of 4 seconds. Each row is one attempt. Press Play. The page slows down at key moments and says what happened.</p>
+  <p class="lede">One request goes to a host that hangs and never answers. Both clients wait 2 seconds per attempt and allow 3 retries. Only the right one also sets a total deadline of 4 seconds.</p>
+  <p class="lede">Each row is one attempt. Press Play: the page slows down at key moments and says what happened.</p>
 
   <div class="controls">
     <button id="play" type="button">Play</button>
@@ -69,9 +70,9 @@
     <section>
       <h2>What each timeout gives you</h2>
       <ol>
-        <li><strong>attemptMs caps one attempt.</strong> A hung host costs at most <code>attemptMs</code> per try. The timer covers the wait for the response, the body read when <code>parse</code> or <code>responseType</code> is set, and an async <code>parse</code>. It ends with a <code>TimeoutError</code>, and Vereda retries that.</li>
-        <li><strong>totalMs caps the whole request.</strong> The clock starts at <code>request()</code>. It counts queue waits, rate-limit waits, every attempt and every backoff sleep. At the deadline, Vereda aborts the attempt in flight, or wakes the sleep, and the ticket ends with <code>DeadlineExceededError</code>.</li>
-        <li><strong>Doomed retries are skipped.</strong> If the next backoff would run to or past the deadline, the ticket fails now. It does not sleep first. Set totalMs to 2 s and watch the right lane: it stops at 2.0 s with the last <code>TimeoutError</code> as <code>cause</code>.</li>
+        <li><strong>attemptMs caps one attempt.</strong> A hung host costs at most <code>attemptMs</code> per try, and the attempt ends with a <code>TimeoutError</code> that Vereda retries. The timer also covers the body read and an async <code>parse</code>, when <code>parse</code> or <code>responseType</code> is set.</li>
+        <li><strong>totalMs caps the whole request.</strong> The clock starts at <code>request()</code> and counts everything: queue waits, rate-limit waits, attempts and backoff sleeps. At the deadline, Vereda aborts the attempt or wakes the sleep, and the ticket ends with <code>DeadlineExceededError</code>.</li>
+        <li><strong>Doomed retries are skipped.</strong> If the next backoff would reach the deadline, the ticket fails now instead of sleeping first. Set totalMs to 2 s: the right lane stops at 2.0 s, with the last <code>TimeoutError</code> as <code>cause</code>.</li>
       </ol>
     </section>
     <section>
@@ -82,7 +83,12 @@
         <li>Aborting is a client-side act. The host may keep working on the request. Vereda retries timeouts only for idempotent requests, so this is safe to repeat.</li>
         <li><code>attemptMs: Infinity</code> removes the cap. Move the slider to the end and the left lane never answers. Only <code>cancel()</code> or <code>totalMs</code> can end the wait.</li>
       </ul>
-      <p class="note">Things to try: set totalMs to 1 s and the right lane aborts the first attempt. Set max retries to 0 and the caller gets a plain <code>TimeoutError</code> with no wrapper. Turn both timeouts off and neither lane ever answers.</p>
+      <p class="note">Things to try:</p>
+      <ul class="note">
+        <li>Set totalMs to 1 s: the right lane aborts the first attempt.</li>
+        <li>Set max retries to 0: the caller gets a plain <code>TimeoutError</code> with no wrapper.</li>
+        <li>Turn both timeouts off: neither lane ever answers.</li>
+      </ul>
     </section>
     <section>
       <h2>In Vereda</h2>
@@ -100,9 +106,18 @@ const client = HttpClient.create(&#123;
 client.get("/slow", &#123;
   timeout: &#123; totalMs: 10_000 &#125;,
 &#125;)</div>
-      <p class="note">This page follows <code>src/queue/retry.ts</code> (the deadline check before each backoff, and the abort path), <code>src/queue/executor.ts</code> (the attempt timer and the body read) and <code>src/core/client.ts</code> (the deadline timer, armed in <code>send()</code>). Errors are in <code>src/core/errors.ts</code>: <code>TimeoutError</code> has <code>kind: "timeout"</code>, <code>DeadlineExceededError</code> has <code>kind: "deadline"</code>, and <code>MaxRetriesExceededError</code> has <code>kind: "max_retries"</code>.</p>
-      <p class="note">A test (<code>test/demos/timeouts.parity.test.ts</code>) checks this page's model against the real <code>HttpClient</code>: when each attempt starts and ends, when the caller hears back, and which error it gets. The page has to change when the library does. The host's 6 s of extra work is invented for the chart and is not checked.</p>
-      <p class="note">Model choices: backoff is 200 ms, 400 ms, 800 ms and so on, with jitter off so the numbers repeat. Vereda's default has full jitter, so each real wait is a random value up to that size. Finite timeouts must fit in 2<sup>31</sup>-1 ms, and <code>Infinity</code> uses its own path, so it never fires early (<code>src/core/timer.ts</code>, #203). A user <code>cancel()</code> ends the ticket at once with <code>CancelledError</code> and also aborts the attempt.</p>
+      <p class="note">This page follows the logic in three files:</p>
+      <ul class="note">
+        <li><code>src/queue/retry.ts</code>: the deadline check before each backoff, and the abort path.</li>
+        <li><code>src/queue/executor.ts</code>: the attempt timer and the body read.</li>
+        <li><code>src/core/client.ts</code>: the deadline timer, armed in <code>send()</code>.</li>
+      </ul>
+      <p class="note">The errors are in <code>src/core/errors.ts</code>. <code>TimeoutError</code> has <code>kind: "timeout"</code>, <code>DeadlineExceededError</code> has <code>kind: "deadline"</code> and <code>MaxRetriesExceededError</code> has <code>kind: "max_retries"</code>.</p>
+      <p class="note">A test, <code>test/demos/timeouts.parity.test.ts</code>, checks this page's model against the real <code>HttpClient</code>: when each attempt starts and ends, when the caller hears back, and which error it gets. The page has to change when the library does.</p>
+      <p class="note">The host's 6 s of extra work is invented for the chart, and no test checks it.</p>
+      <p class="note">Model choices: backoff is 200 ms, 400 ms, 800 ms and so on, with jitter off so the numbers repeat. Vereda's default has full jitter, so each real wait is a random value up to that size.</p>
+      <p class="note">Finite timeouts must fit in 2<sup>31</sup>-1 ms. <code>Infinity</code> takes its own path in <code>src/core/timer.ts</code>, so it never fires early (#203).</p>
+      <p class="note">A user <code>cancel()</code> ends the ticket at once with <code>CancelledError</code> and also aborts the attempt.</p>
     </section>
   </div>
 </div>

@@ -4,7 +4,8 @@
 ---
 
 <div class="demo not-content">
-  <p class="lede">Two clients send the same 80 requests per second to the same host. At 8 s the host slows down and can serve only 60 per second. At 24 s it is fixed. Both clients retry failed requests up to 3 times. Only the right one has a retry budget. Press Play. The page slows down at key moments and says what happened.</p>
+  <p class="lede">Two clients send the same 80 requests per second to the same host. At 8 s the host slows down and can serve only 60 per second. At 24 s it is fixed.</p>
+  <p class="lede">Both clients retry failed requests up to 3 times. Only the right one has a retry budget. Press Play: the page slows down at key moments and says what happened.</p>
 
   <div class="controls">
     <button id="play" type="button">Play</button>
@@ -72,7 +73,8 @@
         <li>The host now gets about 3.6× its normal traffic. It spends time on requests whose clients already gave up, so it serves even fewer.</li>
         <li>Fewer served means more failures, which means more retries. The loop feeds itself.</li>
       </ol>
-      <p>Look at the left lane after the host is fixed. It can serve 120/s again, but the retries keep sending it more than that, so it stays down. This is called a <strong>metastable failure</strong>: the original cause is gone, and the retries alone keep the outage going.</p>
+      <p>Look at the left lane after the host is fixed. It can serve 120/s again, but the retries keep sending it more than that, so it stays down.</p>
+      <p>This is a <strong>metastable failure</strong>. The original cause is gone, and the retries alone keep the outage going.</p>
     </section>
     <section>
       <h2>What the budget changes</h2>
@@ -80,7 +82,9 @@
       <div class="formula">allowed = max(minRetriesPerSec × windowMs/1000,
               ratio × firstAttemptsInWindow)
 retry allowed only while  retriesInWindow &lt; allowed</div>
-      <p>With <code>ratio: 0.1</code>, the host gets at most about 1.1× its normal load, however bad things get. Refused retries fail right away with their last error, so the caller hears about it quickly instead of waiting. As soon as the host is fixed, load is already below capacity and everything succeeds.</p>
+      <p>With <code>ratio: 0.1</code>, the host gets at most about 1.1× its normal load, however bad things get.</p>
+      <p>A refused retry fails right away with its last error, so the caller hears about it quickly instead of waiting.</p>
+      <p>As soon as the host is fixed, load is already below capacity and everything succeeds.</p>
       <p class="note">Try moving the sliders: with 1 max retry, even the left lane recovers. With a budget ratio of 0.5, the right lane carries more load during the outage.</p>
     </section>
     <section>
@@ -94,8 +98,10 @@ retry allowed only while  retriesInWindow &lt; allowed</div>
     minRetriesPerSec: 1,
   &#125;,
 &#125;)</div>
-      <p class="note">This page follows the logic in <code>src/queue/retry-budget.ts</code> (<code>tryWithdraw</code>). A test (<code>test/demos/retry-budget.parity.test.ts</code>) checks the budget rule on this page against the real <code>RetryBudget</code>. The host is a model: its capacity, overload collapse, random failures and retry delay are invented for the demo, and no test checks them.</p>
-      <p class="note">Simplified model: the host's real throughput drops as it gets overloaded (down to 30% at 2.2× its capacity), 5% of requests fail at random, and retries wait 0.3 s before they go out. Here <code>minRetriesPerSec</code> is 1 instead of Vereda's default of 10, so the ratio is what you see working.</p>
+      <p class="note">This page follows the logic of <code>tryWithdraw</code> in <code>src/queue/retry-budget.ts</code>. A test, <code>test/demos/retry-budget.parity.test.ts</code>, checks the budget rule on this page against the real <code>RetryBudget</code>.</p>
+      <p class="note">The host is a model. Its capacity, overload collapse, random failures and retry delay are invented for the demo, and no test checks them.</p>
+      <p class="note">In the model, the host's throughput drops as it gets overloaded, down to 30% at 2.2× its capacity. 5% of requests fail at random, and retries wait 0.3 s before they go out.</p>
+      <p class="note">Here <code>minRetriesPerSec</code> is 1 instead of Vereda's default of 10, so the ratio is what you see working.</p>
     </section>
   </div>
 </div>

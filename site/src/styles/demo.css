@@ -75,6 +75,11 @@
 	max-width: 70ch;
 	font-size: var(--sl-text-base);
 }
+/* A lede split into short paragraphs still reads as one passage: pull the next one up from
+   the grid's 22px to the 10px the explanation sections use. */
+.demo .lede + .lede {
+	margin-top: -12px;
+}
 .demo code {
 	font-family: var(--mono);
 	font-size: 0.9em;

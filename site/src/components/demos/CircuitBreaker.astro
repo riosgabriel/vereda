@@ -4,7 +4,9 @@
 ---
 
 <div class="demo not-content">
-  <p class="lede">Two clients send the same 10 requests per second to the same host, with a 1 second timeout. At 6 s the host breaks, and at 20 s it is fixed. The right client has a circuit breaker. Retries are off, so each dot is one request. Press Play. When a phase starts or the breaker changes state, the page slows down for a moment and tells you what happened.</p>
+  <p class="lede">Two clients send the same 10 requests per second to the same host, with a 1 second timeout. At 6 s the host breaks, and at 20 s it is fixed.</p>
+  <p class="lede">The right client has a circuit breaker. Retries are off, so each dot is one request.</p>
+  <p class="lede">Press Play. When a phase starts or the breaker changes state, the page slows down for a moment and tells you what happened.</p>
 
   <div class="controls">
     <button id="play" type="button">Play</button>
@@ -102,7 +104,8 @@
         <li>After the host is fixed, the breaker keeps rejecting requests until the next trial, which can take up to a full reset timeout. Look at the gap right after 20 s.</li>
         <li>On a flaky host, an open breaker also rejects requests that would have worked.</li>
       </ul>
-      <p class="note">Things to try: choose the flaky host with "5 failures in a row". The breaker almost never opens, because 5 timeouts in a row happen only about 1% of the time (0.4⁵). Switch to the failure rate and it opens. A flaky host that never trips the breaker is the case the <a href="/patterns/retry-budget/">retry budget</a> covers.</p>
+      <p class="note">Things to try: choose the flaky host with "5 failures in a row". The breaker almost never opens, because 5 timeouts in a row happen only about 1% of the time (0.4⁵).</p>
+      <p class="note">Switch to the failure rate and it opens. A flaky host that never trips the breaker is the case the <a href="/patterns/retry-budget/">retry budget</a> covers.</p>
     </section>
     <section>
       <h2>In Vereda</h2>
@@ -119,8 +122,11 @@
     //   minimumRequests: 10 &#125;,
   &#125;,
 &#125;)</div>
-      <p class="note">This page follows the state machine in <code>src/queue/circuit-breaker.ts</code>, one breaker per partition. In Vereda every attempt asks the breaker, retries included. Only network errors, timeouts and retryable statuses count as failures. A 404 counts as a success, because the host answered.</p>
-      <p class="note">Times are shortened so you don't have to wait: the default reset timeout is 30 s, and here it is 1 to 8 s. In 1.x the breaker does nothing unless <code>enabled: true</code> is set. When the breaker closes, its failure window starts empty, so the breaker opens again only after new failures. A test (<code>test/demos/circuit-breaker.parity.test.ts</code>) runs this page's model against the real <code>HttpClient</code>, so the page has to change when the library does.</p>
+      <p class="note">This page follows the state machine in <code>src/queue/circuit-breaker.ts</code>, one breaker per partition. In Vereda every attempt asks the breaker, retries included.</p>
+      <p class="note">Only network errors, timeouts and retryable statuses count as failures. A 404 counts as a success, because the host answered.</p>
+      <p class="note">Times are shortened so you don't have to wait: the default reset timeout is 30 s, and here it is 1 to 8 s.</p>
+      <p class="note">In 1.x the breaker does nothing unless <code>enabled: true</code> is set. When the breaker closes, its failure window starts empty, so the breaker opens again only after new failures.</p>
+      <p class="note">A test (<code>test/demos/circuit-breaker.parity.test.ts</code>) runs this page's model against the real <code>HttpClient</code>, so the page has to change when the library does.</p>
     </section>
   </div>
 </div>
