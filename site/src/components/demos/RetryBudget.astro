@@ -111,7 +111,7 @@ retry allowed only while  retriesInWindow &lt; allowed</div>
 	// and models/*.js (excluded in tsconfig.json). Their behavior is pinned by test/demos/.
 import { dot, legend, mix, playedLine, roundRect, sizeCanvas, timeAxes, valueAt } from "../../../demos/engine/draw.js";
 import { mountDemo } from "../../../demos/engine/player.js";
-import { DT, RATE, simulate } from "../../../demos/models/retry-budget.js";
+import { DT, END, RATE, simulate } from "../../../demos/models/retry-budget.js";
 
 // ---- Drawing --------------------------------------------------------------
 const $ = (id) => document.getElementById(id);
@@ -216,7 +216,8 @@ function drawLane(canvas, lane, simT, col, laneId, withBudget) {
   const startX = clientR;
   const endX = hostL - 4;
   const rates = [RATE, null, null];
-  const k1 = Math.floor(simT / DT);
+  // Nothing launches after the scenario ends; the player runs on until the last dots land.
+  const k1 = Math.floor(Math.min(simT, END) / DT);
   const k0 = Math.max(0, Math.floor((simT - LIFE) / DT));
   for (let k = k0; k <= k1; k++) {
     rates[1] = lane.series.retries[k]?.[1] ?? 0;
@@ -329,6 +330,7 @@ function build(o) {
 const demo = mountDemo({
   build,
   render,
+  settle: LIFE, // nothing launches after the end, and a dot lives at most LIFE
   options: { maxRetries: 3, ratio: 0.1 },
   speed: 2,
 });

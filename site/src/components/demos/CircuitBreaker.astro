@@ -436,6 +436,7 @@ function build(o) {
 const demo = mountDemo({
   build,
   render,
+  settle: 2 * G, // a dot keeps moving this long after its attempt ends
   options: { scenario: "down", mode: "consec", threshold: 5, resetSec: 4 },
   speed: 1,
 });

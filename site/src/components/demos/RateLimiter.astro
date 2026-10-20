@@ -231,9 +231,12 @@ function drawLane(canvas, lane, simT, col, bucketOn) {
       const f = (simT * tokensPerSec * 0.12 + i / 4) % 1;
       dot(ctx, bx, top - 34 + f * 32, 2.6, col.first, full ? 0.2 : 0.9);
     }
+    // Beside the drip, not above it: above, it runs off the top of the canvas.
     ctx.fillStyle = col.muted;
     ctx.font = col.strong;
-    ctx.fillText(`+${tokensPerSec} tokens/s`, bx, top - 42);
+    ctx.textAlign = "left";
+    ctx.fillText(`+${tokensPerSec} tokens/s`, bx + 10, top - 14);
+    ctx.textAlign = "center";
     ctx.fillStyle = col.ink;
     ctx.font = col.strong;
     ctx.fillText(`${tk.toFixed(1)} / ${burst}`, bx, top + bh + 18);
@@ -424,6 +427,7 @@ function build(o) {
 const demo = mountDemo({
   build,
   render,
+  settle: GIN + 2 * G, // the walk to the bucket, then there and back
   options: { tokensPerSec: 15, burst: 5, maxWaitMs: 5000, retries: true },
   speed: 0.5,
 });

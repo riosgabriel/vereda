@@ -365,6 +365,7 @@ function build(o) {
 const demo = mountDemo({
   build,
   render,
+  settle: G, // a dot keeps moving this long after its attempt ends
   options: { clients: 100, base: 200, maxRetries: 5, maxDelay: 30, capacity: 40 },
   speed: 0.5,
 });
