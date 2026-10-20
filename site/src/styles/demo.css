@@ -19,7 +19,10 @@
 	/* One sans for all text, mono only for code; both come from theme.css. draw.js reads them. */
 	--sans: var(--sl-font);
 	--mono: var(--sl-font-mono);
-	/* Two lanes side by side need more than Starlight's 45rem column. */
+}
+/* Two lanes side by side need more than the docs' 56rem column. This selector outranks
+   theme.css's :root[data-has-sidebar], whichever stylesheet loads last. */
+:root[data-has-sidebar]:has(.demo) {
 	--sl-content-width: 72rem;
 }
 :root[data-theme="light"] {

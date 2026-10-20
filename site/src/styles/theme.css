@@ -72,6 +72,22 @@ h2 {
 	background-color: color-mix(in srgb, var(--sl-color-gray-5) 45%, transparent);
 }
 
+/* Doc pages: a wider column than Starlight's 45rem, so tables and code blocks stop wrapping on
+   wide screens, while paragraphs and lists keep a readable measure. The landing page has no
+   sidebar and lays itself out; the demo pages widen further (demo.css). */
+:root[data-has-sidebar] {
+	--sl-content-width: 56rem;
+}
+.sl-markdown-content > :is(p, ul, ol, blockquote) {
+	max-width: 75ch;
+}
+
+/* A table's first column is usually a name (a metric, an option, a parameter): never break it
+   mid-word. Long values in the other columns still wrap. */
+.sl-markdown-content td:first-child > code {
+	white-space: nowrap;
+}
+
 /* Code blocks share the cards' radius. */
 .expressive-code {
 	--ec-brdRad: var(--v-radius);
