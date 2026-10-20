@@ -293,15 +293,6 @@ function drawLane(canvas, lane, simT, col, { duration, rows, deadline }) {
 
 function drawSweep(trace, col, done) {
   const { ctx, w, h } = sizeCanvas($("chartSweep"));
-  // The what-if is the run's conclusion: shown once the run ends, so it doesn't answer the
-  // question before the lanes do.
-  if (!done) {
-    ctx.fillStyle = col.muted;
-    ctx.font = col.label;
-    ctx.textAlign = "center";
-    ctx.fillText("Play the run to see every totalMs compared.", w / 2, h / 2);
-    return;
-  }
   const L = 40;
   const R = 12;
   const T = 22;
@@ -326,6 +317,27 @@ function drawSweep(trace, col, done) {
   }
   ctx.textAlign = "center";
   for (let d = 1; d <= SWEEP_MAX; d += 2) ctx.fillText(d === SWEEP_MAX ? "off" : `${d}s`, X(d), h - 8);
+  ctx.textAlign = "left";
+  ctx.font = col.strong;
+  ctx.fillStyle = col.fail;
+  ctx.fillText("no deadline", L + 6, 12);
+  ctx.fillStyle = col.first;
+  ctx.fillText("with deadline", L + 100, 12);
+  // The axes and legend are setup; the lines are the run's conclusion, drawn once it ends so
+  // they don't answer the question before the lanes do.
+  if (!done) {
+    const hint = "Play the run to see every totalMs compared.";
+    const cx = (L + w - R) / 2;
+    const cy = (T + h - B) / 2;
+    ctx.font = col.label;
+    const tw = ctx.measureText(hint).width;
+    ctx.fillStyle = col.surface; // clear the gridline behind the text
+    ctx.fillRect(cx - tw / 2 - 8, cy - 11, tw + 16, 18);
+    ctx.fillStyle = col.muted;
+    ctx.textAlign = "center";
+    ctx.fillText(hint, cx, cy + 3);
+    return;
+  }
   ctx.strokeStyle = col.fail;
   ctx.lineWidth = 2.5;
   if (Number.isFinite(base)) {
@@ -356,12 +368,6 @@ function drawSweep(trace, col, done) {
   ctx.beginPath();
   ctx.arc(X(cur), Y(mine === INF ? yMax : mine), 5, 0, Math.PI * 2);
   ctx.fill();
-  ctx.textAlign = "left";
-  ctx.font = col.strong;
-  ctx.fillStyle = col.fail;
-  ctx.fillText("no deadline", L + 6, 12);
-  ctx.fillStyle = col.first;
-  ctx.fillText("with deadline", L + 100, 12);
   if (!Number.isFinite(base) || sweep.some((p) => p.y === INF)) {
     ctx.fillStyle = col.muted;
     ctx.font = col.label;
