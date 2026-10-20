@@ -28,7 +28,10 @@ export default defineConfig({
 			editLink: { baseUrl: "https://github.com/riosgabriel/vereda/edit/main/docs/" },
 			components: { Head: "./src/components/Head.astro" },
 			customCss: ["./src/styles/theme.css"],
+			logo: { src: "./src/assets/logo.png" },
+			favicon: "/favicon.png",
 			head: [
+				{ tag: "link", attrs: { rel: "apple-touch-icon", href: "/apple-touch-icon.png" } },
 				{ tag: "link", attrs: { rel: "preconnect", href: "https://fonts.googleapis.com" } },
 				{ tag: "link", attrs: { rel: "preconnect", href: "https://fonts.gstatic.com", crossorigin: true } },
 				{
