@@ -1,0 +1,100 @@
+---
+import { Icon } from "@astrojs/starlight/components";
+import Default from "@astrojs/starlight/components/Search.astro";
+
+// What people look for most, shown in the search dialog until they start typing. Each one goes
+// straight to its section. The list is hand-picked, not measured: the site keeps no search analytics.
+const SUGGESTIONS = [
+	{ label: "Retries and backoff", href: "/guide/resilience/#retries-and-backoff" },
+	{ label: "Circuit breaker", href: "/guide/resilience/#circuit-breaker" },
+	{ label: "Timeouts", href: "/guide/resilience/#timeouts" },
+	{ label: "Error handling", href: "/guide/results-and-errors/#error-handling" },
+	{ label: "OpenTelemetry", href: "/guide/observability/#opentelemetry" },
+	{ label: "Cancelling a request", href: "/guide/requests/#cancellation" },
+];
+---
+
+<Default {...Astro.props} />
+<section class="popular" aria-labelledby="popular-heading" hidden>
+	<h2 id="popular-heading">Suggested</h2>
+	<ul>
+		{
+			SUGGESTIONS.map((s) => (
+				<li>
+					<a href={s.href}>
+						<Icon name="magnifier" size="1rem" />
+						{s.label}
+					</a>
+				</li>
+			))
+		}
+	</ul>
+</section>
+
+<script>
+	// Starlight's dialog is built by its own component, so move the list into it, under the
+	// search box, and hide it while the box has text.
+	const popular = document.querySelector<HTMLElement>(".popular");
+	const frame = document.querySelector("site-search .dialog-frame");
+	if (popular && frame) {
+		frame.append(popular);
+		popular.hidden = false;
+		const input = () => frame.querySelector<HTMLInputElement>(".pagefind-ui__search-input");
+		const sync = () => (popular.hidden = Boolean(input()?.value));
+		frame.addEventListener("input", sync);
+		// Pagefind's clear button empties the box without an input event.
+		frame.addEventListener("click", (e) => {
+			if ((e.target as Element).closest(".pagefind-ui__search-clear")) requestAnimationFrame(sync);
+		});
+		// Arrow keys walk from the box down the list and back up.
+		frame.addEventListener("keydown", (e) => {
+			const ke = e as KeyboardEvent;
+			if (popular.hidden || (ke.key !== "ArrowDown" && ke.key !== "ArrowUp")) return;
+			const links = [...popular.querySelectorAll("a")];
+			const at = links.indexOf(document.activeElement as HTMLAnchorElement);
+			const next = at + (ke.key === "ArrowDown" ? 1 : -1);
+			if (at === -1 && ke.key === "ArrowUp") return;
+			ke.preventDefault();
+			(next < 0 ? input() : links[Math.min(next, links.length - 1)])?.focus();
+		});
+	}
+</script>
+
+<style>
+	.popular[hidden] {
+		display: none;
+	}
+	.popular h2 {
+		margin: 0 0 0.25rem;
+		padding-inline: 0.75rem;
+		color: var(--sl-color-gray-3);
+		font-family: var(--sl-font-mono);
+		font-size: var(--sl-text-xs);
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+	}
+	.popular ul {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+	.popular a {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		padding: 0.5rem 0.75rem;
+		border-radius: 0.375rem;
+		color: var(--sl-color-gray-2);
+		text-decoration: none;
+	}
+	.popular a :global(svg) {
+		color: var(--sl-color-gray-3);
+	}
+	.popular a:hover,
+	.popular a:focus-visible {
+		outline: none;
+		background: var(--sl-color-accent-low);
+		color: var(--sl-color-white);
+	}
+</style>

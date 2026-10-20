@@ -32,6 +32,7 @@ export default defineConfig({
 				SiteTitle: "./src/components/SiteTitle.astro",
 				Footer: "./src/components/Footer.astro",
 				PageTitle: "./src/components/PageTitle.astro",
+				Search: "./src/components/Search.astro",
 			},
 			customCss: ["./src/styles/theme.css"],
 			// Starlight's Markdown transforms (heading anchor links, code block defaults) only run on
