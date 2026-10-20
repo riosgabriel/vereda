@@ -2,9 +2,13 @@
 import { Image } from "astro:assets";
 import Default from "@astrojs/starlight/components/Footer.astro";
 import logo from "../assets/logo.png";
+import Horizon from "./Horizon.astro";
 
 // Starlight's footer (edit link, previous/next) stays; the site's footer goes under it, on every
-// page. The license line matches LICENSE.
+// page. The license line matches LICENSE. Above it, the valley as line art stands in for the
+// divider, so every page ends where the landing page's trail leads; the landing page already
+// paints the valley under its hero, so it keeps the plain border.
+const valley = Astro.locals.starlightRoute.entry.data.template !== "splash";
 const REPO = "https://github.com/riosgabriel/vereda";
 const COLUMNS = [
 	{
@@ -35,7 +39,8 @@ const COLUMNS = [
 ---
 
 <Default />
-<div class="site-footer not-content">
+{valley && <Horizon variant="line" />}
+<div class:list={["site-footer", "not-content", { valley }]}>
 	<div class="about">
 		<a href="/" class="brand"><Image src={logo} alt="" width={28} />Vereda</a>
 		<p>Resilient <code>fetch</code> for Node.js, Bun and Cloudflare Workers.</p>
@@ -69,6 +74,10 @@ const COLUMNS = [
 		border-top: 1px solid var(--sl-color-gray-6);
 		font-size: var(--sl-text-sm);
 		color: var(--sl-color-gray-3);
+	}
+	.site-footer.valley {
+		margin-top: 0;
+		border-top: none;
 	}
 	.brand {
 		display: inline-flex;

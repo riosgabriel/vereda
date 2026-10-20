@@ -1,0 +1,114 @@
+---
+import { getCollection } from "astro:content";
+import Default from "@astrojs/starlight/components/PageTitle.astro";
+
+// The Book is a path, so its pages show one: the landing page's trail (Horizon.astro) drawn
+// small above the title, a dot per chapter, walked in ochre up to the one you're on, and the
+// sun from the valley's notch at the end. The overview shows the trail unwalked; the glossary
+// isn't a step on it and shows nothing.
+const id = Astro.locals.starlightRoute.entry.id;
+const onTrail = id === "book" || /^book\/\d\d-/.test(id);
+const chapters = onTrail
+	? (await getCollection("docs", (e) => /^book\/\d\d-/.test(e.id))).sort((a, b) => a.id.localeCompare(b.id))
+	: [];
+const current = chapters.findIndex((c) => c.id === id);
+
+/**
+ * The trail's sideways swing at u (0 = first chapter, 1 = the sun), in [-1, 1]. Horizon's trail
+ * widens with t, the distance from the sun, and dies out in the notch; this one does too, with
+ * twice the bends so a flat strip still reads as winding. 0.95 is the curve's peak on [0, 1].
+ */
+function trailY(u: number): number {
+	const t = 1 - u;
+	return (t ** 0.8 * Math.sin(3.4 * Math.PI * t)) / 0.95;
+}
+
+// Geometry in viewBox units: the trail runs from x0 to x1, the sun sits just past x1.
+const W = 600;
+const H = 40;
+const x0 = 10;
+const x1 = 570;
+const mid = H / 2;
+const swing = 13;
+const at = (u: number) => ({ x: x0 + u * (x1 - x0), y: mid + trailY(u) * swing });
+const line = (to: number) =>
+	Array.from({ length: Math.round(to * 80) + 1 }, (_, i) => at(i / 80))
+		.map((p, i) => `${i ? "L" : "M"}${p.x.toFixed(1)} ${p.y.toFixed(1)}`)
+		.join(" ");
+const step = (i: number) => (chapters.length > 1 ? i / (chapters.length - 1) : 0) * 0.94;
+const sun = at(1);
+---
+
+{
+	onTrail && chapters.length > 0 && (
+		<nav class="trail not-content" aria-label="Book chapters">
+			<svg viewBox={`0 0 ${W} ${H}`} role="presentation">
+				<path class="ahead" d={line(1)} />
+				{current > 0 && <path class="walked" d={line(step(current))} />}
+				<circle class="sun" cx={W - 14} cy={sun.y} r="7" />
+				{chapters.map((c, i) => {
+					const p = at(step(i));
+					const state = i < current ? "done" : i === current ? "here" : "next";
+					return (
+						<a
+							href={`/${c.id}/`}
+							aria-label={c.data.title}
+							aria-current={i === current ? "page" : undefined}
+						>
+							<title>{c.data.title}</title>
+							<circle class={state} cx={p.x} cy={p.y} r={state === "here" ? 6 : 4} />
+						</a>
+					);
+				})}
+			</svg>
+		</nav>
+	)
+}
+<Default />
+
+<style>
+	.trail {
+		margin-top: 1rem;
+		max-width: 36rem;
+	}
+	svg {
+		display: block;
+		width: 100%;
+		height: auto;
+		overflow: visible;
+	}
+	path {
+		fill: none;
+		stroke-width: 2;
+		stroke-linecap: round;
+	}
+	.ahead {
+		stroke: var(--sl-color-gray-5);
+	}
+	.walked {
+		stroke: var(--sl-color-accent);
+	}
+	.sun {
+		fill: var(--sl-color-accent);
+		opacity: 0.35;
+	}
+	.done,
+	.here {
+		fill: var(--sl-color-accent);
+	}
+	.next {
+		fill: var(--sl-color-bg);
+		stroke: var(--sl-color-gray-4);
+		stroke-width: 1.5;
+	}
+	a:hover .next {
+		stroke: var(--sl-color-accent);
+	}
+	a:focus-visible {
+		outline: none;
+	}
+	a:focus-visible circle {
+		stroke: var(--sl-color-white);
+		stroke-width: 2;
+	}
+</style>

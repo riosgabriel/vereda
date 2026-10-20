@@ -7,10 +7,48 @@
 // The trail was generated in perspective: with t = 0 at the notch (930, 128) and 1 at the bottom
 // edge, its centre is x = 930 + t·(−150 + 170·sin(1.7πt)) and its half-width 0.8 + 78·t^1.1.
 // Width and sideways swing both grow linearly with distance from the horizon.
+//
+// `variant="line"` draws the same valley as line art for the footer of every other page: the
+// ridges as hairlines, the sun faint (as on the Book's chapter trail) and the path in the accent,
+// cropped to the band around the notch and scaled to the column instead of bleeding out of it.
+interface Props {
+	variant?: "painted" | "line";
+}
+const { variant = "painted" } = Astro.props;
+
+const FAR =
+	"M0 100 C 320 86, 690 94, 860 118 C 895 123, 918 127, 930 128 C 946 126, 985 116, 1080 106 C 1240 92, 1380 92, 1440 90";
+const MID = "M0 158 C 260 124, 520 126, 760 148 C 860 157, 960 150, 1100 138 C 1260 124, 1380 128, 1440 132";
+const FRONT = "M0 214 C 300 198, 500 206, 640 226 C 700 236, 860 238, 1000 222 C 1150 206, 1320 208, 1440 214";
+// Closes a ridge down to the bottom edge, so it hides what is behind it (the sun's lower half).
+const BASE = "L1440 244 L0 244 Z";
 const TRAIL =
 	"M929 128 L925 131 L921 134 L918 137 L917 140 L916 142 L915 145 L915 148 L916 151 L916 154 L916 157 L916 160 L914 163 L912 166 L909 169 L904 172 L898 174 L890 177 L881 180 L869 183 L856 186 L842 189 L825 192 L807 195 L788 198 L768 200 L747 203 L726 206 L705 209 L683 212 L663 215 L643 218 L625 221 L609 224 L594 227 L582 230 L572 232 L566 235 L562 238 L561 241 L564 244 L721 244 L715 241 L711 238 L710 235 L713 232 L718 230 L726 227 L736 224 L749 221 L763 218 L778 215 L795 212 L812 209 L829 206 L846 203 L863 200 L879 198 L894 195 L908 192 L920 189 L931 186 L940 183 L947 180 L953 177 L957 174 L959 172 L960 169 L959 166 L958 163 L955 160 L952 157 L948 154 L944 151 L940 148 L936 145 L933 142 L931 140 L929 137 L928 134 L929 131 L931 128 Z";
 ---
 
+{
+	variant === "line" && (
+		<div class="horizon-line" aria-hidden="true">
+			<svg viewBox="0 60 1440 184" preserveAspectRatio="xMidYMax meet">
+				<defs>
+					<linearGradient id="horizon-line-trail" x1="0" y1="0" x2="0" y2="1">
+						<stop offset="0.6" stop-color="currentColor" stop-opacity="0.55" />
+						<stop offset="1" stop-color="currentColor" stop-opacity="0" />
+					</linearGradient>
+				</defs>
+				<circle class="sun" cx="930" cy="104" r="34" />
+				<path class="hill" d={`${FAR} ${BASE}`} />
+				<path class="ridge far" d={FAR} />
+				<path class="hill" d={`${MID} ${BASE}`} />
+				<path class="ridge" d={MID} />
+				<path class="hill" d={`${FRONT} ${BASE}`} />
+				<path class="ridge near" d={FRONT} />
+				<path class="path" d={TRAIL} fill="url(#horizon-line-trail)" />
+			</svg>
+		</div>
+	)
+}
+{variant === "painted" && (
 <div class="horizon" aria-hidden="true">
 	<svg viewBox="0 0 1440 240" preserveAspectRatio="xMidYMax slice">
 		<defs>
@@ -39,6 +77,7 @@ const TRAIL =
 		<path d={TRAIL} fill="url(#horizon-trail)"></path>
 	</svg>
 </div>
+)}
 
 <style>
 	.horizon {
@@ -72,5 +111,32 @@ const TRAIL =
 	}
 	.front {
 		fill: var(--sl-color-black);
+	}
+
+	.horizon-line {
+		margin-top: 3rem;
+		color: var(--sl-color-accent);
+	}
+	.horizon-line svg {
+		height: auto;
+	}
+	.horizon-line .sun {
+		fill: var(--sl-color-accent);
+		opacity: 0.35;
+	}
+	.hill {
+		fill: var(--sl-color-bg);
+	}
+	.ridge {
+		fill: none;
+		stroke: var(--sl-color-gray-5);
+		stroke-width: 1.5;
+		vector-effect: non-scaling-stroke;
+	}
+	.ridge.far {
+		stroke: var(--sl-color-gray-6);
+	}
+	.ridge.near {
+		stroke: var(--sl-color-gray-4);
 	}
 </style>
