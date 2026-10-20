@@ -106,6 +106,8 @@ retry allowed only while  retriesInWindow &lt; allowed</div>
 </style>
 
 <script>
+	// @ts-nocheck: ported from the standalone demo pages, plain JavaScript like engine/*.js
+	// and models/*.js (excluded in tsconfig.json). Their behavior is pinned by test/demos/.
 import { dot, legend, mix, playedLine, roundRect, sizeCanvas, timeAxes, valueAt } from "../../../demos/engine/draw.js";
 import { mountDemo } from "../../../demos/engine/player.js";
 import { DT, RATE, simulate } from "../../../demos/models/retry-budget.js";

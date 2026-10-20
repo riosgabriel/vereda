@@ -74,7 +74,7 @@
 			}
 		},
 		{
-			"includes": ["performance/**", "scripts/**"],
+			"includes": ["performance/**", "scripts/**", "site/scripts/**"],
 			"linter": {
 				"rules": {
 					"suspicious": {
