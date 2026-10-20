@@ -4,7 +4,7 @@
 ---
 
 <div class="demo not-content">
-  <p class="lede">Two clients send the same traffic to an API that allows 20 requests per second and answers 429 above that. The traffic is quiet, then 100 requests arrive within 0.4 s at 6 s, then 12 per second.</p>
+  <p class="lede">Two clients send the same traffic to an API that allows 20 requests per second and answers 429 above that. The traffic is quiet, then 100 requests arrive within 0.4 s at 6 s. Nothing more arrives until 9 s, then 12 per second, then quiet again.</p>
   <p class="lede">Both clients retry. Only the right one has a rate limit. Press Play: the page slows down at key moments and says what happened.</p>
 
   <div class="controls">
@@ -85,7 +85,7 @@
       <h2>What the token bucket gives you</h2>
       <ol>
         <li><strong>A ceiling on your own rate.</strong> The bucket holds up to <code>burst</code> tokens and refills at <code>tokensPerSec</code>. Every attempt takes one token before it goes out. In any span of T seconds, at most <code>burst + tokensPerSec × T</code> attempts start.</li>
-        <li><strong>A burst waits in line.</strong> When the bucket is empty, an attempt waits until its own token exists. The line is first in, first out: the 100th request in the burst waits about 6 s here, and still goes out.</li>
+        <li><strong>A burst waits in line.</strong> When the bucket is empty, an attempt waits until its own token exists. The line is first in, first out. With this page's 5 s limit, the first 85 go out (the 85th after about 5 s) and the last 15 fail. With no limit, the 100th waits about 6 s and still goes out.</li>
         <li><strong>A limit on the waiting.</strong> With <code>maxWaitMs</code>, an attempt that would wait longer fails at once with <code>RateLimitedError</code>. Nothing is sent and the caller knows right away.</li>
       </ol>
       <p class="note">A bulkhead limits how many attempts run at the same time. A rate limit limits how many start per second.</p>
@@ -94,7 +94,7 @@
     <section>
       <h2>What it costs</h2>
       <ul>
-        <li>Waiting is latency. At 15 tokens per second, a request at position 75 in the line waits 5 s.</li>
+        <li>Waiting is latency. At 15 tokens per second, a request at position 85 in the line waits about 5 s.</li>
         <li>You choose the rate. The bucket does not read the API's real limit. A 429 or a <code>Retry-After</code> header does not change it, so a rate set too high still gets 429s.</li>
         <li>Burst and rate add up. This API counts each calendar second, and a full bucket can send <code>burst + tokensPerSec</code> in one of them. Set the burst to 40 and the right lane gets 429s too.</li>
         <li>Retries take tokens, the same as first attempts. A retry that hits <code>maxWaitMs</code> fails the whole request, and <code>RateLimitedError</code> is never retried.</li>
@@ -180,8 +180,9 @@ function drawLane(canvas, lane, simT, col, bucketOn) {
   ctx.font = col.strong;
   ctx.fillText("client", 8 + (clientR - 14) / 2, cy + 4);
 
-  // API box with the per-second counter
-  const cnt = inWindow(lane.attempts, simT);
+  // API box with the per-second counter. A dot reaches the API G after the model's arrival, so
+  // the box runs G behind: it turns red when the dots that cause it get there, not before.
+  const cnt = inWindow(lane.attempts, simT - G);
   const over = cnt > API_LIMIT;
   const ay = cy - 80;
   const ah = 160;
@@ -239,10 +240,11 @@ function drawLane(canvas, lane, simT, col, bucketOn) {
     ctx.textAlign = "center";
     ctx.fillStyle = col.ink;
     ctx.font = col.strong;
-    ctx.fillText(`${tk.toFixed(1)} / ${burst}`, bx, top + bh + 18);
+    // Below zero, the tokens are already promised to the attempts waiting in line.
+    ctx.fillText(`${Math.max(0, tk).toFixed(1)} / ${burst} tokens`, bx, top + bh + 18);
     ctx.fillStyle = col.muted;
     ctx.font = col.label;
-    ctx.fillText("tokens", bx, top + bh + 32);
+    if (tk < -0.05) ctx.fillText(`${Math.ceil(-tk)} reserved by the line`, bx, top + bh + 32);
   }
 
   // dots
@@ -385,7 +387,8 @@ function laneStats(lane, simT) {
       continue;
     }
     if (simT < a.start) {
-      waiting++;
+      // Same as the lane's "waiting in line": at the bucket, not still walking to it.
+      if (simT >= a.sent + GIN) waiting++;
       continue;
     }
     sent++;
