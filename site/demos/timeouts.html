@@ -1,0 +1,487 @@
+<title>Timeout Simulator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@600;800&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="engine/demo.css">
+<style>
+/* Page-specific: legend swatches and the small error text in the stats. */
+.bar { width: 18px; height: 6px; border-radius: 2px; display: inline-block; }
+.bar.dash { background: transparent; border-top: 2px dashed var(--muted); height: 0; }
+.bar.host { background: color-mix(in srgb, var(--fail) 38%, var(--surface)); }
+.bar.deadline { background: transparent; border-left: 2px dashed var(--ink); width: 0; height: 12px; }
+.stat .v.sm { font-size: 0.92rem; padding-block: 3px; }
+</style>
+
+<div class="wrap">
+  <div>
+    <div class="eyebrow">Vereda · timeout</div>
+    <h1>Per-attempt timeout or total deadline?</h1>
+    <p class="lede">One request goes to a host that hangs. It never answers. Both clients wait 2 seconds per attempt and allow 3 retries. The right client also sets a total deadline of 4 seconds. Each row is one attempt. Press Play. The page slows down at key moments and says what happened.</p>
+  </div>
+
+  <div class="controls">
+    <button id="play" type="button">Play</button>
+    <button id="replay" class="ghost" type="button">Replay</button>
+    <label class="field" for="attempt">attemptMs <input id="attempt" type="range" min="1" max="6" step="1" value="2"> <output id="attemptOut">2 s</output></label>
+    <label class="field" for="total">totalMs <input id="total" type="range" min="1" max="13" step="1" value="4"> <output id="totalOut">4 s</output></label>
+    <label class="field" for="retries">Max retries <input id="retries" type="range" min="0" max="5" step="1" value="3"> <output id="retriesOut">3</output></label>
+    <label class="field" for="speed">Speed <select id="speed"></select></label>
+    <label class="field" for="guided"><input id="guided" type="checkbox" checked> Slow down at key moments</label>
+    <span class="clock" id="clock">t = 0.0 s</span>
+  </div>
+
+  <div class="timeline" id="timeline" role="img" aria-label="Scenario timeline"></div>
+  <p class="caption" id="caption" aria-live="polite"></p>
+
+  <div class="legend">
+    <span><i class="bar" style="background:var(--first)"></i>First attempt</span>
+    <span><i class="bar" style="background:var(--retry)"></i>Retry</span>
+    <span><i class="bar dash"></i>Backoff wait</span>
+    <span><i class="dot" style="background:var(--fail)"></i>Attempt ends: timeout or abort</span>
+    <span><i class="bar host"></i>Host still working on it</span>
+    <span><i class="bar deadline"></i>Total deadline</span>
+  </div>
+
+  <div class="lanes">
+    <article class="panel lane">
+      <header><h2>Per-attempt timeout only</h2><span class="cfg" id="cfgA">timeout: { attemptMs: 2000 }</span></header>
+      <canvas id="laneA" aria-label="Animation: attempts of a client with only a per-attempt timeout"></canvas>
+      <div class="stats">
+        <div class="stat"><span class="v" id="aWait">0.0 s</span><span class="k">caller has waited</span></div>
+        <div class="stat"><span class="v" id="aSent">0</span><span class="k">attempts sent</span></div>
+        <div class="stat"><span class="v sm" id="aErr">waiting</span><span class="k">error the caller gets</span></div>
+        <div class="stat"><span class="v" id="aWaste">0.0 s</span><span class="k">host time on hung attempts</span></div>
+      </div>
+    </article>
+    <article class="panel lane">
+      <header><h2>Per-attempt timeout + total deadline</h2><span class="cfg" id="cfgB">timeout: { attemptMs: 2000, totalMs: 4000 }</span></header>
+      <canvas id="laneB" aria-label="Animation: attempts of a client with a per-attempt timeout and a total deadline"></canvas>
+      <div class="stats">
+        <div class="stat"><span class="v" id="bWait">0.0 s</span><span class="k">caller has waited</span></div>
+        <div class="stat"><span class="v" id="bSent">0</span><span class="k">attempts sent</span></div>
+        <div class="stat"><span class="v sm" id="bErr">waiting</span><span class="k">error the caller gets</span></div>
+        <div class="stat"><span class="v" id="bWaste">0.0 s</span><span class="k">host time on hung attempts</span></div>
+      </div>
+    </article>
+  </div>
+
+  <div class="charts">
+    <div class="panel chart">
+      <h3>When the caller hears back, by totalMs</h3>
+      <canvas id="chartSweep" aria-label="Chart of the time the caller waits for an answer, for each totalMs value"></canvas>
+      <p>The red line is the client with no deadline. The blue line is the client with a deadline. The dot marks your current totalMs. Past the red line, the deadline no longer helps.</p>
+    </div>
+    <div class="panel chart">
+      <h3>Host time spent on hung attempts</h3>
+      <canvas id="chartWaste" aria-label="Chart of cumulative host time spent on hung attempts"></canvas>
+      <p>Each attempt keeps the host busy while it waits. Aborting the attempt does not stop the host at once. In this model it works 6 more seconds.</p>
+    </div>
+  </div>
+
+  <div class="explain">
+    <section>
+      <h2>What each timeout gives you</h2>
+      <ol>
+        <li><strong>attemptMs caps one attempt.</strong> A hung host costs at most <code>attemptMs</code> per try. The timer covers the wait for the response, the body read when <code>parse</code> or <code>responseType</code> is set, and an async <code>parse</code>. It ends with a <code>TimeoutError</code>, and Vereda retries that.</li>
+        <li><strong>totalMs caps the whole request.</strong> The clock starts at <code>request()</code>. It counts queue waits, rate-limit waits, every attempt and every backoff sleep. At the deadline, Vereda aborts the attempt in flight, or wakes the sleep, and the ticket ends with <code>DeadlineExceededError</code>.</li>
+        <li><strong>Doomed retries are skipped.</strong> If the next backoff would run to or past the deadline, the ticket fails now. It does not sleep first. Set totalMs to 2 s and watch the right lane: it stops at 2.0 s with the last <code>TimeoutError</code> as <code>cause</code>.</li>
+      </ol>
+    </section>
+    <section>
+      <h2>What they cost</h2>
+      <ul>
+        <li>A short <code>attemptMs</code> also cuts requests that were only slow. Each cut becomes a retry, and retries add load to a host that may already be struggling.</li>
+        <li>The deadline can cut an attempt that was about to answer. Vereda compares only the backoff delay with the deadline, not delay plus <code>attemptMs</code>, so a retry that answers fast still fits.</li>
+        <li>Aborting is a client-side act. The host may keep working on the request. Vereda retries timeouts only for idempotent requests, so this is safe to repeat.</li>
+        <li><code>attemptMs: Infinity</code> removes the cap. Move the slider to the end and the left lane never answers. Only <code>cancel()</code> or <code>totalMs</code> can end the wait.</li>
+      </ul>
+      <p class="note">Things to try: set totalMs to 1 s and the right lane aborts the first attempt. Set max retries to 0 and the caller gets a plain <code>TimeoutError</code> with no wrapper. Turn both timeouts off and neither lane ever answers.</p>
+    </section>
+    <section>
+      <h2>In Vereda</h2>
+      <div class="formula">import { HttpClient } from "@vereda/http";
+
+const client = HttpClient.create({
+  timeout: {
+    attemptMs: 2_000, // required, or Infinity
+    totalMs: 4_000,   // optional deadline
+  },
+  retry: { maxRetries: 3 },
+})
+
+// per request:
+client.get("/slow", {
+  timeout: { totalMs: 10_000 },
+})</div>
+      <p class="note">This page follows <code>src/queue/retry.ts</code> (the deadline check before each backoff, and the abort path), <code>src/queue/executor.ts</code> (the attempt timer and the body read) and <code>src/core/client.ts</code> (the deadline timer, armed in <code>send()</code>). Errors are in <code>src/core/errors.ts</code>: <code>TimeoutError</code> has <code>kind: "timeout"</code>, <code>DeadlineExceededError</code> has <code>kind: "deadline"</code>, and <code>MaxRetriesExceededError</code> has <code>kind: "max_retries"</code>.</p>
+      <p class="note">A test (<code>test/demos/timeouts.parity.test.ts</code>) checks this page's model against the real <code>HttpClient</code>: when each attempt starts and ends, when the caller hears back, and which error it gets. The page has to change when the library does. The host's 6 s of extra work is invented for the chart and is not checked.</p>
+      <p class="note">Model choices: backoff is 200 ms, 400 ms, 800 ms and so on, with jitter off so the numbers repeat. Vereda's default has full jitter, so each real wait is a random value up to that size. Finite timeouts must fit in 2<sup>31</sup>-1 ms, and <code>Infinity</code> uses its own path, so it never fires early (<code>src/core/timer.ts</code>, #203). A user <code>cancel()</code> ends the ticket at once with <code>CancelledError</code> and also aborts the attempt.</p>
+    </section>
+  </div>
+</div>
+
+<script type="module">
+import { mix, sizeCanvas } from "./engine/draw.js";
+import { mountDemo } from "./engine/player.js";
+import { INF, runModel, SWEEP_MAX, simulate } from "./models/timeouts.js";
+
+// ---- Drawing --------------------------------------------------------------
+const $ = (id) => document.getElementById(id);
+let sweep = [];
+let currentTotal = 4;
+
+const hostBusy = (lane, t) => lane.attempts.reduce((s, a) => s + Math.max(0, Math.min(t, a.hostEnd ?? a.end) - a.start), 0);
+function ticksFor(max) {
+  const step = max <= 8 ? 1 : max <= 16 ? 2 : 5;
+  const r = [];
+  for (let v = 0; v <= max; v += step) r.push(v);
+  return r;
+}
+
+// One Gantt row per attempt. `deadline` is undefined for the lane without one.
+function drawLane(canvas, lane, simT, col, { duration, rows, deadline }) {
+  const { ctx, w, h } = sizeCanvas(canvas);
+  const END = duration;
+  const L = 26;
+  const R = 12;
+  const T = 24;
+  const B = 22;
+  const X = (t) => L + (Math.min(t, END) / END) * (w - L - R);
+  const rowH = Math.min(34, (h - T - B) / rows);
+  const barH = 14;
+
+  ctx.font = `10px ${col.mono}`;
+  ctx.strokeStyle = col.line;
+  ctx.fillStyle = col.muted;
+  ctx.lineWidth = 1;
+  ctx.textAlign = "center";
+  for (const v of ticksFor(END)) {
+    ctx.beginPath();
+    ctx.moveTo(X(v), T - 4);
+    ctx.lineTo(X(v), h - B);
+    ctx.stroke();
+    ctx.fillText(`${v}s`, X(v), h - 7);
+  }
+
+  const hasDeadline = deadline !== undefined && deadline <= END;
+  if (hasDeadline) {
+    ctx.strokeStyle = col.ink;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    ctx.moveTo(X(deadline), T - 4);
+    ctx.lineTo(X(deadline), h - B);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.lineWidth = 1;
+    ctx.fillStyle = col.ink;
+    ctx.font = `600 10px ${col.mono}`;
+    ctx.textAlign = X(deadline) > w - 70 ? "right" : "left";
+    ctx.fillText(`deadline ${deadline} s`, X(deadline) + (ctx.textAlign === "right" ? -4 : 4), 10);
+  }
+
+  ctx.textAlign = "left";
+  for (const a of lane.attempts) {
+    const hangs = a.outcome === "hang";
+    const y = T + a.n * rowH + 3;
+    ctx.fillStyle = col.muted;
+    ctx.font = `10px ${col.mono}`;
+    ctx.textAlign = "left";
+    ctx.fillText(`#${a.n + 1}`, 2, y + 11);
+    if (simT < a.start) continue;
+    const x0 = X(a.start);
+    const endNow = Math.min(simT, a.end);
+    const hostNow = Math.min(simT, a.hostEnd ?? a.end);
+    ctx.fillStyle = mix(col.fail, col.surface, 0.38);
+    ctx.fillRect(x0, y + barH + 2, Math.max(1, X(hostNow) - x0), 5);
+    ctx.fillStyle = a.n === 0 ? col.first : col.retry;
+    ctx.fillRect(x0, y, Math.max(1, X(endNow) - x0), barH);
+    if (!hangs && simT >= a.end) {
+      ctx.fillStyle = col.fail;
+      ctx.beginPath();
+      ctx.arc(X(a.end), y + barH / 2, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.font = `600 10px ${col.mono}`;
+      const label = a.outcome === "aborted" ? "aborted at deadline" : "timeout";
+      const lw = ctx.measureText(label).width;
+      if (X(a.end) + 10 + lw < w - 4) {
+        ctx.textAlign = "left";
+        ctx.fillText(label, X(a.end) + 10, y + 11);
+      } else {
+        ctx.textAlign = "right";
+        ctx.fillText(label, X(a.end) - 10, y + 11);
+      }
+    } else if (hangs && simT >= END) {
+      // Runs off the edge: it never ends.
+      const ex = X(END);
+      ctx.fillStyle = col.fail;
+      ctx.beginPath();
+      ctx.moveTo(ex, y - 3);
+      ctx.lineTo(ex + 8, y + barH / 2);
+      ctx.lineTo(ex, y + barH + 3);
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      ctx.fillStyle = col.surface;
+      ctx.strokeStyle = a.n === 0 ? col.first : col.retry;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(X(endNow), y + barH / 2, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.lineWidth = 1;
+    }
+  }
+
+  // Backoff gaps: from one attempt's end to the next attempt's start.
+  ctx.strokeStyle = col.muted;
+  ctx.lineWidth = 2;
+  ctx.setLineDash([3, 3]);
+  lane.attempts.forEach((a, i) => {
+    const next = lane.attempts[i + 1];
+    if (!next || simT < a.end) return;
+    const y = T + a.n * rowH + 3 + barH / 2;
+    ctx.beginPath();
+    ctx.moveTo(X(a.end), y);
+    ctx.lineTo(X(Math.min(simT, next.start)), y);
+    ctx.stroke();
+  });
+  ctx.setLineDash([]);
+  ctx.lineWidth = 1;
+
+  // The caller's answer.
+  const res = lane.results[0];
+  if (res && simT >= res.t) {
+    ctx.strokeStyle = col.ink;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(X(res.t), T + 2);
+    ctx.lineTo(X(res.t), h - B);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+    ctx.fillStyle = col.ink;
+    ctx.font = `600 10px ${col.mono}`;
+    const onRight = X(res.t) < w - 130;
+    ctx.textAlign = onRight ? "left" : "right";
+    ctx.fillText(
+      `caller hears ${res.t.toFixed(1)} s`,
+      X(res.t) + (onRight ? 4 : -4),
+      hasDeadline && Math.abs(X(deadline) - X(res.t)) < 90 ? 22 : 10,
+    );
+  } else if (!res && simT >= END) {
+    ctx.fillStyle = col.fail;
+    ctx.font = `600 11px ${col.mono}`;
+    ctx.textAlign = "right";
+    ctx.fillText("no answer, ever", w - R, 10);
+  }
+  ctx.textAlign = "left";
+}
+
+function drawSweep(trace, col) {
+  const { ctx, w, h } = sizeCanvas($("chartSweep"));
+  const L = 40;
+  const R = 12;
+  const T = 22;
+  const B = 26;
+  const base = trace.lanes.without.results[0]?.t ?? INF;
+  const mine = trace.lanes.with.results[0]?.t ?? INF;
+  const finiteMax = Math.max(...sweep.map((p) => p.y).filter(Number.isFinite), Number.isFinite(base) ? base : 0);
+  const yMax = Math.max(6, Math.ceil((finiteMax + 1) / 2) * 2);
+  const X = (d) => L + ((d - 1) / (SWEEP_MAX - 1)) * (w - L - R);
+  const Y = (v) => T + (1 - Math.min(v, yMax) / yMax) * (h - T - B);
+  ctx.font = `10px ${col.mono}`;
+  ctx.strokeStyle = col.line;
+  ctx.fillStyle = col.muted;
+  ctx.lineWidth = 1;
+  ctx.textAlign = "right";
+  for (const v of ticksFor(yMax)) {
+    ctx.beginPath();
+    ctx.moveTo(L, Y(v));
+    ctx.lineTo(w - R, Y(v));
+    ctx.stroke();
+    ctx.fillText(`${v}s`, L - 6, Y(v) + 3);
+  }
+  ctx.textAlign = "center";
+  for (let d = 1; d <= SWEEP_MAX; d += 2) ctx.fillText(d === SWEEP_MAX ? "off" : `${d}s`, X(d), h - 8);
+  ctx.strokeStyle = col.fail;
+  ctx.lineWidth = 2.5;
+  if (Number.isFinite(base)) {
+    ctx.beginPath();
+    ctx.moveTo(L, Y(base));
+    ctx.lineTo(w - R, Y(base));
+    ctx.stroke();
+  } else {
+    ctx.setLineDash([2, 4]);
+    ctx.beginPath();
+    ctx.moveTo(L, Y(yMax));
+    ctx.lineTo(w - R, Y(yMax));
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  ctx.strokeStyle = col.first;
+  ctx.beginPath();
+  sweep.forEach((p, i) => {
+    const x = X(p.d);
+    const y = Y(p.y === INF ? yMax : p.y);
+    if (i) ctx.lineTo(x, y);
+    else ctx.moveTo(x, y);
+  });
+  ctx.stroke();
+  ctx.lineWidth = 1;
+  const cur = currentTotal === INF ? SWEEP_MAX : currentTotal;
+  ctx.fillStyle = col.first;
+  ctx.beginPath();
+  ctx.arc(X(cur), Y(mine === INF ? yMax : mine), 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.textAlign = "left";
+  ctx.font = `600 11px ${col.mono}`;
+  ctx.fillStyle = col.fail;
+  ctx.fillText("no deadline", L + 6, 12);
+  ctx.fillStyle = col.first;
+  ctx.fillText("with deadline", L + 100, 12);
+  if (!Number.isFinite(base) || sweep.some((p) => p.y === INF)) {
+    ctx.fillStyle = col.muted;
+    ctx.font = `10px ${col.mono}`;
+    ctx.textAlign = "right";
+    ctx.fillText("top = never", w - R, 12);
+  }
+}
+
+function drawWaste(trace, simT, col) {
+  const { ctx, w, h } = sizeCanvas($("chartWaste"));
+  const END = trace.duration;
+  const L = 40;
+  const R = 12;
+  const T = 22;
+  const B = 26;
+  const STEP = 0.1;
+  const sample = (lane) => {
+    const out = [];
+    for (let t = 0; t <= END + 1e-9; t += STEP) out.push({ t, v: hostBusy(lane, t) });
+    return out;
+  };
+  const sa = sample(trace.lanes.without);
+  const sb = sample(trace.lanes.with);
+  const peak = Math.max(sa[sa.length - 1].v, sb[sb.length - 1].v, 4);
+  const yMax = peak <= 8 ? 8 : peak <= 16 ? 16 : peak <= 32 ? 32 : Math.ceil(peak / 20) * 20;
+  const X = (t) => L + (t / END) * (w - L - R);
+  const Y = (v) => T + (1 - Math.min(v, yMax) / yMax) * (h - T - B);
+  ctx.font = `10px ${col.mono}`;
+  ctx.strokeStyle = col.line;
+  ctx.fillStyle = col.muted;
+  ctx.lineWidth = 1;
+  ctx.textAlign = "right";
+  for (const v of ticksFor(yMax).filter((_, i, arr) => arr.length <= 9 || i % 2 === 0)) {
+    ctx.beginPath();
+    ctx.moveTo(L, Y(v));
+    ctx.lineTo(w - R, Y(v));
+    ctx.stroke();
+    ctx.fillText(`${v}s`, L - 6, Y(v) + 3);
+  }
+  ctx.textAlign = "center";
+  for (const v of ticksFor(END)) ctx.fillText(`${v}s`, X(v), h - 8);
+  const line = (arr, color) => {
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = 0.22;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    arr.forEach((s, i) => {
+      if (i) ctx.lineTo(X(s.t), Y(s.v));
+      else ctx.moveTo(X(s.t), Y(s.v));
+    });
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    let lp = null;
+    for (let i = 0; i < arr.length && arr[i].t <= simT; i++) {
+      const px = X(arr[i].t);
+      const py = Y(arr[i].v);
+      if (i) ctx.lineTo(px, py);
+      else ctx.moveTo(px, py);
+      lp = [px, py];
+    }
+    ctx.stroke();
+    ctx.lineWidth = 1;
+    if (lp) {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(lp[0], lp[1], 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  };
+  line(sa, col.fail);
+  line(sb, col.first);
+  ctx.textAlign = "left";
+  ctx.font = `600 11px ${col.mono}`;
+  ctx.fillStyle = col.fail;
+  ctx.fillText("no deadline", L + 6, 12);
+  ctx.fillStyle = col.first;
+  ctx.fillText("with deadline", L + 100, 12);
+}
+
+function setStat(id, text, cls) {
+  const el = $(id);
+  const next = `${el.className.replace(/\b(bad|good)\b/g, "").trim()}${cls ? ` ${cls}` : ""}`;
+  if (el.textContent !== text) el.textContent = text;
+  if (el.className !== next) el.className = next;
+}
+function laneStats(p, lane, simT, duration) {
+  const res = lane.results[0];
+  const answered = !!res && simT >= res.t;
+  const never = !res && simT >= duration;
+  const waited = Math.min(simT, res ? res.t : INF);
+  const sent = lane.attempts.filter((a) => a.start <= simT).length;
+  setStat(`${p}Wait`, `${waited.toFixed(1)} s`, waited > 5 ? "bad" : answered ? "good" : "");
+  setStat(`${p}Sent`, String(sent), "");
+  setStat(`${p}Err`, answered ? res.error : never ? "never" : "waiting", answered || never ? "bad" : "");
+  setStat(`${p}Waste`, `${hostBusy(lane, simT).toFixed(1)} s`, "");
+}
+
+function render(trace, simT, col) {
+  const { without, with: withD } = trace.lanes;
+  const rows = Math.max(...without.attempts.concat(withD.attempts).map((a) => a.n)) + 1;
+  const deadline = trace.phases[1]?.from;
+  drawLane($("laneA"), without, simT, col, { duration: trace.duration, rows });
+  drawLane($("laneB"), withD, simT, col, { duration: trace.duration, rows, deadline });
+  drawSweep(trace, col);
+  drawWaste(trace, simT, col);
+  laneStats("a", without, simT, trace.duration);
+  laneStats("b", withD, simT, trace.duration);
+}
+
+// ---- Wiring -----------------------------------------------------------------
+function build(o) {
+  const trace = simulate(o);
+  const base = { attemptSec: o.attemptSec, maxRetries: o.maxRetries };
+  sweep = [];
+  for (let d = 1; d <= SWEEP_MAX; d++) sweep.push({ d, y: runModel(base, d === SWEEP_MAX ? INF : d).answerAt });
+  currentTotal = o.totalSec;
+  $("cfgA").textContent = trace.lanes.without.config;
+  $("cfgB").textContent = trace.lanes.with.config;
+  return trace;
+}
+
+const demo = mountDemo({
+  build,
+  render,
+  options: { attemptSec: 2, totalSec: 4, maxRetries: 3 },
+  speed: 1,
+});
+
+$("attempt").addEventListener("input", (e) => {
+  const v = Number(e.target.value);
+  $("attemptOut").textContent = v === 6 ? "off" : `${v} s`;
+  demo.rerun({ attemptSec: v === 6 ? INF : v });
+});
+$("total").addEventListener("input", (e) => {
+  const v = Number(e.target.value);
+  $("totalOut").textContent = v === 13 ? "off" : `${v} s`;
+  demo.rerun({ totalSec: v === 13 ? INF : v });
+});
+$("retries").addEventListener("input", (e) => {
+  $("retriesOut").textContent = e.target.value;
+  demo.rerun({ maxRetries: Number(e.target.value) });
+});
+</script>

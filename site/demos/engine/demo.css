@@ -1,0 +1,380 @@
+/* Shared look for every demo page: one instrument column with the controls,
+   scenario timeline, guided caption, two lanes, charts, then the explanation.
+   Page-specific styles stay in the page. */
+:root {
+	--bg: #eef2f6;
+	--surface: #ffffff;
+	--ink: #16202b;
+	--muted: #586474;
+	--line: #d5dce5;
+	--first: #2f6fdb;
+	--retry: #d0820a;
+	--fail: #d03f36;
+	--ok: #2b9459;
+	--refused: #98a2ae;
+	--cap: #16202b;
+	--display: "Schibsted Grotesk", "Segoe UI", system-ui, sans-serif;
+	--body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+	--mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme="light"]) {
+		--bg: #0f141b;
+		--surface: #17202a;
+		--ink: #e5ebf1;
+		--muted: #93a0ae;
+		--line: #2a3644;
+		--first: #6d9eff;
+		--retry: #f0a63a;
+		--fail: #ff6a5e;
+		--ok: #4cc285;
+		--refused: #6b7684;
+		--cap: #e5ebf1;
+		color-scheme: dark;
+	}
+}
+:root[data-theme="dark"] {
+	--bg: #0f141b;
+	--surface: #17202a;
+	--ink: #e5ebf1;
+	--muted: #93a0ae;
+	--line: #2a3644;
+	--first: #6d9eff;
+	--retry: #f0a63a;
+	--fail: #ff6a5e;
+	--ok: #4cc285;
+	--refused: #6b7684;
+	--cap: #e5ebf1;
+	color-scheme: dark;
+}
+* {
+	box-sizing: border-box;
+}
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--ink);
+	font-family: var(--body);
+	font-size: 16px;
+	line-height: 1.5;
+	padding-left: max(16px, env(safe-area-inset-left, 0px));
+	padding-right: max(16px, env(safe-area-inset-right, 0px));
+	padding-block: 28px 48px;
+}
+.wrap {
+	max-width: 1100px;
+	margin: 0 auto;
+	display: grid;
+	gap: 22px;
+}
+h1,
+h2,
+h3 {
+	font-family: var(--display);
+	text-wrap: balance;
+	margin: 0;
+}
+h1 {
+	font-size: clamp(1.7rem, 4vw, 2.5rem);
+	font-weight: 800;
+	letter-spacing: -0.02em;
+	line-height: 1.1;
+}
+h2 {
+	font-size: 1.25rem;
+	font-weight: 800;
+}
+h3 {
+	font-size: 1.02rem;
+	font-weight: 600;
+}
+p {
+	margin: 0;
+}
+a {
+	color: var(--first);
+}
+.lede {
+	color: var(--muted);
+	max-width: 70ch;
+	margin-top: 8px;
+}
+code {
+	font-family: var(--mono);
+	font-size: 0.86em;
+}
+.eyebrow {
+	font-family: var(--mono);
+	font-size: 0.72rem;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: var(--muted);
+}
+
+.controls {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 14px 22px;
+	align-items: center;
+}
+button {
+	font: 600 0.95rem var(--body);
+	color: var(--surface);
+	background: var(--ink);
+	border: 0;
+	border-radius: 6px;
+	padding: 8px 16px;
+	cursor: pointer;
+	min-width: 6.5em;
+}
+button.ghost {
+	background: transparent;
+	color: var(--ink);
+	border: 1px solid var(--line);
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+	outline: 2px solid var(--first);
+	outline-offset: 2px;
+}
+.field {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 0.92rem;
+	color: var(--muted);
+}
+.field output {
+	font-family: var(--mono);
+	color: var(--ink);
+	min-width: 3.2ch;
+}
+select {
+	font: 0.92rem var(--body);
+	color: var(--ink);
+	background: var(--surface);
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	padding: 6px 8px;
+}
+input[type="range"] {
+	accent-color: var(--first);
+	width: 110px;
+}
+input[type="checkbox"] {
+	accent-color: var(--first);
+	width: 16px;
+	height: 16px;
+}
+.clock {
+	font-family: var(--mono);
+	font-size: 0.9rem;
+	color: var(--muted);
+	margin-left: auto;
+	font-variant-numeric: tabular-nums;
+}
+
+.timeline {
+	position: relative;
+	display: grid;
+	height: 34px;
+	border-radius: 6px;
+	overflow: hidden;
+	border: 1px solid var(--line);
+}
+.timeline div {
+	display: flex;
+	align-items: center;
+	padding-inline: 10px;
+	font-size: 0.82rem;
+	font-weight: 600;
+	white-space: nowrap;
+	overflow: hidden;
+}
+.timeline .good {
+	background: color-mix(in srgb, var(--ok) 14%, var(--surface));
+}
+.timeline .bad {
+	background: color-mix(in srgb, var(--fail) 16%, var(--surface));
+}
+.timeline .busy {
+	background: color-mix(in srgb, var(--first) 14%, var(--surface));
+}
+.playhead {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	width: 2px;
+	background: var(--ink);
+	left: 0;
+	pointer-events: none;
+}
+
+.caption {
+	background: color-mix(in srgb, var(--first) 9%, var(--surface));
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	padding: 12px 16px;
+	font-size: 1rem;
+	max-width: 80ch;
+}
+.caption strong {
+	font-family: var(--display);
+}
+.caption .now {
+	display: block;
+	margin-top: 6px;
+	font-family: var(--mono);
+	font-size: 0.85rem;
+	font-weight: 600;
+	color: var(--first);
+}
+
+.legend {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px 18px;
+	font-size: 0.86rem;
+	color: var(--muted);
+}
+.legend span {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+.dot {
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	display: inline-block;
+}
+
+.lanes {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 16px;
+}
+.panel {
+	background: var(--surface);
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	padding: 16px;
+	display: grid;
+	gap: 12px;
+	min-width: 0;
+	align-content: start;
+}
+.panel header {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+/* Both lanes share the row heights of .lanes (header, canvas, stats), so a config line that
+   wraps in one lane can't push that lane's canvas and stats below the other's. */
+.lane {
+	grid-row: span 3;
+	grid-template-rows: subgrid;
+}
+.lane canvas {
+	width: 100%;
+	height: 200px;
+	display: block;
+}
+.stats {
+	display: grid;
+	grid-template-columns: repeat(4, 1fr);
+	gap: 10px;
+}
+.stat {
+	display: grid;
+	gap: 2px;
+	align-content: start;
+}
+.stat .v {
+	font-family: var(--mono);
+	font-size: 1.15rem;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+}
+.stat .k {
+	font-size: 0.78rem;
+	color: var(--muted);
+	line-height: 1.25;
+}
+.v.bad {
+	color: var(--fail);
+}
+.v.good {
+	color: var(--ok);
+}
+.cfg {
+	font-family: var(--mono);
+	font-size: 0.78rem;
+	color: var(--muted);
+}
+
+.charts {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 16px;
+}
+.chart canvas {
+	width: 100%;
+	height: 210px;
+	display: block;
+}
+.chart p {
+	font-size: 0.88rem;
+	color: var(--muted);
+}
+
+.explain {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: 28px;
+	padding-top: 6px;
+}
+.explain section {
+	display: grid;
+	gap: 10px;
+	align-content: start;
+	min-width: 0;
+}
+.explain ol,
+.explain ul {
+	margin: 0;
+	padding-left: 1.2em;
+	display: grid;
+	gap: 6px;
+}
+.formula {
+	background: var(--surface);
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	padding: 12px 14px;
+	font-family: var(--mono);
+	font-size: 0.8rem;
+	overflow-x: auto;
+	white-space: pre;
+}
+.note {
+	font-size: 0.85rem;
+	color: var(--muted);
+}
+
+@media (max-width: 900px) {
+	.lanes,
+	.charts,
+	.explain {
+		grid-template-columns: 1fr;
+	}
+	.stats {
+		grid-template-columns: repeat(2, 1fr);
+	}
+	.clock {
+		margin-left: 0;
+	}
+}

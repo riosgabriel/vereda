@@ -1,0 +1,439 @@
+<title>Rate Limiter Simulator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@600;800&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="engine/demo.css">
+
+<div class="wrap">
+  <div>
+    <div class="eyebrow">Vereda · rateLimit</div>
+    <h1>How a token bucket protects an API from your own burst</h1>
+    <p class="lede">Two clients send the same traffic to an API that allows 20 requests per second and answers 429 above that. The traffic is quiet, then 100 requests arrive within 0.4 s at 6 s, then 12 per second. Retries are on. The right client has a rate limit. Press Play. The page slows down at key moments and says what happened.</p>
+  </div>
+
+  <div class="controls">
+    <button id="play" type="button">Play</button>
+    <button id="replay" class="ghost" type="button">Replay</button>
+    <label class="field" for="rate">tokensPerSec <input id="rate" type="range" min="5" max="30" step="1" value="15"> <output id="rateOut">15</output></label>
+    <label class="field" for="burst">burst <input id="burst" type="range" min="1" max="40" step="1" value="5"> <output id="burstOut">5</output></label>
+    <label class="field" for="maxWait">maxWaitMs
+      <select id="maxWait">
+        <option value="500">500 ms</option>
+        <option value="2000">2 s</option>
+        <option value="5000" selected>5 s</option>
+        <option value="10000">10 s</option>
+        <option value="none">no limit</option>
+      </select>
+    </label>
+    <label class="field" for="retries">Retries
+      <select id="retries">
+        <option value="on" selected>on (3 retries)</option>
+        <option value="off">off</option>
+      </select>
+    </label>
+    <label class="field" for="speed">Speed <select id="speed"></select></label>
+    <label class="field" for="guided"><input id="guided" type="checkbox" checked> Slow down at key moments</label>
+    <span class="clock" id="clock">t = 0.0 s</span>
+  </div>
+
+  <div class="timeline" id="timeline" role="img" aria-label="Scenario timeline"></div>
+  <p class="caption" id="caption" aria-live="polite"></p>
+
+  <div class="legend">
+    <span><i class="dot" style="background:var(--first)"></i>Request</span>
+    <span><i class="dot" style="background:var(--retry)"></i>Retry</span>
+    <span><i class="dot" style="background:var(--ok)"></i>API answered</span>
+    <span><i class="dot" style="background:var(--fail)"></i>API answered 429</span>
+    <span><i class="dot" style="background:var(--refused)"></i>Failed by the rate limit (RateLimitedError, nothing sent)</span>
+  </div>
+
+  <div class="lanes">
+    <article class="panel lane">
+      <header><h2>No rate limit</h2><span class="cfg" id="cfgA">retry: { maxRetries: 3 }</span></header>
+      <canvas id="laneA" aria-label="Animation: client without a rate limit"></canvas>
+      <div class="stats">
+        <div class="stat"><span class="v" id="aSent">0</span><span class="k">attempts sent to the API</span></div>
+        <div class="stat"><span class="v" id="a429">0</span><span class="k">answered 429</span></div>
+        <div class="stat"><span class="v" id="aRetry">0</span><span class="k">of them retries</span></div>
+        <div class="stat"><span class="v" id="aOk">0</span><span class="k totalK">requests succeeded</span></div>
+      </div>
+    </article>
+    <article class="panel lane">
+      <header><h2>With a rate limit</h2><span class="cfg" id="cfgB">rateLimit: { tokensPerSec: 15, burst: 5, maxWaitMs: 5000 }</span></header>
+      <canvas id="laneB" aria-label="Animation: client with a token bucket"></canvas>
+      <div class="stats">
+        <div class="stat"><span class="v" id="bWait">0</span><span class="k">waiting for a token</span></div>
+        <div class="stat"><span class="v" id="bLim">0</span><span class="k">failed: RateLimitedError</span></div>
+        <div class="stat"><span class="v" id="b429">0</span><span class="k">answered 429</span></div>
+        <div class="stat"><span class="v" id="bOk">0</span><span class="k totalK">requests succeeded</span></div>
+      </div>
+    </article>
+  </div>
+
+  <div class="charts">
+    <div class="panel chart">
+      <h3>Attempts reaching the API (per second)</h3>
+      <canvas id="chartApi" aria-label="Chart of attempts reaching the API per second, with the API limit"></canvas>
+      <p>The dashed line is the API limit. Above it, the API answers 429. The bucket flattens the burst into a steady flow below the line.</p>
+    </div>
+    <div class="panel chart">
+      <h3>How long each request waited for a token</h3>
+      <canvas id="chartWait" aria-label="Scatter chart of token wait per request in the rate-limited client"></canvas>
+      <p>Each point is one attempt in the right lane. The wait grows by 1/tokensPerSec for every request in line. A request whose wait would pass maxWaitMs fails at once, shown at the wait it would have needed.</p>
+    </div>
+  </div>
+
+  <div class="explain">
+    <section>
+      <h2>What the token bucket gives you</h2>
+      <ol>
+        <li><strong>A ceiling on your own rate.</strong> The bucket holds up to <code>burst</code> tokens and refills at <code>tokensPerSec</code>. Every attempt takes one token before it goes out. In any span of T seconds, at most <code>burst + tokensPerSec × T</code> attempts start.</li>
+        <li><strong>A burst waits in line.</strong> When the bucket is empty, an attempt learns how long until its own token exists and waits that long. The line is first in, first out. The 100th request in the burst waits about 6 s here, and it still goes out.</li>
+        <li><strong>A limit on the waiting.</strong> With <code>maxWaitMs</code>, an attempt that would wait longer fails at once with <code>RateLimitedError</code>. Nothing is sent and the caller knows right away.</li>
+      </ol>
+      <p class="note">A bulkhead limits how many attempts run at the same time (concurrency). A rate limit limits how many start per second. An API that answers in 50 ms can see 100 attempts per second from only 5 running at once, so a bulkhead alone would not stop it.</p>
+    </section>
+    <section>
+      <h2>What it costs</h2>
+      <ul>
+        <li>Waiting is latency. At 15 tokens per second, a request at position 75 in the line waits 5 s.</li>
+        <li>You choose the rate. The bucket does not read the API's real limit. A 429 or a <code>Retry-After</code> header does not change it, so a rate set too high still gets 429s.</li>
+        <li>Burst and rate add up. This API counts each calendar second, and a full bucket can send <code>burst + tokensPerSec</code> in one of them. Set the burst to 40 and the right lane gets 429s too.</li>
+        <li>Retries take tokens, the same as first attempts. A retry that hits <code>maxWaitMs</code> fails the whole request, and <code>RateLimitedError</code> is never retried.</li>
+        <li>The bucket lives in one process. Ten servers, each with 15 per second, can send 150 per second together.</li>
+      </ul>
+      <p class="note">Things to try: set maxWaitMs to "no limit". Every burst request now succeeds, and the last one waits about 6 s. Set it to 500 ms and most of the burst fails at once.</p>
+    </section>
+    <section>
+      <h2>In Vereda</h2>
+      <div class="formula">HttpClient.create({
+  timeout: { attemptMs: 5_000 },
+  rateLimit: {
+    tokensPerSec: 15,
+    burst: 5,          // default: max(1, tokensPerSec)
+    maxWaitMs: 5_000,  // omit to wait as long as needed
+  },
+  partitions: {
+    "api.partner.com": {
+      rateLimit: { tokensPerSec: 10, burst: 20 },
+    },
+  },
+})</div>
+      <p class="note">This page runs the same bucket as <code>TokenBucket</code> in <code>src/queue/rate-limiter.ts</code>. An attempt reserves its token when it arrives, and the balance can go below zero. That is why waiting is first in, first out without a queue object. A request over <code>maxWaitMs</code> reserves nothing.</p>
+      <p class="note">Each attempt calls <code>takeToken</code> in <code>src/queue/bulkhead.ts</code>: the first one in <code>src/core/client.ts</code>, retries in <code>src/queue/retry.ts</code>. The token comes before any bulkhead slot or global permit, so a waiting attempt holds no concurrency. If you call <code>cancel()</code> or <code>timeout.totalMs</code> passes while it waits, the token goes back to the bucket.</p>
+      <p class="note">Simplified model: the API counts attempts per calendar second, sends no <code>Retry-After</code> and answers each in about 80 ms. Retries wait 0.3 to 0.5 s. The real retry delay comes from your <code>backoff</code> setting. A test (<code>test/demos/rate-limiter.parity.test.ts</code>) runs this page's model against the real <code>HttpClient</code>, so the page has to change when the library does.</p>
+    </section>
+  </div>
+</div>
+
+<script type="module">
+import { dot, legend, mix, playedLine, roundRect, sizeCanvas, timeAxes } from "./engine/draw.js";
+import { mountDemo } from "./engine/player.js";
+import { API_LIMIT, END, simulate } from "./models/rate-limiter.js";
+
+const G = 0.25; // sim seconds a dot spends travelling
+const GIN = 0.15;
+
+// ---- Drawing --------------------------------------------------------------
+const $ = (id) => document.getElementById(id);
+
+/** Bucket level at time t: the level after the last reservation, plus what has refilled since. */
+function tokensAt(lane, t) {
+  const { tokensPerSec, burst } = lane.bucket;
+  let e = lane.series.tokens[0];
+  for (const x of lane.series.tokens) {
+    if (x[0] <= t) e = x;
+    else break;
+  }
+  return Math.min(burst, e[1] + (t - e[0]) * tokensPerSec);
+}
+
+/** Attempts that reached the API in the same calendar second as t, up to t. */
+function inWindow(attempts, t) {
+  const s = Math.floor(t);
+  let n = 0;
+  for (const a of attempts) if (a.start !== null && a.start <= t && Math.floor(a.start) === s) n++;
+  return n;
+}
+
+function drawLane(canvas, lane, simT, col, bucketOn) {
+  const { ctx, w, h } = sizeCanvas(canvas);
+  const cy = h / 2;
+  const clientR = 66;
+  const apiW = 96;
+  const apiL = w - apiW - 8;
+  const hostIn = apiL + 8;
+  const gateX = bucketOn ? Math.round(clientR + (apiL - clientR) * 0.58) : 0;
+  ctx.textAlign = "center";
+
+  // client
+  ctx.fillStyle = col.bg;
+  ctx.strokeStyle = col.line;
+  ctx.lineWidth = 1;
+  roundRect(ctx, 8, cy - 50, clientR - 14, 100, 8);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = col.ink;
+  ctx.font = `600 12px ${col.mono}`;
+  ctx.fillText("client", 8 + (clientR - 14) / 2, cy + 4);
+
+  // API box with the per-second counter
+  const cnt = inWindow(lane.attempts, simT);
+  const over = cnt > API_LIMIT;
+  const ay = cy - 80;
+  const ah = 160;
+  ctx.fillStyle = over ? mix(col.fail, col.surface, 0.14) : col.bg;
+  ctx.strokeStyle = over ? col.fail : col.line;
+  roundRect(ctx, apiL, ay, apiW, ah, 8);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = over ? col.fail : col.ink;
+  ctx.font = `600 12px ${col.mono}`;
+  ctx.fillText(`API · ${API_LIMIT}/s`, apiL + apiW / 2, ay + 18);
+  ctx.fillStyle = col.line;
+  roundRect(ctx, apiL + 10, ay + ah - 30, apiW - 20, 8, 4);
+  ctx.fill();
+  ctx.fillStyle = over ? col.fail : col.ok;
+  roundRect(ctx, apiL + 10, ay + ah - 30, Math.max(6, (apiW - 20) * Math.min(1, cnt / API_LIMIT)), 8, 4);
+  ctx.fill();
+  ctx.fillStyle = col.muted;
+  ctx.font = `11px ${col.mono}`;
+  ctx.fillText(`${cnt} this second`, apiL + apiW / 2, ay + ah - 8);
+
+  // token bucket
+  const slotCols = bucketOn ? Math.max(4, Math.floor((gateX - clientR - 12) / 8)) : 0;
+  const MAXQ = 140;
+  if (bucketOn) {
+    const { tokensPerSec, burst } = lane.bucket;
+    const bw = 30;
+    const bh = 120;
+    const bx = gateX;
+    const top = cy - bh / 2 + 6;
+    const tk = tokensAt(lane, simT);
+    const frac = tk / burst;
+    ctx.strokeStyle = col.muted;
+    ctx.lineWidth = 1.5;
+    roundRect(ctx, bx - bw / 2, top, bw, bh, 5);
+    ctx.stroke();
+    if (frac > 0) {
+      ctx.fillStyle = col.first;
+      ctx.globalAlpha = 0.85;
+      ctx.fillRect(bx - bw / 2 + 2, top + bh - 2 - (bh - 4) * frac, bw - 4, (bh - 4) * frac);
+      ctx.globalAlpha = 1;
+    }
+    ctx.lineWidth = 1;
+    // tokens dripping in at tokensPerSec
+    const full = tk >= burst - 0.01;
+    for (let i = 0; i < 4; i++) {
+      const f = (simT * tokensPerSec * 0.12 + i / 4) % 1;
+      dot(ctx, bx, top - 34 + f * 32, 2.6, col.first, full ? 0.2 : 0.9);
+    }
+    ctx.fillStyle = col.muted;
+    ctx.font = `600 11px ${col.mono}`;
+    ctx.fillText(`+${tokensPerSec} tokens/s`, bx, top - 42);
+    ctx.fillStyle = col.ink;
+    ctx.font = `600 12px ${col.mono}`;
+    ctx.fillText(`${tk.toFixed(1)} / ${burst}`, bx, top + bh + 18);
+    ctx.fillStyle = col.muted;
+    ctx.font = `11px ${col.mono}`;
+    ctx.fillText("tokens", bx, top + bh + 32);
+  }
+
+  // dots
+  const startX = clientR - 6;
+  let waiting = 0;
+  let extra = 0;
+  let qi = 0;
+  for (const a of lane.attempts) {
+    if (a.sent > simT) break;
+    const y = cy + (((a.request * 37) % 9) - 4) * 9;
+    const c0 = a.n ? col.retry : col.first;
+    if (bucketOn) {
+      const tIn = a.sent + GIN;
+      if (simT < tIn) {
+        dot(ctx, startX + (gateX - 18 - startX) * ((simT - a.sent) / GIN), y, 3.4, c0, 1);
+        continue;
+      }
+      if (a.outcome === "rejected") {
+        const age = simT - tIn;
+        if (age >= 0.7) continue;
+        dot(ctx, gateX - 18 - age * 30, y - age * 70, 3.4, col.refused, 1 - age / 0.7);
+        continue;
+      }
+      if (simT < a.start) {
+        waiting++;
+        const i = qi++;
+        if (i >= MAXQ) {
+          extra++;
+          continue;
+        }
+        dot(ctx, gateX - 22 - (i % slotCols) * 8, cy - 56 + Math.floor(i / slotCols) * 8, 2.8, c0, 1);
+        continue;
+      }
+    }
+    const leave = bucketOn ? Math.max(a.start, a.sent + GIN) : a.sent;
+    const from = bucketOn ? gateX + 18 : startX;
+    const tGo = leave + G;
+    if (simT < tGo) {
+      dot(ctx, from + (hostIn - from) * ((simT - leave) / G), y, 3.4, c0, 1);
+    } else {
+      const back = (simT - tGo) / G;
+      if (back >= 1) continue;
+      dot(ctx, hostIn - (hostIn - startX) * back, y, 3.4, a.outcome === "ok" ? col.ok : col.fail, 1 - back * 0.5);
+    }
+  }
+  if (bucketOn) {
+    ctx.fillStyle = col.muted;
+    ctx.font = `11px ${col.mono}`;
+    ctx.textAlign = "left";
+    ctx.fillText(waiting ? `${waiting} waiting in line${extra ? ` (${extra} not drawn)` : ""}` : "line empty", clientR - 4, cy - 66);
+  }
+}
+
+const niceMax = (v, step) => Math.max(step, Math.ceil(v / step) * step);
+const PAD = [22, 10, 22, 38]; // top, right, bottom, left
+
+function drawApi(trace, simT, col) {
+  const { ctx, w, h } = sizeCanvas($("chartApi"));
+  const bins = (attempts) => {
+    const n = new Array(END).fill(0);
+    for (const a of attempts) if (a.start !== null) n[Math.min(END - 1, Math.floor(a.start))]++;
+    return n.map((v, i) => [i + 0.5, v]);
+  };
+  const na = bins(trace.lanes.without.attempts);
+  const nb = bins(trace.lanes.with.attempts);
+  const yMax = niceMax(Math.max(...na.map((p) => p[1]), ...nb.map((p) => p[1])), 40);
+  const { X, Y } = timeAxes(ctx, { w, h, pad: PAD, end: trace.duration, yMax, ticks: [0, 1, 2, 3, 4].map((i) => (yMax / 4) * i), fmt: (v) => String(Math.round(v)), phases: trace.phases, col });
+  playedLine(ctx, na, X, Y, col.fail, simT);
+  playedLine(ctx, nb, X, Y, col.first, simT);
+  const R = PAD[1];
+  ctx.strokeStyle = col.cap;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([6, 4]);
+  ctx.beginPath();
+  ctx.moveTo(PAD[3], Y(API_LIMIT));
+  ctx.lineTo(w - R, Y(API_LIMIT));
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.lineWidth = 1;
+  ctx.fillStyle = col.cap;
+  ctx.font = `600 10px ${col.mono}`;
+  ctx.textAlign = "right";
+  ctx.fillText(`API limit ${API_LIMIT}/s`, w - R - 2, Y(API_LIMIT) - 5);
+  legend(ctx, PAD[3] + 6, 12, [["no limit", col.fail], ["with limit", col.first]], col);
+}
+
+function drawWait(trace, simT, col) {
+  const { ctx, w, h } = sizeCanvas($("chartWait"));
+  const lane = trace.lanes.with;
+  const maxWaitMs = lane.bucket.maxWaitMs;
+  const waitOf = (a) => (a.outcome === "rejected" ? a.would : a.start - a.sent);
+  const maxV = Math.max(0, ...lane.attempts.map(waitOf));
+  const yMax = niceMax(Math.max(maxV, maxWaitMs === undefined ? 0 : maxWaitMs / 1000) + 0.2, 4);
+  const { X, Y } = timeAxes(ctx, { w, h, pad: PAD, end: trace.duration, yMax, ticks: [0, 1, 2, 3, 4].map((i) => (yMax / 4) * i), fmt: (v) => `${+v.toFixed(1)}s`, phases: trace.phases, col });
+  for (const a of lane.attempts) {
+    const rejected = a.outcome === "rejected";
+    ctx.globalAlpha = a.sent <= simT ? 0.9 : 0.12;
+    ctx.fillStyle = rejected ? col.refused : a.n ? col.retry : col.first;
+    ctx.beginPath();
+    ctx.arc(X(a.sent), Y(waitOf(a)), 2.3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  if (maxWaitMs !== undefined) {
+    ctx.strokeStyle = col.cap;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.moveTo(PAD[3], Y(maxWaitMs / 1000));
+    ctx.lineTo(w - PAD[1], Y(maxWaitMs / 1000));
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.lineWidth = 1;
+    ctx.fillStyle = col.cap;
+    ctx.font = `600 10px ${col.mono}`;
+    ctx.textAlign = "right";
+    ctx.fillText(`maxWaitMs ${maxWaitMs / 1000}s`, w - PAD[1] - 2, Y(maxWaitMs / 1000) - 5);
+  }
+  legend(ctx, PAD[3] + 6, 12, [["waited", col.first], ["retry", col.retry], ["failed", col.refused]], col);
+}
+
+function setStat(id, text, cls) {
+  const el = $(id);
+  const next = `v${cls ? ` ${cls}` : ""}`;
+  if (el.textContent !== String(text)) el.textContent = text;
+  if (el.className !== next) el.className = next;
+}
+
+function laneStats(lane, simT) {
+  let sent = 0;
+  let r429 = 0;
+  let retries = 0;
+  let limited = 0;
+  let waiting = 0;
+  for (const a of lane.attempts) {
+    if (a.sent > simT) break;
+    if (a.outcome === "rejected") {
+      if (simT >= a.sent + GIN) limited++;
+      continue;
+    }
+    if (simT < a.start) {
+      waiting++;
+      continue;
+    }
+    sent++;
+    if (a.outcome === "error") {
+      r429++;
+      if (a.n) retries++;
+    }
+  }
+  const ok = lane.results.filter((r) => r.ok && r.t <= simT).length;
+  return { sent, r429, retries, ok, limited, waiting };
+}
+
+function render(trace, simT, col) {
+  const { without, with: withB } = trace.lanes;
+  drawLane($("laneA"), without, simT, col, false);
+  drawLane($("laneB"), withB, simT, col, true);
+  drawApi(trace, simT, col);
+  drawWait(trace, simT, col);
+  const a = laneStats(without, simT);
+  const b = laneStats(withB, simT);
+  setStat("aSent", a.sent, a.sent > without.results.length ? "bad" : "");
+  setStat("a429", a.r429, a.r429 ? "bad" : "");
+  setStat("aRetry", a.retries, a.retries ? "bad" : "");
+  setStat("aOk", a.ok, "");
+  setStat("bWait", b.waiting, "");
+  setStat("bLim", b.limited, b.limited ? "bad" : "");
+  setStat("b429", b.r429, b.r429 ? "bad" : "good");
+  setStat("bOk", b.ok, "");
+}
+
+// ---- Wiring -----------------------------------------------------------------
+function build(o) {
+  const trace = simulate(o);
+  $("cfgA").textContent = trace.lanes.without.config;
+  $("cfgB").textContent = trace.lanes.with.config;
+  for (const el of document.querySelectorAll(".totalK")) el.textContent = `requests succeeded (of ${trace.lanes.without.results.length})`;
+  return trace;
+}
+
+const demo = mountDemo({
+  build,
+  render,
+  options: { tokensPerSec: 15, burst: 5, maxWaitMs: 5000, retries: true },
+  speed: 0.5,
+});
+
+$("rate").addEventListener("input", (e) => {
+  $("rateOut").textContent = e.target.value;
+  demo.rerun({ tokensPerSec: Number(e.target.value) });
+});
+$("burst").addEventListener("input", (e) => {
+  $("burstOut").textContent = e.target.value;
+  demo.rerun({ burst: Number(e.target.value) });
+});
+$("maxWait").addEventListener("change", (e) => demo.rerun({ maxWaitMs: e.target.value === "none" ? undefined : Number(e.target.value) }));
+$("retries").addEventListener("change", (e) => demo.rerun({ retries: e.target.value === "on" }));
+</script>

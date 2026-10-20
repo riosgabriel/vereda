@@ -1,0 +1,376 @@
+<title>Retry Backoff Simulator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@600;800&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="engine/demo.css">
+
+<div class="wrap">
+  <div>
+    <div class="eyebrow">Vereda · retry backoff</div>
+    <h1>Why retries need jitter</h1>
+    <p class="lede"><span id="ledeN">100</span> clients call the same host at the same moment. The host is down for the first second. After that it can serve <span id="ledeCap">40</span> requests per second. Every failed client retries up to <span id="ledeR">5</span> times, with exponential backoff. The clients on the left wait the same time between tries. The clients on the right use Vereda's jitter. Press Play. The page slows down at key moments and says what happened.</p>
+  </div>
+
+  <div class="controls">
+    <button id="play" type="button">Play</button>
+    <button id="replay" class="ghost" type="button">Replay</button>
+    <label class="field" for="clients">Clients <input id="clients" type="range" min="20" max="200" step="10" value="100"> <output id="clientsOut">100</output></label>
+    <label class="field" for="base">baseDelayMs <input id="base" type="range" min="50" max="500" step="50" value="200"> <output id="baseOut">200</output></label>
+    <label class="field" for="maxRetries">maxRetries <input id="maxRetries" type="range" min="1" max="6" step="1" value="5"> <output id="maxRetriesOut">5</output></label>
+    <label class="field" for="capDelay">maxDelayMs <input id="capDelay" type="range" min="1" max="30" step="1" value="30"> <output id="capDelayOut">30 s</output></label>
+    <label class="field" for="capacity">Host capacity <input id="capacity" type="range" min="20" max="100" step="10" value="40"> <output id="capacityOut">40/s</output></label>
+    <label class="field" for="speed">Speed <select id="speed"></select></label>
+    <label class="field" for="guided"><input id="guided" type="checkbox" checked> Slow down at key moments</label>
+    <span class="clock" id="clock">t = 0.0 s</span>
+  </div>
+
+  <div class="timeline" id="timeline" role="img" aria-label="Scenario timeline"></div>
+  <p class="caption" id="caption" aria-live="polite"></p>
+
+  <div class="legend">
+    <span><i class="dot" style="background:var(--first)"></i>First attempt</span>
+    <span><i class="dot" style="background:var(--retry)"></i>Retry</span>
+    <span><i class="dot" style="background:var(--ok)"></i>Served</span>
+    <span><i class="dot" style="background:var(--refused)"></i>Failed: host down</span>
+    <span><i class="dot" style="background:var(--fail)"></i>Failed: over capacity</span>
+  </div>
+
+  <div class="lanes">
+    <article class="panel lane">
+      <header><h2>Backoff, no jitter</h2><span class="cfg" id="cfgA">backoff: { jitter: false }</span></header>
+      <canvas id="laneA" aria-label="Animation: clients retrying without jitter"></canvas>
+      <div class="stats">
+        <div class="stat"><span class="v" id="aPeak">0</span><span class="k">peak load after outage, attempts/s</span></div>
+        <div class="stat"><span class="v" id="aSent">0</span><span class="k">attempts sent</span></div>
+        <div class="stat"><span class="v" id="aOk">0</span><span class="k" id="aOkK">clients served</span></div>
+        <div class="stat"><span class="v" id="aDone">…</span><span class="k" id="aDoneK">all clients finished at</span></div>
+      </div>
+    </article>
+    <article class="panel lane">
+      <header><h2>Backoff + jitter</h2><span class="cfg" id="cfgB">backoff: { jitter: true }</span></header>
+      <canvas id="laneB" aria-label="Animation: clients retrying with jitter"></canvas>
+      <div class="stats">
+        <div class="stat"><span class="v" id="bPeak">0</span><span class="k">peak load after outage, attempts/s</span></div>
+        <div class="stat"><span class="v" id="bSent">0</span><span class="k">attempts sent</span></div>
+        <div class="stat"><span class="v" id="bOk">0</span><span class="k" id="bOkK">clients served</span></div>
+        <div class="stat"><span class="v" id="bDone">…</span><span class="k" id="bDoneK">all clients finished at</span></div>
+      </div>
+    </article>
+  </div>
+
+  <div class="charts">
+    <div class="panel chart">
+      <h3>Attempts reaching the host (per second)</h3>
+      <canvas id="chartLoad" aria-label="Chart of attempts reaching the host, with the host capacity line"></canvas>
+      <p>Each point counts the attempts in 100 ms and shows them as a rate. The dashed line is what the host can serve. Without jitter, every wave is a tall spike.</p>
+    </div>
+    <div class="panel chart">
+      <h3>Clients served so far</h3>
+      <canvas id="chartOk" aria-label="Chart of the number of clients served over time"></canvas>
+      <p>Jitter gives the host a steady stream it can serve. The spikes on the left serve only a few clients each, because the host takes only its capacity from each spike.</p>
+    </div>
+  </div>
+
+  <div class="explain">
+    <section>
+      <h2>What jitter gives you</h2>
+      <ol>
+        <li><strong>Retries spread out.</strong> Without jitter, every client waits 200 ms, then 400 ms, then 800 ms. They all started together, so they all come back together. With jitter, each client picks its own random delay.</li>
+        <li><strong>Lower peaks.</strong> The host still sees too many requests at first, but far fewer than in one big wave. The peak falls with every round, and more requests get an answer.</li>
+        <li><strong>The spread grows.</strong> Each retry doubles the window the delay is picked from. The later the retry, the wider the spread.</li>
+      </ol>
+    </section>
+    <section>
+      <h2>What it costs</h2>
+      <ul>
+        <li>Some clients retry very soon. The delay can be close to 0 ms, and on average it is half of the plain backoff delay.</li>
+        <li>Finish times are less predictable. One client with bad luck can wait longer than the rest.</li>
+        <li>The host still has the same capacity. Jitter only gives its requests a better order. If the outage is longer than all the retries, every client still gives up.</li>
+      </ul>
+      <p class="note">Things to try: set <code>baseDelayMs</code> to 50. The first retry windows become very narrow, so even jitter makes a short peak. Then raise <code>maxRetries</code>, and watch the no-jitter lane send the same wave again and again. Lower <code>maxDelayMs</code> to 1 s, and the waves get closer and closer.</p>
+    </section>
+    <section>
+      <h2>In Vereda</h2>
+      <div class="formula">HttpClient.create({
+  timeout: { attemptMs: 5_000 },
+  retry: {
+    maxRetries: 5,
+    backoff: {
+      baseDelayMs: 200,
+      maxDelayMs: 30_000,
+      jitter: true, // the default
+    },
+  },
+})</div>
+      <p class="note"><code>src/core/backoff.ts</code> builds the delay for retry number <code>attempt</code>, counted from 0. First it takes <code>baseDelayMs * 2 ** attempt</code> and caps it at <code>maxDelayMs</code>. With <code>jitter: true</code> (the default) it returns <code>Math.random() * capped</code>. This is full jitter: a random value from 0 to the capped delay.</p>
+      <p class="note">A <code>Retry-After</code> header changes this. When a retryable status (for example 429 or 503) comes with that header, <code>resolveRetryDelay</code> in <code>src/queue/retry.ts</code> uses the header value, capped at <code>maxDelayMs</code>, and adds no jitter. If the host tells every client the same number of seconds, they all come back together. This page shows plain failures with no header. A <code>backoff</code> function you write yourself is used as it is, with no jitter added.</p>
+      <p class="note">Simplified model: the host answers each request at once, and it serves up to its capacity in every 100 ms step. The page shows a retry as soon as the failure is known. In Vereda a retry also waits for a free slot in the bulkhead. A test (<code>test/demos/backoff-jitter.parity.test.ts</code>) runs this page's model against the real <code>HttpClient</code>, so the page has to change when the library does.</p>
+    </section>
+  </div>
+</div>
+
+
+<script type="module">
+import { dot, legend, mix, playedLine, roundRect, sizeCanvas, timeAxes } from "./engine/draw.js";
+import { mountDemo } from "./engine/player.js";
+import { STEP, simulate } from "./models/backoff-jitter.js";
+
+// ---- Drawing --------------------------------------------------------------
+const $ = (id) => document.getElementById(id);
+const G = 0.15; // sim seconds a dot spends travelling to the host
+const R = 0.4; // sim seconds the result stays on screen
+
+// Count of items with f(item) <= t, for an array sorted by f.
+const countUpTo = (arr, t, f) => {
+  let lo = 0;
+  let hi = arr.length;
+  while (lo < hi) {
+    const m = (lo + hi) >> 1;
+    if (f(arr[m]) <= t) lo = m + 1;
+    else hi = m;
+  }
+  return lo;
+};
+
+// Values worked out once per lane and kept, so render stays a function of trace and time.
+const memo = new WeakMap();
+function derived(lane) {
+  let d = memo.get(lane);
+  if (d) return d;
+  // When each attempt's client sends its next one (null if there is none).
+  const next = new Array(lane.attempts.length).fill(null);
+  const last = new Map();
+  lane.attempts.forEach((a, i) => {
+    if (last.has(a.request)) next[last.get(a.request)] = a.sent;
+    last.set(a.request, i);
+  });
+  const served = lane.results.filter((r) => r.ok).map((r) => r.t).sort((x, y) => x - y);
+  const doneAt = Math.max(...lane.results.map((r) => r.t));
+  const gaveUp = lane.results.filter((r) => !r.ok).length;
+  d = { next, served, doneAt, gaveUp };
+  memo.set(lane, d);
+  return d;
+}
+
+function drawLane(canvas, lane, simT, col, info) {
+  const { ctx, w, h } = sizeCanvas(canvas);
+  const { next } = derived(lane);
+  const cy = h / 2 - 6;
+  const clientR = 74;
+  const hostW = 104;
+  const hostL = w - hostW - 8;
+  const hy = cy - 70;
+  const hh = 140;
+  const startX = clientR;
+  const endX = hostL - 4;
+  const down = simT < info.down;
+
+  ctx.fillStyle = col.bg;
+  ctx.strokeStyle = col.line;
+  ctx.lineWidth = 1;
+  roundRect(ctx, 8, hy, clientR - 14, hh, 8);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = col.ink;
+  ctx.font = `600 12px ${col.mono}`;
+  ctx.textAlign = "center";
+  ctx.fillText("clients", 8 + (clientR - 14) / 2, cy + 4);
+
+  const now = countUpTo(lane.attempts, simT, (a) => a.sent) - countUpTo(lane.attempts, simT - STEP, (a) => a.sent);
+  const load = now / STEP;
+  const over = !down && load > info.capacity;
+  ctx.fillStyle = down ? mix(col.refused, col.surface, 0.2) : over ? mix(col.fail, col.surface, 0.14) : col.bg;
+  ctx.strokeStyle = down ? col.refused : over ? col.fail : col.line;
+  roundRect(ctx, hostL, hy, hostW, hh, 8);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = col.ink;
+  ctx.font = `600 12px ${col.mono}`;
+  ctx.fillText(down ? "host: down" : "host: up", hostL + hostW / 2, hy + 18);
+  ctx.fillStyle = col.muted;
+  ctx.font = `11px ${col.mono}`;
+  ctx.fillText(`cap ${info.capacity}/s`, hostL + hostW / 2, hy + 36);
+  ctx.fillStyle = over ? col.fail : col.ink;
+  ctx.font = `600 13px ${col.mono}`;
+  ctx.fillText(`${Math.round(load)}/s`, hostL + hostW / 2, hy + hh - 14);
+
+  // clients waiting for their next retry
+  let waiting = 0;
+  for (let i = 0; i < lane.attempts.length; i++) {
+    if (lane.attempts[i].sent > simT) break;
+    if (next[i] !== null && next[i] - G > simT) waiting++;
+  }
+  ctx.fillStyle = col.muted;
+  ctx.font = `11px ${col.mono}`;
+  ctx.fillText(`${waiting} waiting`, 8 + (clientR - 14) / 2, hy + hh + 14);
+
+  // dots, one row per client
+  const n = info.clients;
+  const rad = Math.max(1.4, Math.min(3.2, ((hh - 8) / n) * 0.8));
+  for (const a of lane.attempts) {
+    if (a.sent - G > simT) break;
+    if (simT > a.sent + R) continue;
+    let x;
+    let y = hy + 4 + ((a.request + 0.5) / n) * (hh - 8);
+    let c;
+    let alpha = 1;
+    let r = rad;
+    if (simT < a.sent) {
+      x = startX + (endX - startX) * ((simT - (a.sent - G)) / G);
+      c = a.n === 0 ? col.first : col.retry;
+    } else {
+      const u = (simT - a.sent) / R;
+      alpha = 1 - u;
+      if (a.outcome === "ok") {
+        x = endX + 6;
+        c = col.ok;
+        r = rad + 4 * u;
+      } else {
+        x = endX - 40 * u;
+        y += 10 * u * u;
+        c = a.reason === "host_down" ? col.refused : col.fail;
+      }
+    }
+    dot(ctx, x, y, r, c, alpha);
+  }
+}
+
+const yLoadMemo = new WeakMap();
+function yLoadFor(trace) {
+  let y = yLoadMemo.get(trace);
+  if (y) return y;
+  const peak = Math.max(
+    ...trace.lanes.without.series.load.map((p) => p[1]),
+    ...trace.lanes.with.series.load.map((p) => p[1]),
+    trace.lanes.without.series.capacity[0][1],
+  );
+  y = [80, 120, 200, 400, 800, 1200, 2000, 4000].find((v) => v >= peak * 1.08) || 4000;
+  yLoadMemo.set(trace, y);
+  return y;
+}
+
+function drawLoad(trace, simT, col) {
+  const { ctx, w, h } = sizeCanvas($("chartLoad"));
+  const pad = [22, 10, 22, 42];
+  const yMax = yLoadFor(trace);
+  const { X, Y } = timeAxes(ctx, {
+    w,
+    h,
+    pad,
+    end: trace.duration,
+    yMax,
+    ticks: [0, 1, 2, 3, 4].map((i) => (yMax / 4) * i),
+    phases: trace.phases,
+    col,
+  });
+  const cap = trace.lanes.without.series.capacity;
+  ctx.strokeStyle = col.cap;
+  ctx.setLineDash([5, 4]);
+  ctx.beginPath();
+  ctx.moveTo(X(cap[0][0]), Y(cap[0][1]));
+  ctx.lineTo(X(cap[cap.length - 1][0]), Y(cap[cap.length - 1][1]));
+  ctx.stroke();
+  ctx.setLineDash([]);
+  const pts = (lane) => lane.series.load.filter((p) => p[0] <= trace.duration);
+  playedLine(ctx, pts(trace.lanes.without), X, Y, col.fail, simT - STEP / 2);
+  playedLine(ctx, pts(trace.lanes.with), X, Y, col.first, simT - STEP / 2);
+  legend(ctx, pad[3] + 6, 12, [["no jitter", col.fail], ["jitter", col.first], ["- - capacity", col.ink]], col);
+}
+
+function drawServed(trace, simT, col, clients) {
+  const { ctx, w, h } = sizeCanvas($("chartOk"));
+  const pad = [22, 10, 22, 42];
+  const { X, Y } = timeAxes(ctx, {
+    w,
+    h,
+    pad,
+    end: trace.duration,
+    yMax: clients,
+    ticks: [0, clients / 2, clients],
+    fmt: (v) => String(Math.round(v)),
+    phases: trace.phases,
+    col,
+  });
+  const pts = (lane) => {
+    const { served } = derived(lane);
+    const out = [];
+    for (let i = 0; i * STEP <= trace.duration; i++) out.push([i * STEP, countUpTo(served, i * STEP, (t) => t)]);
+    return out;
+  };
+  playedLine(ctx, pts(trace.lanes.without), X, Y, col.fail, simT);
+  playedLine(ctx, pts(trace.lanes.with), X, Y, col.first, simT);
+  legend(ctx, pad[3] + 6, 12, [["no jitter", col.fail], ["jitter", col.first]], col);
+}
+
+function setStat(id, text, cls) {
+  const el = $(id);
+  const next = `v${cls ? ` ${cls}` : ""}`;
+  if (el.textContent !== String(text)) el.textContent = text;
+  if (el.className !== next) el.className = next;
+}
+
+function laneStats(p, lane, simT, info) {
+  const { served, doneAt, gaveUp } = derived(lane);
+  const sent = countUpTo(lane.attempts, simT, (a) => a.sent);
+  let peak = 0;
+  for (const [t, v] of lane.series.load) {
+    const start = t - STEP / 2;
+    if (start < info.down - 1e-9) continue;
+    if (start > simT + 1e-9) break;
+    peak = Math.max(peak, v);
+  }
+  const ok = countUpTo(served, simT, (t) => t);
+  setStat(`${p}Peak`, Math.round(peak), peak > info.capacity * 3 ? "bad" : peak > info.capacity ? "" : "good");
+  setStat(`${p}Sent`, sent, "");
+  setStat(`${p}Ok`, `${ok}/${info.clients}`, ok === info.clients ? "good" : "");
+  const finished = simT >= doneAt;
+  setStat(`${p}Done`, finished ? `${doneAt.toFixed(1)} s` : "…", finished ? (gaveUp ? "bad" : "good") : "");
+  const doneK = finished && gaveUp ? `all finished, ${gaveUp} gave up` : "all clients finished at";
+  if ($(`${p}DoneK`).textContent !== doneK) $(`${p}DoneK`).textContent = doneK;
+}
+
+function render(trace, simT, col) {
+  const { without, with: withJ } = trace.lanes;
+  const info = {
+    down: trace.phases[0].to,
+    capacity: without.series.capacity[0][1],
+    clients: without.results.length,
+  };
+  drawLane($("laneA"), without, simT, col, info);
+  drawLane($("laneB"), withJ, simT, col, info);
+  drawLoad(trace, simT, col);
+  drawServed(trace, simT, col, info.clients);
+  laneStats("a", without, simT, info);
+  laneStats("b", withJ, simT, info);
+}
+
+// ---- Wiring -----------------------------------------------------------------
+function build(o) {
+  const trace = simulate(o);
+  $("ledeN").textContent = o.clients;
+  $("ledeCap").textContent = o.capacity;
+  $("ledeR").textContent = o.maxRetries;
+  $("cfgA").textContent = trace.lanes.without.config;
+  $("cfgB").textContent = trace.lanes.with.config;
+  return trace;
+}
+
+const demo = mountDemo({
+  build,
+  render,
+  options: { clients: 100, base: 200, maxRetries: 5, maxDelay: 30, capacity: 40 },
+  speed: 0.5,
+});
+
+const bind = (id, key, fmt) =>
+  $(id).addEventListener("input", (e) => {
+    $(`${id}Out`).textContent = fmt(e.target.value);
+    demo.rerun({ [key]: Number(e.target.value) });
+  });
+bind("clients", "clients", String);
+bind("base", "base", String);
+bind("maxRetries", "maxRetries", String);
+bind("capDelay", "maxDelay", (v) => `${v} s`);
+bind("capacity", "capacity", (v) => `${v}/s`);
+</script>
