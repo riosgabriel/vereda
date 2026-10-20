@@ -4,7 +4,9 @@ Seeing what the client is doing: lifecycle events, metrics, and OpenTelemetry. B
 
 ## Lifecycle events
 
-The client emits typed events across all requests, useful for metrics, logging, and alerting. Exactly one of `success`, `failure`, or `cancelled` fires per ticket:
+The client emits typed events across all requests. Use them for logging, alerting or your own metrics.
+
+Exactly one of `success`, `failure` or `cancelled` fires per ticket.
 
 ```typescript
 client.on("request",   ({ ticketId, url, method, partition }) => {});
@@ -14,17 +16,52 @@ client.on("failure",   ({ ticketId, url, partition, attempts, durationMs, queued
 client.on("cancelled", ({ ticketId, url, partition, attempts, durationMs, queuedMs }) => {});
 ```
 
-`retry`'s `attempt` is a zero-based retry index (`0` = the first retry, after the initial attempt). `off(event, listener)` removes a listener with the same signature as `on`. A listener (or `metrics` sink) that throws never affects the request: every other listener still runs, and the error is rethrown on a microtask, so it surfaces as an uncaught error: `process.on("uncaughtException")` on Node, the global `error` event on runtimes that have one.
+In `retry`, `attempt` is a zero-based retry index: `0` is the first retry, after the initial attempt.
 
-`queuedMs` is the total time this ticket spent waiting for a bulkhead/global-semaphore permit or a [rate-limit](resilience.md#rate-limiting) token, summed across every attempt — it's `0` when a request never had to wait (the default global cap is 50 concurrent, so most single-service consumers never hit it). A consistently nonzero `queuedMs` relative to `durationMs` means you're throttled by `concurrency`/a partition's `concurrency`, not by downstream latency; see [Wiring a metrics sink](../operations.md#wiring-a-metrics-sink) for the companion `vereda.queue_depth` / `vereda.global_queue_depth` gauges.
+**Example** (removing a listener)
 
-If a [retry budget](resilience.md#retry-budget) is configured, `retryBudgetExhausted` fires when it refuses a retry, right before that ticket's `failure` event:
+```typescript
+const onFailure = ({ url, error }: { url: string; error: { kind: string } }) =>
+  console.error("request failed", url, error.kind);
+
+client.on("failure", onFailure);
+client.off("failure", onFailure); // same signature as on()
+```
+
+### A listener that throws
+
+A listener, or a `metrics` sink, that throws never affects the request. Every other listener still runs.
+
+The error is rethrown on a microtask, so it surfaces as an uncaught error:
+
+- On Node: `process.on("uncaughtException")`.
+- On runtimes that have one: the global `error` event.
+
+### Time spent waiting: `queuedMs`
+
+`queuedMs` is the total time a ticket waited, summed across every attempt. It counts waits for a bulkhead permit, a global-semaphore permit or a [rate-limit](resilience.md#rate-limiting) token.
+
+It's `0` when a request never had to wait. The default global cap is 50 concurrent requests, so most single-service consumers never hit it.
+
+**Example** (spotting throttling)
+
+```typescript
+client.on("success", ({ partition, durationMs, queuedMs }) => {
+  if (queuedMs > durationMs / 2) console.warn("mostly queued", partition, queuedMs);
+});
+```
+
+A `queuedMs` that stays high relative to `durationMs` means a `concurrency` limit is throttling you, not downstream latency. For the matching gauges, `vereda.queue_depth` and `vereda.global_queue_depth`, see [Wiring a metrics sink](../operations.md#wiring-a-metrics-sink).
+
+### Retry budget and circuit breaker events
+
+With a [retry budget](resilience.md#retry-budget) configured, `retryBudgetExhausted` fires when the budget refuses a retry. It fires right before that ticket's `failure` event.
 
 ```typescript
 client.on("retryBudgetExhausted", ({ ticketId, url, partition }) => {});
 ```
 
-If the circuit breaker is enabled, a partition also fires `circuitOpen`/`circuitClose` independently of any single ticket:
+With the circuit breaker enabled, a partition also fires `circuitOpen` and `circuitClose`. These don't belong to any single ticket.
 
 ```typescript
 client.on("circuitOpen",  ({ partition }) => {});
@@ -33,7 +70,11 @@ client.on("circuitClose", ({ partition }) => {});
 
 ## Metrics
 
-Pass a `metrics` sink and the client reports counters, histograms and gauges as requests run. A sink is three methods, so it's a thin adapter over OpenTelemetry, StatsD, Prometheus or whatever your service already uses:
+Pass a `metrics` sink, and the client reports counters, histograms and gauges as requests run.
+
+A sink is three methods. That makes it a thin adapter over OpenTelemetry, StatsD, Prometheus or whatever your service already uses.
+
+**Example** (a sink that logs every data point)
 
 ```typescript
 import { HttpClient, type MetricsSink } from "@vereda/http";
@@ -57,11 +98,17 @@ const client = HttpClient.create({ timeout: { attemptMs: 5_000 }, metrics });
 | `vereda.queue_depth` | gauge | `partition` |
 | `vereda.in_flight`, `vereda.global_queue_depth` | gauge | none |
 
-Because everything that concerns a single dependency is tagged with `partition` (its host, unless you set one), one struggling upstream gets its own line on a graph instead of being averaged into all the others. For OpenTelemetry, use the ready-made sink below. The [operations guide](../operations.md#wiring-a-metrics-sink) covers each metric in detail and how to read the queue-depth gauges.
+Everything that concerns a single dependency is tagged with `partition`: its host, unless you set one. So one struggling upstream gets its own line on a graph instead of being averaged into all the others.
+
+For OpenTelemetry, use the [ready-made sink](#opentelemetry). The [operations guide](../operations.md#wiring-a-metrics-sink) covers each metric in detail, including how to read the queue-depth gauges.
 
 ## OpenTelemetry
 
-`@vereda/http/otel` connects a client to OpenTelemetry. It needs `@opentelemetry/api` (an optional peer dependency; only this entry point imports it) and an SDK you set up as usual:
+`@vereda/http/otel` connects a client to OpenTelemetry.
+
+It needs `@opentelemetry/api`, an optional peer dependency that only this entry point imports. Set up the SDK as usual.
+
+**Example** (metrics and traces)
 
 ```typescript
 import { metrics, trace } from "@opentelemetry/api";
@@ -77,9 +124,27 @@ const client = HttpClient.create({
 const stop = instrumentTracing(client, { tracer: trace.getTracer("checkout") });
 ```
 
-- **Traces:** one span per ticket covering queueing, every attempt and backoff, with a child `CLIENT` span per attempt. Attributes follow the HTTP semantic conventions (`http.request.method`, `url.full`, `http.response.status_code`, `http.request.resend_count` on retries, `error.type`), and each retry adds a `vereda.retry` event to the ticket span. A cancelled ticket keeps an unset status.
-- **Propagation:** each attempt's `traceparent` (through your registered propagator) is injected into the request headers, so downstream services join the trace. Turn it off with `propagate: false`.
-- **Redaction:** `url.full` never contains credentials, and query values are replaced with `[redacted]` unless you pass `redactQuery: false`. Attempt errors are recorded by type only, since an error message can contain a URL.
-- **Metrics:** `otelMetricsSink` records the [metrics above](#metrics) as OpenTelemetry counters, a histogram (unit `ms`) and observable gauges.
+| | What you get |
+| --- | --- |
+| **Traces** | One span per ticket, covering queueing, every attempt and backoff, with a child `CLIENT` span per attempt |
+| **Propagation** | Each attempt's `traceparent` is injected into the request headers through your registered propagator, so downstream services join the trace |
+| **Redaction** | `url.full` never contains credentials, and query values become `[redacted]` |
+| **Metrics** | `otelMetricsSink` records the [metrics above](#metrics) as counters, a histogram (unit `ms`) and observable gauges |
 
-`stop()` ends any open ticket spans and stops recording. The attempt middleware stays registered, since middleware can't be removed, but it no longer records anything.
+### Span details
+
+- Attributes follow the HTTP semantic conventions: `http.request.method`, `url.full`, `http.response.status_code`, `http.request.resend_count` on retries, and `error.type`.
+- Each retry adds a `vereda.retry` event to the ticket span.
+- A cancelled ticket keeps an unset status.
+- Attempt errors are recorded by type only, since an error message can contain a URL.
+
+### Options
+
+- `propagate: false` turns off header injection.
+- `redactQuery: false` keeps query values in `url.full`. Credentials are still removed.
+
+### Stopping
+
+`stop()` ends any open ticket spans and stops recording.
+
+The attempt middleware stays registered, since middleware can't be removed, but it no longer records anything.
