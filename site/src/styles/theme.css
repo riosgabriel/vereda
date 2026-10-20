@@ -84,6 +84,20 @@ h2 {
 	max-width: 75ch;
 }
 
+/* Wide screens: Starlight gives the spare width half to the left of the content and half to
+   "On this page", so the content floats between two empty bands and touches the TOC's border.
+   Here the TOC is the sidebar's width, the content keeps 3rem on each side, and the TOC follows
+   the content: the spare width collects at the far right, past everything. */
+@media (min-width: 72rem) {
+	:root[data-has-sidebar][data-has-toc] :is(.right-sidebar-container, .right-sidebar) {
+		width: var(--sl-sidebar-width);
+	}
+	:root[data-has-sidebar][data-has-toc] .main-pane {
+		--sl-content-margin-inline: auto;
+		width: min(calc(100% - var(--sl-sidebar-width)), calc(var(--sl-content-width) + 6rem));
+	}
+}
+
 /* A table's first column is usually a name (a metric, an option, a parameter): never break it
    mid-word. Long values in the other columns still wrap. */
 .sl-markdown-content td:first-child > code {
