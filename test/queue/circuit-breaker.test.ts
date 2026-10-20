@@ -94,6 +94,27 @@ describe("CircuitBreaker", () => {
 			vi.useRealTimers();
 		});
 
+		it("starts a fresh rolling window when a half-open trial closes the breaker", () => {
+			const cb = new CircuitBreaker("test", {
+				enabled: true,
+				resetTimeoutMs: 1000,
+				window: { sizeMs: 10_000, failureRatePercent: 50, minimumRequests: 4 },
+			});
+			for (let i = 0; i < 4; i++) cb.recordFailure(new NetworkError("boom"));
+			expect(cb.canRequest()).toBe(false);
+
+			vi.advanceTimersByTime(1000);
+			expect(cb.canRequest()).toBe(true); // the half-open trial
+			cb.recordSuccess();
+			expect(cb.snapshot()).toMatchObject({ state: "closed", failures: 0 });
+
+			// The four failures that opened it are still inside the 10 s window, but
+			// one new failure is 1 of 1 request, below minimumRequests: stay closed.
+			cb.recordFailure(new NetworkError("boom"));
+			expect(cb.canRequest()).toBe(true);
+			expect(cb.snapshot()).toMatchObject({ state: "closed", failures: 1 });
+		});
+
 		it("moves from open to half-open after resetTimeoutMs elapses", () => {
 			const cb = new CircuitBreaker("test", {
 				enabled: true,

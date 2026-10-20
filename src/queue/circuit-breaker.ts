@@ -89,6 +89,11 @@ class RollingWindow {
 		return (failures / total) * 100;
 	}
 
+	/** Drop every bucket, so the next outcome starts a fresh window. */
+	reset(): void {
+		this.buckets = [];
+	}
+
 	private currentBucket(now: number): Bucket {
 		this.prune(now);
 		const bucketStart = Math.floor(now / this.bucketMs) * this.bucketMs;
@@ -359,6 +364,10 @@ export class CircuitBreaker {
 	private resetCounters(): void {
 		this.consecutiveFailures = 0;
 		this.halfOpenInFlight = 0;
+		// A closed breaker judges the host on what happens from now on. Keeping
+		// the failures that opened it would let one new failure re-open it before
+		// minimumRequests fresh outcomes are in.
+		this.window?.reset();
 	}
 
 	private evaluateTripCondition(): boolean {

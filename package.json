@@ -1,7 +1,7 @@
 {
 	"name": "@vereda/http",
 	"version": "1.1.0",
-	"description": "A resilient HTTP client with automatic queuing, retries, and bulkhead isolation",
+	"description": "Resilient fetch for Node.js, Bun and Cloudflare Workers: retries, backoff, timeouts, per-host bulkheads, circuit breakers, retry budgets and rate limits, with typed results. Zero dependencies.",
 	"type": "module",
 	"sideEffects": false,
 	"exports": {
@@ -43,12 +43,24 @@
 		"book:drift": "tsx scripts/book-check.ts drift"
 	},
 	"keywords": [
+		"fetch",
 		"http",
-		"client",
-		"queue",
+		"http-client",
 		"retry",
+		"backoff",
+		"circuit-breaker",
 		"bulkhead",
-		"resilience"
+		"rate-limit",
+		"rate-limiting",
+		"retry-budget",
+		"resilience",
+		"fault-tolerance",
+		"timeout",
+		"queue",
+		"typescript",
+		"bun",
+		"cloudflare-workers",
+		"opentelemetry"
 	],
 	"license": "MIT",
 	"repository": {
@@ -88,15 +100,15 @@
 		"@opentelemetry/sdk-metrics": "^2.12.0",
 		"@opentelemetry/sdk-trace-base": "^2.12.0",
 		"@types/node": "^26.6.2",
-		"@vitest/coverage-v8": "5.0.4",
+		"@vitest/coverage-v8": "5.0.5",
 		"fast-check": "^4.10.2",
 		"husky": "^9.1.7",
 		"publint": "^0.3.24",
 		"tsx": "^4.23.15",
 		"typedoc": "^0.28.20",
 		"typescript": "^6.0.0",
-		"undici": "^8.11.2",
-		"vitest": "^5.0.1",
+		"undici": "^8.12.2",
+		"vitest": "^5.0.5",
 		"zod": "^4.6.5"
 	}
 }
