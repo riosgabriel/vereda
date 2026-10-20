@@ -2,7 +2,7 @@ import { defineCollection } from "astro:content";
 import { readFile } from "node:fs/promises";
 import { docsSchema } from "@astrojs/starlight/schema";
 import { glob, type Loader } from "astro/loaders";
-import { DOC_PATTERNS, idFor } from "./doc-ids.ts";
+import { DOC_PATTERNS, idFor, SIDEBAR_ORDER } from "./doc-ids.ts";
 
 // One glob over the repo root covers both sources. Two loaders can't share a collection: each
 // glob deletes the entries it didn't load itself.
@@ -41,6 +41,12 @@ function docsFromRepo(): Loader {
 						const body = await readFile(props.filePath, "utf-8");
 						const h1 = FIRST_H1.exec(body)?.[1]?.trim();
 						if (h1) props.data = { ...props.data, title: h1 };
+					}
+					const order = SIDEBAR_ORDER.indexOf(props.id);
+					if (order >= 0) {
+						// The book's README is titled like its group, so its link reads "Overview", as in Patterns.
+						const label = props.id === "book" ? "Overview" : undefined;
+						props.data = { ...props.data, sidebar: { order, label } };
 					}
 					return context.parseData(props);
 				},

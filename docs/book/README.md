@@ -118,8 +118,8 @@ clearInterval(keep);
 
 ```mermaid
 flowchart LR
-  call["client.get()"] --> ticket["Ticket returned at once"]
-  call --> first["first attempt<br/>(skips the partition bulkhead)"]
+  get["client.get()"] --> ticket["Ticket returned at once"]
+  get --> first["first attempt<br/>(skips the partition bulkhead)"]
   first -->|success| done["ticket settles"]
   first -->|non-retryable or vetoed| done
   first -->|transient failure| loop["retry loop<br/>(every retry goes through<br/>the partition bulkhead)"]

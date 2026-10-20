@@ -25,8 +25,9 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 
 <StarlightPage
 	frontmatter={{
-		title: "Vereda",
-		description: "Make fetch resilient: retries, backoff, timeouts, per-host isolation and circuit breaking for Node.js fetch.",
+		title: "Make fetch resilient",
+		description:
+			"Retries, backoff, timeouts, per-host isolation and circuit breaking for fetch on Node.js, Bun and Cloudflare Workers.",
 		template: "splash",
 	}}
 	hasSidebar={false}
@@ -36,8 +37,8 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 			<p class="eyebrow">@vereda/http</p>
 			<h1>Make <code>fetch</code> resilient.</h1>
 			<p class="lede">
-				Retries, backoff, timeouts, per-host isolation and circuit breaking for Node.js <code>fetch</code>, with typed
-				results instead of thrown errors. Zero runtime dependencies.
+				Retries, backoff, timeouts, per-host isolation and circuit breaking for <code>fetch</code> on Node.js, Bun and
+				Cloudflare Workers, with typed results instead of thrown errors. Zero runtime dependencies.
 			</p>
 			<pre class="install"><code>npm install @vereda/http</code></pre>
 			<div class="actions">
@@ -49,12 +50,15 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 		<figure class="storm" aria-labelledby="storm-caption">
 			<div class="storm-head">
 				<span class="storm-title">A host slows down at 8 s</span>
-				<span class="storm-clock" id="storm-clock">t = 0 s</span>
+				<span class="storm-side">
+					<span id="storm-clock">t = 0 s</span>
+					<button type="button" class="storm-toggle" id="storm-toggle" hidden>Pause</button>
+				</span>
 			</div>
 			<canvas id="storm" role="img" aria-label="Load on a slow host over 40 seconds: plain retries climb to over 3 times normal load and stay there after the host is fixed; with a retry budget the load stays near normal."></canvas>
 			<div class="storm-stats">
-				<div><span class="v fail" id="storm-a">1.0×</span><span class="k">load, plain retries</span></div>
-				<div><span class="v first" id="storm-b">1.0×</span><span class="k">load, with a retry budget</span></div>
+				<div><span class="v fail" id="storm-a">1.00×</span><span class="k">load, plain retries</span></div>
+				<div><span class="v first" id="storm-b">1.00×</span><span class="k">load, with a retry budget</span></div>
 			</div>
 			<figcaption id="storm-caption">
 				Both clients retry up to 3 times. Without a budget, retries keep the host overloaded even after it is fixed at 24 s.{" "}
@@ -70,10 +74,10 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 			<div>
 				<h2>One call, every safeguard</h2>
 				<p>
-					A dropped connection, a timeout or a <code>503</code> on that request is retried up to three times with jittered
-					exponential backoff before your code sees an error. Each attempt is bounded by <code>attemptMs</code>, and a
-					<code>totalMs</code> deadline can bound the whole call.
+					A dropped connection, a timeout or a <code>503</code> is retried up to three times, with jittered exponential
+					backoff, before your code sees an error.
 				</p>
+				<p><code>attemptMs</code> bounds each attempt. An optional <code>totalMs</code> deadline bounds the whole call.</p>
 				<p>
 					The result is a value, not an exception: <code>result.success</code> or a typed <code>result.error.kind</code>
 					you can <code>switch</code> on.
@@ -199,6 +203,23 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 	.storm-title {
 		color: var(--sl-color-white);
 		font-weight: 600;
+	}
+	.storm-side {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+	}
+	.storm-toggle {
+		padding: 0.1rem 0.6rem;
+		border: 1px solid var(--sl-color-gray-5);
+		border-radius: var(--v-radius-sm);
+		background: none;
+		color: var(--sl-color-gray-2);
+		font: inherit;
+		cursor: pointer;
+	}
+	.storm-toggle:hover {
+		border-color: var(--sl-color-accent);
 	}
 	#storm {
 		width: 100%;
@@ -352,7 +373,8 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 		const pad = { l: 34, r: 14, t: 8, b: 20 };
 		const X = (s: number) => pad.l + (s / END) * (w - pad.l - pad.r);
 		const Y = (v: number) => pad.t + (1 - Math.min(v, Y_MAX) / Y_MAX) * (h - pad.t - pad.b);
-		const muted = css("--sl-color-gray-4");
+		// gray-3, not gray-4: 12px labels need 4.5:1 on the panel in both themes.
+		const muted = css("--sl-color-gray-3");
 		const sans = css("--sl-font");
 
 		ctx.fillStyle = css("--v-fail");
@@ -404,23 +426,42 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 		ctx.lineWidth = 1;
 
 		setText("storm-clock", `t = ${Math.floor(t)} s`);
-		setText("storm-a", `${(at(without.load, t) / RATE).toFixed(1)}×`);
-		setText("storm-b", `${(at(withBudget.load, t) / RATE).toFixed(1)}×`);
+		// The model's load is a 1 s average, like the budget's window; two decimals so healthy
+		// traffic (1.05×, its random failures retried) doesn't read as the budget's 1.1×.
+		setText("storm-a", `${(at(without.load, t) / RATE).toFixed(2)}×`);
+		setText("storm-b", `${(at(withBudget.load, t) / RATE).toFixed(2)}×`);
 	}
 
+	// Motion longer than 5 s needs a way to stop it (WCAG 2.2.2), so the loop has a pause button.
+	// Reduced motion gets the finished chart and no button.
 	const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+	const loop = END / SPEED + HOLD;
+	let paused = still;
+	let elapsed = still ? loop : 0; // real seconds into the current loop
+	let last: number | undefined;
+	const now = () => Math.min(END, elapsed * SPEED);
+	const frame = (ts: number) => {
+		if (last !== undefined) elapsed = (elapsed + (ts - last) / 1000) % loop;
+		last = ts;
+		draw(now());
+		if (!paused) requestAnimationFrame(frame);
+	};
+
+	const toggle = document.getElementById("storm-toggle") as HTMLButtonElement;
 	if (still) {
 		draw(END);
 	} else {
-		const start = performance.now();
-		const loop = END / SPEED + HOLD;
-		const frame = (now: number) => {
-			const real = ((now - start) / 1000) % loop;
-			draw(Math.min(END, real * SPEED));
-			requestAnimationFrame(frame);
-		};
+		toggle.hidden = false;
+		toggle.addEventListener("click", () => {
+			paused = !paused;
+			toggle.textContent = paused ? "Play" : "Pause";
+			if (!paused) {
+				last = undefined;
+				requestAnimationFrame(frame);
+			}
+		});
 		requestAnimationFrame(frame);
 	}
 	// Redraw on theme change while the chart is still.
-	new MutationObserver(() => still && draw(END)).observe(document.documentElement, { attributeFilter: ["data-theme"] });
+	new MutationObserver(() => paused && draw(now())).observe(document.documentElement, { attributeFilter: ["data-theme"] });
 </script>

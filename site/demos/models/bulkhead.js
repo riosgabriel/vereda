@@ -246,8 +246,8 @@ function phasesOf(o) {
 /** @returns {import("../engine/trace.js").DemoTrace} */
 export function simulate(o) {
 	const arr = arrivalsFor(o);
-	const without = toLane(lane(arr, o, false), o, `concurrency: ${o.G}, maxQueueSize: ${GQ}`);
-	const withB = toLane(lane(arr, o, true), o, `search: concurrency ${o.C}, limitFirstAttempts`);
+	const without = toLane(lane(arr, o, false), o, `concurrency: ${o.G}, maxQueueSize: ${GQ}, maxRetries: 0`);
+	const withB = toLane(lane(arr, o, true), o, `search: concurrency ${o.C}, limitFirstAttempts; maxRetries: 0`);
 	return {
 		version: 1,
 		pattern: "bulkhead",

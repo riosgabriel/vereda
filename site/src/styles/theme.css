@@ -63,13 +63,88 @@ h2 {
 }
 
 /* Inline code in prose: quieter than Starlight's default pill. Sized in em so it follows its
-   context (prose, cards, ledes); no vertical padding, so it doesn't read as a separate box. */
+   context (prose, cards, ledes); no vertical padding, so it doesn't read as a separate box.
+   Option names are code, so an operations page carries one every ten words or so; the faintest
+   surface gray keeps them from turning a paragraph into a grid of boxes. */
 .sl-markdown-content :not(pre) > code:not(:where(.not-content *)) {
 	font-size: 0.875em;
 	padding: 0 0.25em;
 	margin-block: 0;
 	border-radius: var(--v-radius-sm);
-	background-color: color-mix(in srgb, var(--sl-color-gray-5) 45%, transparent);
+	background-color: var(--sl-color-gray-6);
+}
+
+/* Doc pages: a wider column than Starlight's 45rem, so tables and code blocks stop wrapping on
+   wide screens, while paragraphs and lists keep a readable measure. The landing page has no
+   sidebar and lays itself out; the demo pages widen further (demo.css). */
+:root[data-has-sidebar] {
+	--sl-content-width: 56rem;
+}
+.sl-markdown-content > :is(p, ul, ol, blockquote) {
+	max-width: 75ch;
+}
+
+/* Wide screens: Starlight grows "On this page" with the spare width (half of it) and pushes the
+   content against the TOC's border. Here the TOC stays the sidebar's width at the right edge,
+   and the content is centred in the space between the two sidebars, with equal margins. */
+@media (min-width: 72rem) {
+	:root[data-has-sidebar][data-has-toc] :is(.right-sidebar-container, .right-sidebar) {
+		width: var(--sl-sidebar-width);
+	}
+	:root[data-has-sidebar][data-has-toc] .main-pane {
+		--sl-content-margin-inline: auto;
+		width: calc(100% - var(--sl-sidebar-width));
+	}
+}
+
+/* A table's first column is usually a name (a metric, an option, a parameter): never break it
+   mid-word. Long values in the other columns still wrap. */
+.sl-markdown-content td:first-child > code {
+	white-space: nowrap;
+}
+
+/* Code in a heading is part of the title, not a separate box: mono, no background. */
+.sl-markdown-content :is(h1, h2, h3, h4) > code:not(:where(.not-content *)) {
+	padding: 0;
+	background: none;
+	font-size: 0.9em;
+}
+
+/* Callouts (src/remark/callouts.ts tags the blockquotes). Quiet boxes with a rule on the left,
+   like a book's margin notes: the accent for the chapter's question and the simulator links,
+   gray and a size smaller for asides, Starlight's caution red for warnings. Never italic. */
+.sl-markdown-content blockquote.callout {
+	padding: 0.75rem 1rem;
+	border-inline-start: 3px solid var(--sl-color-gray-5);
+	border-radius: 0 var(--v-radius-sm) var(--v-radius-sm) 0;
+	background: var(--sl-color-gray-6);
+	font-style: normal;
+	color: var(--sl-color-gray-2);
+}
+.sl-markdown-content blockquote.callout :is(p, li) {
+	font-style: normal;
+}
+.sl-markdown-content blockquote.callout--crux,
+.sl-markdown-content blockquote.callout--demo {
+	border-color: var(--sl-color-accent);
+	background: color-mix(in srgb, var(--sl-color-accent-low) 45%, transparent);
+}
+.sl-markdown-content blockquote.callout--aside {
+	font-size: var(--sl-text-sm);
+}
+.sl-markdown-content blockquote.callout--warning {
+	border-color: var(--sl-color-red);
+	background: color-mix(in srgb, var(--sl-color-red-low) 55%, transparent);
+}
+.sl-markdown-content blockquote.callout strong:first-child {
+	color: var(--sl-color-white);
+}
+
+/* The "What to notice" line under a diagram is its caption, not body text. */
+.sl-markdown-content pre.mermaid + p:has(> em:only-child) {
+	margin-top: 0.5rem;
+	font-size: var(--sl-text-sm);
+	color: var(--sl-color-gray-3);
 }
 
 /* Code blocks share the cards' radius. */

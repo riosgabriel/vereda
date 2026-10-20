@@ -33,6 +33,10 @@ import { RetryBudget } from "../../src/queue/retry-budget.ts";
 //  - Order inside a tick: the model counts the whole tick's first attempts
 //    before any retry asks. Real traffic interleaves them, so a retry early in
 //    a tick sees slightly fewer requests. The test uses the model's order.
+//  - When the budget is asked: Vereda checks it, and counts the retry, before
+//    the backoff sleep (src/queue/retry.ts). The model asks when the retry is
+//    due, 0.3 s later, so its refusals land a delay late and the window counts
+//    retries at send time. The rule is the same; only the moment shifts.
 
 const SCALE = 100;
 const WINDOW_MS = 1000;

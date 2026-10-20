@@ -1,0 +1,128 @@
+---
+import { Image } from "astro:assets";
+import Default from "@astrojs/starlight/components/Footer.astro";
+import logo from "../assets/logo.png";
+
+// Starlight's footer (edit link, previous/next) stays; the site's footer goes under it, on every
+// page. The license line matches LICENSE.
+const REPO = "https://github.com/riosgabriel/vereda";
+const COLUMNS = [
+	{
+		title: "Docs",
+		links: [
+			{ label: "Guide", href: "/guide/requests/" },
+			{ label: "Operations", href: "/operations/" },
+			{ label: "API reference", href: "/api/readme/" },
+		],
+	},
+	{
+		title: "Learn",
+		links: [
+			{ label: "Patterns, animated", href: "/patterns/" },
+			{ label: "The Vereda Book", href: "/book/" },
+		],
+	},
+	{
+		title: "Project",
+		links: [
+			{ label: "GitHub", href: REPO },
+			{ label: "npm", href: "https://www.npmjs.com/package/@vereda/http" },
+			{ label: "Changelog", href: `${REPO}/blob/main/CHANGELOG.md` },
+			{ label: "Issues", href: `${REPO}/issues` },
+		],
+	},
+];
+---
+
+<Default />
+<div class="site-footer not-content">
+	<div class="about">
+		<a href="/" class="brand"><Image src={logo} alt="" width={28} />Vereda</a>
+		<p>Resilient <code>fetch</code> for Node.js, Bun and Cloudflare Workers.</p>
+	</div>
+	<nav aria-label="Footer">
+		{
+			COLUMNS.map((c) => (
+				<div>
+					<h2>{c.title}</h2>
+					<ul>
+						{c.links.map((l) => (
+							<li>
+								<a href={l.href}>{l.label}</a>
+							</li>
+						))}
+					</ul>
+				</div>
+			))
+		}
+	</nav>
+	<p class="legal">MIT License · © 2026 Gabriel Rios</p>
+</div>
+
+<style>
+	.site-footer {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		gap: 2rem 3rem;
+		margin-top: 3rem;
+		padding-top: 2rem;
+		border-top: 1px solid var(--sl-color-gray-6);
+		font-size: var(--sl-text-sm);
+		color: var(--sl-color-gray-3);
+	}
+	.brand {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-weight: 600;
+		color: var(--sl-color-white);
+		text-decoration: none;
+	}
+	.about p {
+		margin-top: 0.5rem;
+		max-width: 32ch;
+	}
+	code {
+		font-family: var(--sl-font-mono);
+		font-size: 0.9em;
+	}
+	nav {
+		display: flex;
+		gap: 3rem;
+	}
+	h2 {
+		font-size: var(--sl-text-xs);
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--sl-color-gray-2);
+	}
+	ul {
+		list-style: none;
+		padding: 0;
+		margin: 0.6rem 0 0;
+		display: grid;
+		gap: 0.35rem;
+	}
+	nav a {
+		color: var(--sl-color-gray-3);
+		text-decoration: none;
+	}
+	nav a:hover,
+	.brand:hover {
+		color: var(--sl-color-accent);
+	}
+	.legal {
+		grid-column: 1 / -1;
+		font-size: var(--sl-text-xs);
+	}
+	@media (max-width: 50rem) {
+		.site-footer {
+			grid-template-columns: 1fr;
+		}
+		nav {
+			gap: 2rem;
+			flex-wrap: wrap;
+		}
+	}
+</style>

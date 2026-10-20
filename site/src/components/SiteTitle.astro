@@ -1,0 +1,51 @@
+---
+import Default from "@astrojs/starlight/components/SiteTitle.astro";
+
+// The site's sections, next to the logo on every page, the landing page included (it has no
+// sidebar). Phones get them from the sidebar menu and the landing page's cards instead.
+const SECTIONS = [
+	{ label: "Guide", href: "/guide/requests/", match: ["/guide/", "/operations/"] },
+	{ label: "Patterns", href: "/patterns/", match: ["/patterns/"] },
+	{ label: "Book", href: "/book/", match: ["/book/"] },
+	{ label: "API", href: "/api/readme/", match: ["/api/"] },
+];
+const path = Astro.url.pathname;
+---
+
+<Default />
+<nav class="sections" aria-label="Sections">
+	{
+		SECTIONS.map((s) => (
+			<a href={s.href} aria-current={s.match.some((m) => path.startsWith(m)) ? "page" : undefined}>
+				{s.label}
+			</a>
+		))
+	}
+</nav>
+
+<style>
+	.sections {
+		display: none;
+	}
+	@media (min-width: 50rem) {
+		.sections {
+			display: flex;
+			align-self: center;
+			gap: 1.25rem;
+			margin-inline-start: 1.5rem;
+		}
+	}
+	.sections a {
+		color: var(--sl-color-gray-2);
+		font-size: var(--sl-text-sm);
+		font-weight: 600;
+		text-decoration: none;
+		white-space: nowrap;
+	}
+	.sections a:hover {
+		color: var(--sl-color-white);
+	}
+	.sections a[aria-current="page"] {
+		color: var(--sl-color-accent);
+	}
+</style>

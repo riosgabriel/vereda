@@ -153,7 +153,7 @@ function momentsOf(plain, jit, o, duration) {
 		if (i * STEP >= DOWN - 1e-9 && v > o.capacity) lastOver = i;
 	});
 	if (lastOver >= 0 && (lastOver + 1) * STEP < duration) {
-		moments.push({ t: (lastOver + 1) * STEP, label: `Jitter: the load stays under ${o.capacity}/s from here` });
+		moments.push({ t: (lastOver + 1) * STEP, label: `Jitter: the load stays at or below ${o.capacity}/s from here` });
 	}
 	for (const [name, run] of [
 		["No jitter", plain],
@@ -170,7 +170,9 @@ export function simulate(o) {
 	const plain = runLane(false, o);
 	const jit = runLane(true, o);
 	const duration = Math.max(4, Math.ceil(Math.max(plain.doneAt, jit.doneAt) + 0.6));
-	const cfg = (j) => `backoff: { baseDelayMs: ${o.base}, jitter: ${j} }`;
+	// The config the lane ran with: maxDelayMs only when it isn't the 30 s default.
+	const cap = o.maxDelay === 30 ? "" : `, maxDelayMs: ${o.maxDelay * 1000}`;
+	const cfg = (j) => `retry: { maxRetries: ${o.maxRetries}, backoff: { baseDelayMs: ${o.base}${cap}, jitter: ${j} } }`;
 	return {
 		version: 1,
 		pattern: "backoff-jitter",

@@ -3,6 +3,7 @@ import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
 import starlightTypeDoc, { typeDocSidebarGroup } from "starlight-typedoc";
 import { PATTERNS } from "./src/patterns.ts";
+import { remarkCallouts } from "./src/remark/callouts.ts";
 import { remarkDocLinks } from "./src/remark/doc-links.ts";
 import { remarkDropTitle } from "./src/remark/drop-title.ts";
 import { remarkMermaid } from "./src/remark/mermaid.ts";
@@ -18,7 +19,7 @@ export default defineConfig({
 	// starlight-typedoc puts the API overview at /api/readme/; keep the short URL working.
 	redirects: { "/api/": "/api/readme/" },
 	markdown: {
-		processor: unified({ remarkPlugins: [remarkDropTitle, remarkDocLinks, remarkMermaid] }),
+		processor: unified({ remarkPlugins: [remarkDropTitle, remarkDocLinks, remarkMermaid, remarkCallouts] }),
 	},
 	integrations: [
 		starlight({
@@ -26,12 +27,32 @@ export default defineConfig({
 			description: "Resilient HTTP for TypeScript: retries, timeouts, bulkheads, circuit breakers.",
 			social: [{ icon: "github", label: "GitHub", href: "https://github.com/riosgabriel/vereda" }],
 			editLink: { baseUrl: "https://github.com/riosgabriel/vereda/edit/main/docs/" },
-			components: { Head: "./src/components/Head.astro" },
+			components: {
+				Head: "./src/components/Head.astro",
+				SiteTitle: "./src/components/SiteTitle.astro",
+				Footer: "./src/components/Footer.astro",
+			},
 			customCss: ["./src/styles/theme.css"],
+			// Starlight's Markdown transforms (heading anchor links, code block defaults) only run on
+			// its own content folder unless listed here, and the docs load from the repo's docs/.
+			// Rendered Markdown is cached in .astro/data-store.json: clear it after changing these.
+			markdown: { processedDirs: ["../docs"] },
+			// Long code lines wrap, keeping their indent, instead of scrolling sideways. The book
+			// quotes source as written, so its excerpts keep their real line lengths.
+			expressiveCode: { defaultProps: { wrap: true } },
 			logo: { src: "./src/assets/logo.png" },
 			favicon: "/favicon.png",
 			head: [
 				{ tag: "link", attrs: { rel: "apple-touch-icon", href: "/apple-touch-icon.png" } },
+				// Social preview for every page; regenerate it from scripts/og-image.html.
+				{ tag: "meta", attrs: { property: "og:image", content: "https://vereda.dev/og.png" } },
+				{ tag: "meta", attrs: { property: "og:image:width", content: "1200" } },
+				{ tag: "meta", attrs: { property: "og:image:height", content: "630" } },
+				{
+					tag: "meta",
+					attrs: { property: "og:image:alt", content: "Vereda: Make fetch resilient. npm install @vereda/http" },
+				},
+				{ tag: "meta", attrs: { name: "twitter:image", content: "https://vereda.dev/og.png" } },
 				{ tag: "link", attrs: { rel: "preconnect", href: "https://fonts.googleapis.com" } },
 				{ tag: "link", attrs: { rel: "preconnect", href: "https://fonts.gstatic.com", crossorigin: true } },
 				{
@@ -58,7 +79,9 @@ export default defineConfig({
 				}),
 			],
 			sidebar: [
-				{ label: "Guide", items: [{ autogenerate: { directory: "guide" } }] },
+				// autogenerate matches each entry's filePath, and these load from the repo's docs/
+				// (src/content.config.ts), so the directories are ../docs/guide and ../docs/book.
+				{ label: "Guide", items: [{ autogenerate: { directory: "../docs/guide" } }] },
 				{ label: "Operations", link: "/operations/" },
 				{
 					label: "Patterns, animated",
@@ -67,7 +90,7 @@ export default defineConfig({
 						...PATTERNS.map((p) => ({ label: p.title, link: `/patterns/${p.slug}/` })),
 					],
 				},
-				{ label: "The Vereda Book", items: [{ autogenerate: { directory: "book" } }] },
+				{ label: "The Vereda Book", items: [{ autogenerate: { directory: "../docs/book" } }] },
 				typeDocSidebarGroup,
 			],
 		}),

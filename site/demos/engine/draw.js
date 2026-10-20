@@ -98,7 +98,8 @@ export function timeAxes(ctx, { w, h, pad, end, yMax, ticks, fmt = String, phase
 	return { X, Y };
 }
 
-/** A line drawn faint for the whole run and solid up to simT, with a dot at the playhead. */
+/** A line drawn up to simT, with a dot at the playhead. Nothing after simT: a chart never shows
+ *  where the run is going before it gets there. */
 export function playedLine(ctx, pts, X, Y, color, simT) {
 	const trace = (upTo) => {
 		ctx.beginPath();
@@ -114,11 +115,6 @@ export function playedLine(ctx, pts, X, Y, color, simT) {
 		return last;
 	};
 	ctx.strokeStyle = color;
-	ctx.lineWidth = 2;
-	ctx.globalAlpha = 0.22;
-	trace(Number.POSITIVE_INFINITY);
-	ctx.stroke();
-	ctx.globalAlpha = 1;
 	ctx.lineWidth = 2.5;
 	const end = trace(simT);
 	ctx.stroke();

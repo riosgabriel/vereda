@@ -19,7 +19,10 @@
 	/* One sans for all text, mono only for code; both come from theme.css. draw.js reads them. */
 	--sans: var(--sl-font);
 	--mono: var(--sl-font-mono);
-	/* Two lanes side by side need more than Starlight's 45rem column. */
+}
+/* Two lanes side by side need more than the docs' 56rem column. This selector outranks
+   theme.css's :root[data-has-sidebar], whichever stylesheet loads last. */
+:root[data-has-sidebar]:has(.demo) {
 	--sl-content-width: 72rem;
 }
 :root[data-theme="light"] {
@@ -71,6 +74,11 @@
 	color: var(--muted);
 	max-width: 70ch;
 	font-size: var(--sl-text-base);
+}
+/* A lede split into short paragraphs still reads as one passage: pull the next one up from
+   the grid's 22px to the 10px the explanation sections use. */
+.demo .lede + .lede {
+	margin-top: -12px;
 }
 .demo code {
 	font-family: var(--mono);
@@ -243,6 +251,10 @@
 	height: 200px;
 	display: block;
 }
+/* The bulkhead's partition lane stacks four rows of boxes above its QueueFullError row. */
+.demo .lane canvas.tall {
+	height: 236px;
+}
 .demo .stats {
 	display: grid;
 	grid-template-columns: repeat(4, 1fr);
@@ -336,4 +348,31 @@
 	.demo .clock {
 		margin-left: 0;
 	}
+}
+
+/* The timeline doubles as a scrubber: a native range input lies over it, invisible, so keys,
+   clicks and screen readers work as on any slider. The playhead is its visible thumb. */
+.demo .timeline .scrub {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	opacity: 0;
+	cursor: ew-resize;
+}
+.demo .timeline:has(.scrub:focus-visible) {
+	outline: 2px solid var(--sl-color-accent);
+	outline-offset: 2px;
+}
+.demo .playhead::after {
+	content: "";
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	background: var(--ink);
+	transform: translate(-50%, -50%);
 }

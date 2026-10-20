@@ -15,6 +15,10 @@ const SLOW_FACTOR = 0.35;
 const MOMENT_LEAD = 0.5; // sim seconds of slow motion before a moment, so it doesn't arrive unannounced
 const MOMENT_SHOWN = 3; // sim seconds a moment stays in the caption
 const MOMENTS_STACKED = 3; // most recent moments shown at once
+// Runs start this far before 0 s. Pages draw a dot's trip before the moment the model sends it
+// (so an effect is never drawn before its cause), at most 0.25 s ahead; starting earlier keeps
+// the lanes empty until Play.
+const START = -0.3;
 
 /**
  * @param {object} spec
@@ -22,18 +26,41 @@ const MOMENTS_STACKED = 3; // most recent moments shown at once
  * @param {(trace: import("./trace.js").DemoTrace, simT: number, col: Record<string, string>) => void} spec.render
  * @param {object} spec.options Initial options passed to `build`.
  * @param {number} [spec.speed] Default speed as a multiple of real time.
+ * @param {number} [spec.settle] Sim seconds the page's drawing trails the trace: how long a dot
+ *   keeps moving after its attempt has ended (e.g. the trip back to the client).
  */
-export function mountDemo({ build, render, options, speed = 1 }) {
+export function mountDemo({ build, render, options, speed = 1, settle = 0 }) {
 	const $ = (id) => document.getElementById(id);
 	const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 	let opts = { ...options };
 	let trace = build(opts);
-	let simT = 0;
+	let simT = START;
+	let dragging = false; // the reader is holding the scrubber; don't move it under their pointer
+	addEventListener("pointerup", () => {
+		dragging = false;
+	});
+	addEventListener("pointercancel", () => {
+		dragging = false;
+	});
 	let playing = false;
 	let guided = true;
 	let last = performance.now();
 	let col = readColors();
+
+	// The run stops once everything on screen has come to rest, not at `duration`: traffic runs
+	// to the scenario's last second, so requests sent then are still in flight, or their dots
+	// still travelling, when the timeline ends. The timeline and captions still end at `duration`.
+	// Only what the client sees counts: `hostEnd` is host work after the client gave up, which
+	// nothing on screen waits for.
+	const runEnd = () => {
+		let t = trace.duration;
+		for (const lane of [trace.lanes.without, trace.lanes.with]) {
+			for (const a of lane.attempts) t = Math.max(t, a.end);
+			for (const r of lane.results) t = Math.max(t, r.t);
+		}
+		return t + settle;
+	};
 
 	const refreshColors = () => {
 		col = readColors();
@@ -49,11 +76,11 @@ export function mountDemo({ build, render, options, speed = 1 }) {
 	const setPlaying = (on) => {
 		playing = on;
 		if (!playBtn) return;
-		const atStop = !on && simT > 0 && simT < trace.duration;
+		const atStop = !on && simT > START && simT < runEnd();
 		playBtn.textContent = on ? "Pause" : atStop ? "Continue" : "Play";
 	};
 	playBtn?.addEventListener("click", () => {
-		if (simT >= trace.duration) restart(true);
+		if (simT >= runEnd()) restart(true);
 		else setPlaying(!playing);
 	});
 	$("replay")?.addEventListener("click", () => restart(true));
@@ -83,7 +110,21 @@ export function mountDemo({ build, render, options, speed = 1 }) {
 		tl.style.gridTemplateColumns = trace.phases.map((p) => `${p.to - p.from}fr`).join(" ");
 		tl.innerHTML =
 			trace.phases.map((p) => `<div class="${p.tone}">${p.label}</div>`).join("") +
-			`<span class="playhead" id="playhead"></span>`;
+			`<span class="playhead" id="playhead"></span>` +
+			`<input class="scrub" id="scrub" type="range" min="0" max="${trace.duration}" step="0.1" value="0"` +
+			` aria-label="Time in the run" title="Drag to move through the run">`;
+		// Scrubbing: every page draws a pure function of simT, so seeking is just setting it.
+		// Dragging pauses; Play continues from wherever the reader left it.
+		const scrub = $("scrub");
+		scrub?.addEventListener("pointerdown", () => {
+			dragging = true;
+		});
+		scrub?.addEventListener("input", (e) => {
+			const t = Number(e.target.value);
+			simT = t <= 0 ? START : t;
+			captionKey = "";
+			setPlaying(false);
+		});
 	}
 
 	function phaseIndexAt(t) {
@@ -133,7 +174,7 @@ export function mountDemo({ build, render, options, speed = 1 }) {
 	}
 
 	function restart(autoplay) {
-		simT = 0;
+		simT = START;
 		captionKey = "";
 		setPlaying(autoplay);
 	}
@@ -153,24 +194,29 @@ export function mountDemo({ build, render, options, speed = 1 }) {
 		if (playing) {
 			// Guided mode never stops playback; it slows down so changes are easy to catch.
 			simT += dt * speed * (isSlowAt(simT) ? SLOW_FACTOR : 1);
-			if (simT >= trace.duration) {
-				simT = trace.duration;
+			const end = runEnd();
+			if (simT >= end) {
+				simT = end;
 				setPlaying(false);
 			}
 		}
 		render(trace, simT, col);
 		updateCaption();
+		const shownT = Math.max(0, Math.min(simT, trace.duration));
 		const clock = $("clock");
-		if (clock) clock.textContent = `t = ${simT.toFixed(1)} s`;
+		if (clock) clock.textContent = `t = ${shownT.toFixed(1)} s`;
 		const head = $("playhead");
-		if (head) head.style.left = `calc(${(simT / trace.duration) * 100}% - 1px)`;
+		if (head) head.style.left = `calc(${(shownT / trace.duration) * 100}% - 1px)`;
+		const scrub = $("scrub");
+		if (scrub && !dragging) scrub.value = String(shownT);
+		scrub?.setAttribute("aria-valuetext", `${shownT.toFixed(1)} seconds`);
 		requestAnimationFrame(frame);
 	}
 
 	drawTimeline();
 	if (reduceMotion) {
 		// Complete at rest: show the whole run, no motion.
-		simT = trace.duration;
+		simT = runEnd();
 	}
 	setPlaying(false);
 	requestAnimationFrame(frame);
