@@ -17,7 +17,7 @@
     <span class="clock" id="clock">t = 0.0 s</span>
   </div>
 
-  <div class="timeline" id="timeline" role="img" aria-label="Scenario timeline"></div>
+  <div class="timeline" id="timeline"></div>
   <p class="caption" id="caption" aria-live="polite"></p>
 
   <div class="legend">
@@ -145,7 +145,8 @@ function drawLane(canvas, lane, simT, col, laneId, withBudget) {
   const gateX = (clientR + hostL) / 2;
   const cy = h / 2 - 8;
   const load = valueAt(lane.series.load, simT);
-  const C = valueAt(lane.series.capacity, simT);
+  // Capacity is setup: shown from the start, also during the pre-roll before 0 s.
+  const C = valueAt(lane.series.capacity, Math.max(0, simT));
 
   // client box
   ctx.fillStyle = col.bg;
@@ -318,7 +319,7 @@ function render(trace, simT, col) {
     const load = valueAt(s.load, simT);
     const ok = valueAt(s.ok, simT);
     const retries = valueAt(s.retries, simT);
-    setStat(`${p}Load`, Math.round(load), load > valueAt(s.capacity, simT) ? "bad" : "");
+    setStat(`${p}Load`, Math.round(load), load > valueAt(s.capacity, Math.max(0, simT)) ? "bad" : "");
     // Two decimals: healthy traffic is 1.05× (the 5% random failures are retried), which one
     // decimal would round up to the budget's 1.1×.
     setStat(`${p}X`, `${(load / RATE).toFixed(2)}×`, load / RATE > 1.5 ? "bad" : "");

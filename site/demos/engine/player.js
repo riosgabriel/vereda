@@ -15,6 +15,10 @@ const SLOW_FACTOR = 0.35;
 const MOMENT_LEAD = 0.5; // sim seconds of slow motion before a moment, so it doesn't arrive unannounced
 const MOMENT_SHOWN = 3; // sim seconds a moment stays in the caption
 const MOMENTS_STACKED = 3; // most recent moments shown at once
+// Runs start this far before 0 s. Pages draw a dot's trip before the moment the model sends it
+// (so an effect is never drawn before its cause), at most 0.25 s ahead; starting earlier keeps
+// the lanes empty until Play.
+const START = -0.3;
 
 /**
  * @param {object} spec
@@ -31,7 +35,14 @@ export function mountDemo({ build, render, options, speed = 1, settle = 0 }) {
 
 	let opts = { ...options };
 	let trace = build(opts);
-	let simT = 0;
+	let simT = START;
+	let dragging = false; // the reader is holding the scrubber; don't move it under their pointer
+	addEventListener("pointerup", () => {
+		dragging = false;
+	});
+	addEventListener("pointercancel", () => {
+		dragging = false;
+	});
 	let playing = false;
 	let guided = true;
 	let last = performance.now();
@@ -65,7 +76,7 @@ export function mountDemo({ build, render, options, speed = 1, settle = 0 }) {
 	const setPlaying = (on) => {
 		playing = on;
 		if (!playBtn) return;
-		const atStop = !on && simT > 0 && simT < runEnd();
+		const atStop = !on && simT > START && simT < runEnd();
 		playBtn.textContent = on ? "Pause" : atStop ? "Continue" : "Play";
 	};
 	playBtn?.addEventListener("click", () => {
@@ -99,7 +110,21 @@ export function mountDemo({ build, render, options, speed = 1, settle = 0 }) {
 		tl.style.gridTemplateColumns = trace.phases.map((p) => `${p.to - p.from}fr`).join(" ");
 		tl.innerHTML =
 			trace.phases.map((p) => `<div class="${p.tone}">${p.label}</div>`).join("") +
-			`<span class="playhead" id="playhead"></span>`;
+			`<span class="playhead" id="playhead"></span>` +
+			`<input class="scrub" id="scrub" type="range" min="0" max="${trace.duration}" step="0.1" value="0"` +
+			` aria-label="Time in the run" title="Drag to move through the run">`;
+		// Scrubbing: every page draws a pure function of simT, so seeking is just setting it.
+		// Dragging pauses; Play continues from wherever the reader left it.
+		const scrub = $("scrub");
+		scrub?.addEventListener("pointerdown", () => {
+			dragging = true;
+		});
+		scrub?.addEventListener("input", (e) => {
+			const t = Number(e.target.value);
+			simT = t <= 0 ? START : t;
+			captionKey = "";
+			setPlaying(false);
+		});
 	}
 
 	function phaseIndexAt(t) {
@@ -149,7 +174,7 @@ export function mountDemo({ build, render, options, speed = 1, settle = 0 }) {
 	}
 
 	function restart(autoplay) {
-		simT = 0;
+		simT = START;
 		captionKey = "";
 		setPlaying(autoplay);
 	}
@@ -177,10 +202,14 @@ export function mountDemo({ build, render, options, speed = 1, settle = 0 }) {
 		}
 		render(trace, simT, col);
 		updateCaption();
+		const shownT = Math.max(0, Math.min(simT, trace.duration));
 		const clock = $("clock");
-		if (clock) clock.textContent = `t = ${Math.min(simT, trace.duration).toFixed(1)} s`;
+		if (clock) clock.textContent = `t = ${shownT.toFixed(1)} s`;
 		const head = $("playhead");
-		if (head) head.style.left = `calc(${Math.min(1, simT / trace.duration) * 100}% - 1px)`;
+		if (head) head.style.left = `calc(${(shownT / trace.duration) * 100}% - 1px)`;
+		const scrub = $("scrub");
+		if (scrub && !dragging) scrub.value = String(shownT);
+		scrub?.setAttribute("aria-valuetext", `${shownT.toFixed(1)} seconds`);
 		requestAnimationFrame(frame);
 	}
 

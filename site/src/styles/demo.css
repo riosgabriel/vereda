@@ -349,3 +349,30 @@
 		margin-left: 0;
 	}
 }
+
+/* The timeline doubles as a scrubber: a native range input lies over it, invisible, so keys,
+   clicks and screen readers work as on any slider. The playhead is its visible thumb. */
+.demo .timeline .scrub {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	opacity: 0;
+	cursor: ew-resize;
+}
+.demo .timeline:has(.scrub:focus-visible) {
+	outline: 2px solid var(--sl-color-accent);
+	outline-offset: 2px;
+}
+.demo .playhead::after {
+	content: "";
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	background: var(--ink);
+	transform: translate(-50%, -50%);
+}
