@@ -26,11 +26,11 @@
 	--sl-content-width: 72rem;
 }
 :root[data-theme="light"] {
-	--bg: #ffffff;
-	--surface: #f6f7f9;
-	--ink: #17181c;
-	--muted: #555962;
-	--line: #c1c3c8;
+	--bg: #fbf8f2;
+	--surface: #f5f0e6;
+	--ink: #1d1b17;
+	--muted: #5c564c;
+	--line: #cfc5b3;
 	--first: #2f6fdb;
 	--retry: #d0820a;
 	--fail: #d03f36;
