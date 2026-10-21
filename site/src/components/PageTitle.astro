@@ -12,6 +12,8 @@ const chapters = onTrail
 	? (await getCollection("docs", (e) => /^book\/\d\d-/.test(e.id))).sort((a, b) => a.id.localeCompare(b.id))
 	: [];
 const current = chapters.findIndex((c) => c.id === id);
+// The landing page's hero has its own <h1>; one per page. Keep the #_top anchor the skip link targets.
+const home = Astro.url.pathname === "/";
 
 /**
  * The trail's sideways swing at u (0 = first chapter, 1 = the sun), in [-1, 1]. Horizon's trail
@@ -64,7 +66,7 @@ const sun = at(1);
 		</nav>
 	)
 }
-<Default />
+{home ? <span id="_top"></span> : <Default />}
 
 <style>
 	.trail {
