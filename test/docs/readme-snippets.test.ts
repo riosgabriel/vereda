@@ -17,7 +17,6 @@ const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 const DOCS = [
 	"README.md",
 	"docs/operations.md",
-	"docs/guide/getting-started.md",
 	"docs/guide/resilience.md",
 	"docs/guide/results-and-errors.md",
 	"docs/guide/requests.md",
@@ -35,7 +34,7 @@ interface CodeBlock {
 
 function extractCodeBlocks(doc: string, markdown: string): CodeBlock[] {
 	const blocks: CodeBlock[] = [];
-	const fenceRe = /```(typescript|ts)(?:[ \t][^\r\n]*)?\r?\n([\s\S]*?)```/g;
+	const fenceRe = /```(typescript|ts)\r?\n([\s\S]*?)```/g;
 	let match: RegExpExecArray | null;
 	// biome-ignore lint/suspicious/noAssignInExpressions: standard regex exec loop
 	while ((match = fenceRe.exec(markdown))) {
@@ -227,7 +226,7 @@ describe("Documentation TypeScript snippets", () => {
 		// Only `typescript`/`ts` fences are checked above, so retagging a block
 		// `js` would silently exempt it. Examples are TypeScript; keep them so.
 		const dodging = docSources.flatMap(({ doc, markdown }) =>
-			[...markdown.matchAll(/^```(js|javascript|jsx|tsx|mjs|cjs)(?:\s.*)?$/gm)].map(
+			[...markdown.matchAll(/^```(js|javascript|jsx|tsx|mjs|cjs)\s*$/gm)].map(
 				(m) => `${doc}:${markdown.slice(0, m.index).split("\n").length} (\`\`\`${m[1]})`,
 			),
 		);

@@ -1,6 +1,6 @@
 # Observability
 
-Seeing what the client is doing: lifecycle events, metrics, and OpenTelemetry.
+Seeing what the client is doing: lifecycle events, metrics, and OpenTelemetry. Back to the [README](../../README.md).
 
 ## Lifecycle events
 
@@ -18,7 +18,9 @@ client.on("cancelled", ({ ticketId, url, partition, attempts, durationMs, queued
 
 In `retry`, `attempt` is a zero-based retry index: `0` is the first retry, after the initial attempt.
 
-```typescript title="Removing a listener"
+**Example** (removing a listener)
+
+```typescript
 const onFailure = ({ url, error }: { url: string; error: { kind: string } }) =>
   console.error("request failed", url, error.kind);
 
@@ -41,7 +43,9 @@ The error is rethrown on a microtask, so it surfaces as an uncaught error:
 
 It's `0` when a request never had to wait. The default global cap is 50 concurrent requests, so most single-service consumers never hit it.
 
-```typescript title="Spotting throttling"
+**Example** (spotting throttling)
+
+```typescript
 client.on("success", ({ partition, durationMs, queuedMs }) => {
   if (queuedMs > durationMs / 2) console.warn("mostly queued", partition, queuedMs);
 });
@@ -70,7 +74,9 @@ Pass a `metrics` sink, and the client reports counters, histograms and gauges as
 
 A sink is three methods. That makes it a thin adapter over OpenTelemetry, StatsD, Prometheus or whatever your service already uses.
 
-```typescript title="A sink that logs every data point"
+**Example** (a sink that logs every data point)
+
+```typescript
 import { HttpClient, type MetricsSink } from "@vereda/http";
 
 const metrics: MetricsSink = {
@@ -102,7 +108,9 @@ For OpenTelemetry, use the [ready-made sink](#opentelemetry). The [operations gu
 
 It needs `@opentelemetry/api`, an optional peer dependency that only this entry point imports. Set up the SDK as usual.
 
-```typescript title="Metrics and traces"
+**Example** (metrics and traces)
+
+```typescript
 import { metrics, trace } from "@opentelemetry/api";
 import { HttpClient } from "@vereda/http";
 import { instrumentTracing, otelMetricsSink } from "@vereda/http/otel";

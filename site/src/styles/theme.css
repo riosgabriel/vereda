@@ -32,8 +32,6 @@
 	--v-retry: #f0a63a;
 	--v-fail: #ff6a5e;
 	--v-ok: #4cc285;
-	/* The lane without the pattern: a neutral, so red keeps meaning "failed". */
-	--v-without: #a3a9b6;
 	--v-panel: #17202a;
 }
 
@@ -56,7 +54,6 @@
 	--v-retry: #d0820a;
 	--v-fail: #d03f36;
 	--v-ok: #2b9459;
-	--v-without: #6b7280;
 	--v-panel: #ffffff;
 }
 

@@ -1,7 +1,7 @@
 // Canvas helpers shared by every demo page. Colours always come from the
 // page's CSS tokens (see readColors), so both themes work.
 
-const TOKENS = ["bg", "surface", "ink", "muted", "line", "first", "retry", "fail", "ok", "refused", "without", "cap"];
+const TOKENS = ["bg", "surface", "ink", "muted", "line", "first", "retry", "fail", "ok", "refused", "cap"];
 
 export function readColors() {
 	const cs = getComputedStyle(document.documentElement);

@@ -17,7 +17,7 @@ const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as new (
 /** The first code block under the requests guide's "## Middleware", minus its import line. */
 function readmeMiddlewareBody(): string {
 	const section = GUIDE.slice(GUIDE.indexOf("## Middleware"));
-	const block = section.match(/```typescript(?:[ \t][^\n]*)?\n([\s\S]*?)```/)?.[1];
+	const block = section.match(/```typescript\n([\s\S]*?)```/)?.[1];
 	if (!block) throw new Error("requests guide has no typescript block under ## Middleware");
 	const importLine = /^import \{([^}]*)\} from "@vereda\/http\/middleware";\n/m;
 	const imported = block

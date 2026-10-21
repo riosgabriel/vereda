@@ -1,12 +1,14 @@
 # Resilience
 
-Retries, timeouts, per-host isolation and circuit breaking: the settings that decide how Vereda reacts when a dependency misbehaves.
+Retries, timeouts, per-host isolation and circuit breaking: the settings that decide how Vereda reacts when a dependency misbehaves. Back to the [README](../../README.md).
 
 ## Retries and backoff
 
 > **See it run:** the [backoff and jitter simulator](https://vereda.dev/patterns/backoff-jitter/) plays this with and without the pattern.
 
 Configure retries on the client or per request. Per-request settings override the client's.
+
+**Example**
 
 ```typescript
 import { HttpClient } from "@vereda/http";
@@ -54,7 +56,9 @@ The busy-status list is `retry.retryOnStatus`. The underlying `defaultRetryPolic
 
 `POST` and `PATCH` are not. Repeating them blindly could duplicate a side effect. To opt in, set `retry: { idempotent: true }` or send an `Idempotency-Key` header.
 
-```typescript title="Retrying a POST"
+**Example** (retrying a POST)
+
+```typescript
 client.post("/orders", () => JSON.stringify(order), {
   headers: { "Idempotency-Key": order.id },
 });
@@ -78,7 +82,9 @@ The default backoff is 200 ms × 2^attempt, capped at 30 s, with full jitter. Ji
 
 A retry of a `retryOnStatus` response honors its `Retry-After` header, in seconds or as an HTTP date. That delay is capped at `backoff.maxDelayMs` (30 s when `backoff` is a function) and gets no jitter. Without the header, the configured backoff sets the delay.
 
-```typescript title="A custom backoff function"
+**Example** (a custom backoff function)
+
+```typescript
 import { HttpClient } from "@vereda/http";
 
 const client = HttpClient.create({
@@ -96,7 +102,9 @@ const client = HttpClient.create({
 
 Return `false` to surface the error at once.
 
-```typescript title="Never retry network failures"
+**Example** (never retry network failures)
+
+```typescript
 import { HttpClient, NetworkError } from "@vereda/http";
 
 const client = HttpClient.create({
@@ -118,6 +126,8 @@ const client = HttpClient.create({
 `maxRetries` bounds retries per request, not per host. When a host fails every request, each one still retries up to `maxRetries` times. The host sees `1 + maxRetries` times its normal load, right when it can least take it.
 
 A retry budget caps retries to a fraction of the partition's recent traffic instead.
+
+**Example**
 
 ```typescript
 import { HttpClient } from "@vereda/http";
@@ -165,7 +175,9 @@ Vereda has two timeouts.
 | `attemptMs` | One attempt | The attempt is aborted with `TimeoutError`, which is retryable |
 | `totalMs` | The whole ticket, every attempt and backoff delay included | The in-flight attempt is aborted, and the ticket resolves with `DeadlineExceededError`, which is terminal |
 
-```typescript title="A client default, raised for one slow request"
+**Example** (a client default, raised for one slow request)
+
+```typescript
 import { HttpClient } from "@vereda/http";
 
 const client = HttpClient.create({
@@ -204,6 +216,8 @@ A finite `attemptMs` or `totalMs` can be at most 2,147,483,647 ms (about 24.8 da
 
 Every request belongs to a partition, and each partition owns a concurrency limit plus a waiting queue. A failing host's retries fill its own partition queue, not other hosts'.
 
+**Example**
+
 ```typescript
 import { HttpClient } from "@vereda/http";
 
@@ -236,6 +250,8 @@ A partition not listed under `partitions` uses `defaultPartition`, which takes t
 
 A listed partition doesn't inherit from it.
 
+**Example**
+
 ```typescript
 import { HttpClient } from "@vereda/http";
 
@@ -267,6 +283,8 @@ When a partition's queue, or the global queue, is full, the ticket resolves with
 A bulkhead caps how many attempts run at once. A rate limit caps how many *start* per second, which is what a third-party API with a requests-per-second quota needs.
 
 It's a token bucket per partition.
+
+**Example**
 
 ```typescript
 import { HttpClient } from "@vereda/http";
@@ -315,6 +333,8 @@ Once a host is clearly failing, stop sending it requests instead of retrying int
 
 It's off by default. Turn it on for every partition at the client level, or for specific hosts under `partitions`.
 
+**Example**
+
 ```typescript
 import { HttpClient } from "@vereda/http";
 
@@ -356,6 +376,8 @@ An ignored attempt carries no information about the host's health. So it can't r
 
 To trip on a rolling failure rate instead of consecutive failures, set `window`.
 
+**Example**
+
 ```typescript
 import { HttpClient } from "@vereda/http";
 
@@ -373,6 +395,8 @@ When a half-open trial closes the circuit, the window starts empty. The breaker 
 ### Reading the state: `circuits()`
 
 `client.circuits()` returns a snapshot of every enabled breaker that has seen a request, and `[]` when none is configured. Each entry is a copy, so changing it has no effect on the breaker.
+
+**Example**
 
 ```typescript
 import { HttpClient } from "@vereda/http";

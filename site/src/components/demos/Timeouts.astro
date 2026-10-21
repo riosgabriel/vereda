@@ -92,7 +92,7 @@
     </section>
     <section>
       <h2>In Vereda</h2>
-      <pre class="formula">import &#123; HttpClient &#125; from "@vereda/http";
+      <div class="formula">import &#123; HttpClient &#125; from "@vereda/http";
 
 const client = HttpClient.create(&#123;
   timeout: &#123;
@@ -105,7 +105,7 @@ const client = HttpClient.create(&#123;
 // per request:
 client.get("/slow", &#123;
   timeout: &#123; totalMs: 10_000 &#125;,
-&#125;)</pre>
+&#125;)</div>
       <p class="note">This page follows the logic in three files:</p>
       <ul class="note">
         <li><code>src/queue/retry.ts</code>: the deadline check before each backoff, and the abort path.</li>
@@ -319,7 +319,7 @@ function drawSweep(trace, col, done) {
   for (let d = 1; d <= SWEEP_MAX; d += 2) ctx.fillText(d === SWEEP_MAX ? "off" : `${d}s`, X(d), h - 8);
   ctx.textAlign = "left";
   ctx.font = col.strong;
-  ctx.fillStyle = col.without;
+  ctx.fillStyle = col.fail;
   ctx.fillText("no deadline", L + 6, 12);
   ctx.fillStyle = col.first;
   ctx.fillText("with deadline", L + 100, 12);
@@ -418,11 +418,11 @@ function drawWaste(trace, simT, col) {
       ctx.fill();
     }
   };
-  line(sa, col.without);
+  line(sa, col.fail);
   line(sb, col.first);
   ctx.textAlign = "left";
   ctx.font = col.strong;
-  ctx.fillStyle = col.without;
+  ctx.fillStyle = col.fail;
   ctx.fillText("no deadline", L + 6, 12);
   ctx.fillStyle = col.first;
   ctx.fillText("with deadline", L + 100, 12);

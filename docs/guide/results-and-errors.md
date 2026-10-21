@@ -1,12 +1,14 @@
 # Results and errors
 
-What a finished request gives you: a typed, validated body, or one of a fixed set of typed errors.
+What a finished request gives you: a typed, validated body, or one of a fixed set of typed errors. Back to the [README](../../README.md).
 
 ## Typed results
 
 Pass a `parse` function to validate and type the response body. It's just `(data: unknown) => T | Promise<T>`, so any validator that throws or rejects on failure works.
 
-```typescript title="A typed body"
+**Example** (a typed body)
+
+```typescript
 const ticket = client.get<User>("/users/1", {
   parse: (data) => data as User, // or your own throwing validator
 });
@@ -41,7 +43,9 @@ Without `parse`, `data` is the body read that way:
 | `"blob"` | `Blob`, typed with the response's `content-type` |
 | `"none"` | `undefined`; the body is cancelled unread |
 
-```typescript title="Text and no body"
+**Example** (text and no body)
+
+```typescript
 const csv = await client.get("/export.csv", { responseType: "text" }).toPromise();
 if (csv.success) csv.data; // string
 
@@ -58,7 +62,9 @@ Vereda ships a Zod adapter, `withZod`. It validates with `parseAsync`, so async 
 
 Zod is an optional peer dependency. Only the `@vereda/http/zod` entry point imports it, and the core keeps zero dependencies.
 
-```typescript title="Validating with a schema"
+**Example** (validating with a schema)
+
+```typescript
 import { z } from "zod";
 import { withZod } from "@vereda/http/zod";
 
@@ -82,7 +88,9 @@ A failure is always one of Vereda's error classes, never an arbitrary thrown val
 
 Every class has a readonly, literal-typed `kind`. Switching on it narrows to that class and its fields. `instanceof` works too.
 
-```typescript title="Switching on kind"
+**Example** (switching on `kind`)
+
+```typescript
 const result = await ticket.toPromise();
 if (!result.success) {
   switch (result.error.kind) {

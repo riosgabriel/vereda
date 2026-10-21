@@ -79,9 +79,9 @@
     <section>
       <h2>What the budget changes</h2>
       <p>The budget doesn't look at whether a single request deserves a retry. It looks at the whole partition: retries may add at most <code>ratio</code> on top of the first attempts seen in the last <code>windowMs</code>.</p>
-      <pre class="formula">allowed = max(minRetriesPerSec × windowMs/1000,
+      <div class="formula">allowed = max(minRetriesPerSec × windowMs/1000,
               ratio × firstAttemptsInWindow)
-retry allowed only while  retriesInWindow &lt; allowed</pre>
+retry allowed only while  retriesInWindow &lt; allowed</div>
       <p>With <code>ratio: 0.1</code>, the host gets at most about 1.1× its normal load over any 1 s window, however bad things get.</p>
       <p>A refused retry fails right away with its last error, so the caller hears about it quickly instead of waiting.</p>
       <p>As soon as the host is fixed, load is already below capacity and everything succeeds.</p>
@@ -89,7 +89,7 @@ retry allowed only while  retriesInWindow &lt; allowed</pre>
     </section>
     <section>
       <h2>In Vereda</h2>
-      <pre class="formula">HttpClient.create(&#123;
+      <div class="formula">HttpClient.create(&#123;
   timeout: &#123; attemptMs: 1_000 &#125;,
   retry: &#123; maxRetries: 3 &#125;,
   retryBudget: &#123;
@@ -97,7 +97,7 @@ retry allowed only while  retriesInWindow &lt; allowed</pre>
     windowMs: 1_000,
     minRetriesPerSec: 1,
   &#125;,
-&#125;)</pre>
+&#125;)</div>
       <p class="note">This page follows the logic of <code>tryWithdraw</code> in <code>src/queue/retry-budget.ts</code>. A test, <code>test/demos/retry-budget.parity.test.ts</code>, checks the budget rule on this page against the real <code>RetryBudget</code>.</p>
       <p class="note">The host is a model. Its capacity, overload collapse, random failures and retry delay are invented for the demo, and no test checks them.</p>
       <p class="note">In the model, the host's throughput drops as it gets overloaded, down to 30% at 2.2× its capacity. 5% of requests fail at random, and retries wait 0.3 s before they go out.</p>
@@ -296,9 +296,9 @@ function drawChart(trace, simT, col, id, key, yMax, ticks, showCap) {
     ctx.stroke();
     ctx.setLineDash([]);
   }
-  playedLine(ctx, trace.lanes.without.series[key], X, Y, col.without, simT);
+  playedLine(ctx, trace.lanes.without.series[key], X, Y, col.fail, simT);
   playedLine(ctx, trace.lanes.with.series[key], X, Y, col.first, simT);
-  legend(ctx, pad[3] + 6, pad[0] + 12, [["no budget", col.without], ["with budget", col.first], ...(showCap ? [["- - capacity", col.ink]] : [])], col);
+  legend(ctx, pad[3] + 6, pad[0] + 12, [["no budget", col.fail], ["with budget", col.first], ...(showCap ? [["- - capacity", col.ink]] : [])], col);
 }
 
 function setStat(id, text, cls) {
