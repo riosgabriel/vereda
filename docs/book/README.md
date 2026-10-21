@@ -3,9 +3,10 @@
 A book about how `@vereda/http` works inside: what problem it solves, how one request travels
 through it, the rules the code must keep, and how to change it safely.
 
-> **Pinned commit:** this book describes `d0eeb5b` (`d0eeb5b921b2bba348d64ab81a6f0443dc608357`,
-> 2026-10-21, version 1.1.1). Where the book and the code differ, trust the code. To see what
-> changed since, run `git diff d0eeb5b..HEAD --stat -- src/`.
+> **Pinned commit:** this book describes `6c03ba1` (`6c03ba1dd479dcaf9f8b374a9e766f9ec7132ab7`,
+> 2026-10-17, version 1.0.2 plus unreleased changes: retry budget, rate limiting, the per-partition
+> opt-out, the 1.x deprecations and four bug fixes). Where the book and the code differ, trust the
+> code. To see what changed since, run `git diff 6c03ba1..HEAD --stat -- src/`.
 
 ## Who it's for
 
