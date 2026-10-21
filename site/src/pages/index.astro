@@ -1,6 +1,7 @@
 ---
 import { Code } from "@astrojs/starlight/components";
 import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
+import pkg from "../../../package.json";
 import Horizon from "../components/Horizon.astro";
 import { PATTERNS } from "../patterns.ts";
 
@@ -34,18 +35,20 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 >
 	<section class="hero">
 		<div class="pitch">
-			<p class="eyebrow">@vereda/http</p>
+			<p class="eyebrow">{pkg.name} <span>v{pkg.version}</span></p>
 			<h1>Make <code>fetch</code> resilient.</h1>
 			<p class="lede">
 				Retries, backoff, timeouts, per-host isolation and circuit breaking for <code>fetch</code> on Node.js, Bun and
 				Cloudflare Workers, with typed results instead of thrown errors. Zero runtime dependencies.
 			</p>
 			<pre class="install"><code>npm install @vereda/http</code></pre>
+			<p class="alt">or <code>bun add @vereda/http</code>, <code>pnpm add @vereda/http</code></p>
 			<div class="actions">
 				<a class="primary" href="/guide/requests/">Get started</a>
 				<a class="secondary" href="/patterns/">See the patterns</a>
 			</div>
 			<p class="proof">
+				Node.js {pkg.engines.node.replace(">=", "≥ ")}, Bun or Cloudflare Workers. ESM only, TypeScript types included.<br />
 				Every PR runs the suite on <a href="https://github.com/riosgabriel/vereda/blob/main/.github/workflows/ci.yml">Node 22, Node 24 and Bun, and a smoke test in workerd</a>.{" "}
 				<a href="https://github.com/riosgabriel/vereda#versioning-and-support">Support policy →</a>
 			</p>
@@ -126,8 +129,8 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 </StarlightPage>
 
 <style>
-	/* The splash template still prints the page title above the content; the hero has its own. */
-	:global(.content-panel:has(> .sl-container > h1#_top)) {
+	/* The splash template keeps a title panel (PageTitle.astro leaves only its #_top anchor); the hero has its own. */
+	:global(.content-panel:has(> .sl-container > #_top)) {
 		display: none;
 	}
 	/* Starlight spaces every sibling in page content; the chart card lays itself out. */
@@ -170,6 +173,15 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 		border-radius: var(--v-radius-sm);
 		font-family: var(--sl-font-mono);
 		font-size: var(--sl-text-sm);
+	}
+	.alt {
+		margin-top: 0.4rem;
+		font-size: var(--sl-text-xs);
+		color: var(--sl-color-gray-3);
+	}
+	.alt code {
+		background: none;
+		padding: 0;
 	}
 	.actions {
 		display: flex;
