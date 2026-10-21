@@ -17,13 +17,7 @@ export default defineConfig({
 	site: "https://vereda.dev",
 	trailingSlash: "always",
 	// starlight-typedoc puts the API overview at /api/readme/; keep the short URL working.
-	// The rest are URLs people type by hand: the guide's first page, and what lives on GitHub.
-	redirects: {
-		"/api/": "/api/readme/",
-		"/guide/": "/guide/requests/",
-		"/changelog/": "https://github.com/riosgabriel/vereda/blob/main/CHANGELOG.md",
-		"/support/": "https://github.com/riosgabriel/vereda#versioning-and-support",
-	},
+	redirects: { "/api/": "/api/readme/" },
 	markdown: {
 		processor: unified({ remarkPlugins: [remarkDropTitle, remarkDocLinks, remarkMermaid, remarkCallouts] }),
 	},
@@ -41,7 +35,7 @@ export default defineConfig({
 				PageTitle: "./src/components/PageTitle.astro",
 				Search: "./src/components/Search.astro",
 			},
-			customCss: ["./src/styles/fonts.css", "./src/styles/theme.css"],
+			customCss: ["./src/styles/theme.css"],
 			// Starlight's Markdown transforms (heading anchor links, code block defaults) only run on
 			// its own content folder unless listed here, and the docs load from the repo's docs/.
 			// Rendered Markdown is cached in .astro/data-store.json: clear it after changing these.
@@ -53,17 +47,6 @@ export default defineConfig({
 			favicon: "/favicon.png",
 			head: [
 				{ tag: "link", attrs: { rel: "apple-touch-icon", href: "/apple-touch-icon.png" } },
-				// The body face, latin subset: every page needs it, so fetch it alongside the CSS (src/styles/fonts.css).
-				{
-					tag: "link",
-					attrs: {
-						rel: "preload",
-						href: "/fonts/schibsted-grotesk-latin-wght-normal.woff2",
-						as: "font",
-						type: "font/woff2",
-						crossorigin: "anonymous",
-					},
-				},
 				// Social preview for every page; regenerate it from scripts/og-image.html.
 				{ tag: "meta", attrs: { property: "og:image", content: "https://vereda.dev/og.png" } },
 				{ tag: "meta", attrs: { property: "og:image:width", content: "1200" } },
@@ -81,6 +64,15 @@ export default defineConfig({
 						type: "module",
 						src: "https://static.cloudflareinsights.com/beacon.min.js",
 						"data-cf-beacon": '{"token": "801fab46bf6e42e49bec265071570bc4"}',
+					},
+				},
+				{ tag: "link", attrs: { rel: "preconnect", href: "https://fonts.googleapis.com" } },
+				{ tag: "link", attrs: { rel: "preconnect", href: "https://fonts.gstatic.com", crossorigin: true } },
+				{
+					tag: "link",
+					attrs: {
+						rel: "stylesheet",
+						href: "https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:ital,wght@0,400;0,600;0,800;1,400&family=JetBrains+Mono:wght@400;600&display=swap",
 					},
 				},
 			],

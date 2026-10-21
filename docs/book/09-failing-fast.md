@@ -142,8 +142,6 @@ With a `window` setting it uses a **rolling window** instead: trip when, over th
 above the threshold. The window is ten time buckets, and buckets that have aged out are dropped
 on each read. Counting in a row is simple and reacts fast. The window tolerates scattered
 failures on a busy host, where one success between failures shouldn't wipe the slate clean.
-When a trial closes the circuit, the window starts empty. Otherwise the failures that opened
-it could re-open it on the next single failure (#219).
 
 ### What counts as a failure
 
