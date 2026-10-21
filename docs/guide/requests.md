@@ -1,10 +1,12 @@
 # Working with requests
 
-Controlling a request in flight and customizing how attempts are sent.
+Controlling a request in flight and customizing how attempts are sent. Back to the [README](../../README.md).
 
 ## Cancellation
 
 Cancel a request from its ticket, or wire in your own `AbortSignal`.
+
+**Example**
 
 ```typescript
 const ticket = client.get("/slow-api/data");
@@ -33,6 +35,8 @@ Either way, new requests throw `ConfigurationError("client closed")`. See the [s
 Every request method returns a **Ticket** synchronously: a handle to a request that may take several attempts.
 
 Most code only calls `toPromise()`. When you need to watch a request move through its retries, or stop it partway, you subscribe to the ticket or cancel it.
+
+**Example**
 
 ```typescript
 const ticket = client.get("/api/data");
@@ -73,6 +77,8 @@ Middleware wraps every attempt, retries included, in the standard onion shape. E
 - A `RequestContext`: `{ url, method, headers, body, signal, attempt, ticketId, partition }`. `headers` is a real `Headers` instance.
 - A `next` function that calls the next middleware, or the actual fetch.
 
+**Example**
+
 ```typescript
 import { defaultHeaders, requestLogger } from "@vereda/http/middleware";
 
@@ -91,7 +97,9 @@ client.use(async (ctx, next) => {
 
 Middleware can change `ctx.url` before calling `next(ctx)`. Whatever URL reaches the innermost middleware is what gets fetched.
 
-```typescript title="Send every request to a staging host"
+**Example** (send every request to a staging host)
+
+```typescript
 client.use(async (ctx, next) => {
   ctx.url = ctx.url.replace("https://api.example.com", "https://staging.example.com");
   return next(ctx);

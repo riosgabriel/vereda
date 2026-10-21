@@ -110,7 +110,7 @@
     </section>
     <section>
       <h2>In Vereda</h2>
-      <pre class="formula">HttpClient.create(&#123;
+      <div class="formula">HttpClient.create(&#123;
   timeout: &#123; attemptMs: 1_000 &#125;,
   circuitBreaker: &#123;
     enabled: true,
@@ -122,7 +122,7 @@
     //   failureRatePercent: 30,
     //   minimumRequests: 10 &#125;,
   &#125;,
-&#125;)</pre>
+&#125;)</div>
       <p class="note">This page follows the state machine in <code>src/queue/circuit-breaker.ts</code>, one breaker per partition. In Vereda every attempt asks the breaker, retries included.</p>
       <p class="note">Only network errors, timeouts and retryable statuses count as failures. A 404 counts as a success, because the host answered.</p>
       <p class="note">Times are shortened so you don't have to wait: the default reset timeout is 30 s, and here it is 1 to 8 s.</p>
@@ -348,9 +348,9 @@ function drawWait(trace, simT, col) {
   const pts = (attempts, color, dy) => {
     for (const a of attempts) if (a.end <= simT) dot(ctx, X(a.end), Y(a.end - a.sent) + dy, 2.3, color, 0.9);
   };
-  pts(trace.lanes.without.attempts, col.without, -2);
+  pts(trace.lanes.without.attempts, col.fail, -2);
   pts(trace.lanes.with.attempts, col.first, 2);
-  legend(ctx, pad[3] + 6, 12, [["no breaker", col.without], ["with breaker", col.first]], col);
+  legend(ctx, pad[3] + 6, 12, [["no breaker", col.fail], ["with breaker", col.first]], col);
 }
 
 function drawHost(trace, simT, col) {
@@ -362,9 +362,9 @@ function drawHost(trace, simT, col) {
     for (const a of attempts) if (a.start !== null) n[Math.min(trace.duration - 1, Math.floor(a.sent))]++;
     return n.map((v, i) => [i + 0.5, v]);
   };
-  playedLine(ctx, perSecond(trace.lanes.without.attempts), X, Y, col.without, simT);
+  playedLine(ctx, perSecond(trace.lanes.without.attempts), X, Y, col.fail, simT);
   playedLine(ctx, perSecond(trace.lanes.with.attempts), X, Y, col.first, simT);
-  legend(ctx, pad[3] + 6, 12, [["no breaker", col.without], ["with breaker", col.first]], col);
+  legend(ctx, pad[3] + 6, 12, [["no breaker", col.fail], ["with breaker", col.first]], col);
   const states = trace.lanes.with.states;
   const sy = h - pad[2] + 20;
   states.forEach((s, i) => {

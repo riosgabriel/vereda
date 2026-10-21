@@ -3,7 +3,6 @@ import { Code } from "@astrojs/starlight/components";
 import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
 import pkg from "../../../package.json";
 import Horizon from "../components/Horizon.astro";
-import PatternThumb from "../components/PatternThumb.astro";
 import { PATTERNS } from "../patterns.ts";
 
 // The README's quickstart, word for word.
@@ -39,18 +38,18 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 			<p class="eyebrow">{pkg.name} <span>v{pkg.version}</span></p>
 			<h1>Make <code>fetch</code> resilient.</h1>
 			<p class="lede">
-				Retries, backoff, timeouts, per-host isolation and circuit breaking for <code>fetch</code>. Typed results instead
-				of thrown errors. Zero runtime dependencies.
+				Retries, backoff, timeouts, per-host isolation and circuit breaking for <code>fetch</code> on Node.js, Bun and
+				Cloudflare Workers, with typed results instead of thrown errors. Zero runtime dependencies.
 			</p>
 			<pre class="install"><code>npm install @vereda/http</code></pre>
 			<p class="alt">or <code>bun add @vereda/http</code>, <code>pnpm add @vereda/http</code></p>
 			<div class="actions">
-				<a class="primary" href="/guide/getting-started/">Get started</a>
+				<a class="primary" href="/guide/requests/">Get started</a>
 				<a class="secondary" href="/patterns/">See the patterns</a>
 			</div>
 			<p class="proof">
 				Node.js {pkg.engines.node.replace(">=", "≥ ")}, Bun or Cloudflare Workers. ESM only, TypeScript types included.<br />
-				Every PR runs the suite on <a href="https://github.com/riosgabriel/vereda/blob/main/.github/workflows/ci.yml">Node 22, Node 24 and Bun, and a smoke test on Cloudflare Workers (workerd)</a>.{" "}
+				Every PR runs the suite on <a href="https://github.com/riosgabriel/vereda/blob/main/.github/workflows/ci.yml">Node 22, Node 24 and Bun, and a smoke test in workerd</a>.{" "}
 				<a href="https://github.com/riosgabriel/vereda#versioning-and-support">Support policy →</a>
 			</p>
 		</div>
@@ -60,13 +59,12 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 				<span class="storm-title">A host slows down at 8 s</span>
 				<span class="storm-side">
 					<span id="storm-clock">t = 0 s</span>
-					<button type="button" class="storm-toggle" id="storm-replay" hidden>Replay</button>
 					<button type="button" class="storm-toggle" id="storm-toggle" hidden>Pause</button>
 				</span>
 			</div>
 			<canvas id="storm" role="img" aria-label="Load on a slow host over 40 seconds: plain retries climb to over 3 times normal load and stay there after the host is fixed; with a retry budget the load stays near normal."></canvas>
 			<div class="storm-stats">
-				<div><span class="v without" id="storm-a">1.00×</span><span class="k">load, plain retries</span></div>
+				<div><span class="v fail" id="storm-a">1.00×</span><span class="k">load, plain retries</span></div>
 				<div><span class="v first" id="storm-b">1.00×</span><span class="k">load, with a retry budget</span></div>
 			</div>
 			<figcaption id="storm-caption">
@@ -86,7 +84,7 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 					A dropped connection, a timeout or a <code>503</code> is retried up to three times, with jittered exponential
 					backoff, before your code sees an error.
 				</p>
-				<p><code>attemptMs</code> bounds each attempt, as above. Add <code>totalMs</code> to bound the whole call.</p>
+				<p><code>attemptMs</code> bounds each attempt. An optional <code>totalMs</code> deadline bounds the whole call.</p>
 				<p>
 					The result is a value, not an exception: <code>result.success</code> or a typed <code>result.error.kind</code>
 					you can <code>switch</code> on.
@@ -105,7 +103,6 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 				PATTERNS.map((p) => (
 					<li>
 						<a href={`/patterns/${p.slug}/`}>
-							<PatternThumb slug={p.slug} />
 							<strong>{p.title}</strong>
 							<span set:html={code(p.blurb)} />
 						</a>
@@ -119,13 +116,13 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 		<h2>Go deeper</h2>
 		<ul class="cards three">
 			<li>
-				<a href="/guide/getting-started/"><strong>Guide</strong><span>How to make a request, read its result, tune retries and timeouts, and see what the client is doing.</span></a>
+				<a href="/guide/requests/"><strong>Guide</strong><span>Requests, results, resilience settings and observability, with examples.</span></a>
 			</li>
 			<li>
-				<a href="/book/"><strong>The Vereda Book</strong><span>What happens between <code>client.get()</code> and the result, which rules the code must keep, and the bugs that taught them.</span></a>
+				<a href="/book/"><strong>The Vereda Book</strong><span>How it works inside: one request's life, the invariants, and the bugs that shaped them.</span></a>
 			</li>
 			<li>
-				<a href="/api/"><strong>API reference</strong><span>Which options exist, what each defaults to, and which error class carries which <code>kind</code>.</span></a>
+				<a href="/api/"><strong>API reference</strong><span>Every export and option, generated from the source.</span></a>
 			</li>
 		</ul>
 	</section>
@@ -271,8 +268,8 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 		font-size: var(--sl-text-sm);
 		color: var(--sl-color-gray-3);
 	}
-	.v.without {
-		color: var(--v-without);
+	.v.fail {
+		color: var(--v-fail);
 	}
 	.v.first {
 		color: var(--v-first);
@@ -331,12 +328,6 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 		font-size: var(--sl-text-base);
 		font-weight: 600;
 	}
-	/* The thumbnail is the card's lead: it shows the two lines the page animates. */
-	.cards svg {
-		margin-bottom: 0.4rem;
-		border-radius: var(--v-radius-sm);
-		background: var(--v-panel);
-	}
 
 	@media (max-width: 50rem) {
 		.hero,
@@ -373,11 +364,8 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 	const without = { load: series("without", "load"), capacity: series("without", "capacity") };
 	const withBudget = { load: series("with", "load") };
 	const END = trace.duration;
-	// Each loop starts just before the host slows down, so the two lines part within a second
-	// or two; the first 8 s of identical healthy traffic are only ever seen as the finished chart.
-	const START = BAD_FROM - 2;
 	const SPEED = 2; // sim seconds per real second
-	const HOLD = 4; // real seconds the finished chart stays before the loop restarts
+	const HOLD = 3; // real seconds the finished chart stays before the loop restarts
 	const Y_MAX = 320;
 
 	const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -436,7 +424,7 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 		ctx.fillText("host capacity", X(END), Y(at(without.capacity, END)) - 5);
 
 		const lines: [Series, string][] = [
-			[without.load, css("--v-without")],
+			[without.load, css("--v-fail")],
 			[withBudget.load, css("--v-first")],
 		];
 		for (const [series, color] of lines) {
@@ -468,14 +456,13 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 	}
 
 	// Motion longer than 5 s needs a way to stop it (WCAG 2.2.2), so the loop has a pause button.
-	// Reduced motion gets the finished chart and no buttons.
+	// Reduced motion gets the finished chart and no button.
 	const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
-	// One loop: the finished chart held, then the run from START to END.
-	const loop = HOLD + (END - START) / SPEED;
+	const loop = END / SPEED + HOLD;
 	let paused = still;
-	let elapsed = 0; // real seconds into the current loop
+	let elapsed = still ? loop : 0; // real seconds into the current loop
 	let last: number | undefined;
-	const now = () => (elapsed < HOLD ? END : Math.min(END, START + (elapsed - HOLD) * SPEED));
+	const now = () => Math.min(END, elapsed * SPEED);
 	const frame = (ts: number) => {
 		if (last !== undefined) elapsed = (elapsed + (ts - last) / 1000) % loop;
 		last = ts;
@@ -484,25 +471,14 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 	};
 
 	const toggle = document.getElementById("storm-toggle") as HTMLButtonElement;
-	const replay = document.getElementById("storm-replay") as HTMLButtonElement;
 	if (still) {
 		draw(END);
 	} else {
 		toggle.hidden = false;
-		replay.hidden = false;
 		toggle.addEventListener("click", () => {
 			paused = !paused;
 			toggle.textContent = paused ? "Play" : "Pause";
 			if (!paused) {
-				last = undefined;
-				requestAnimationFrame(frame);
-			}
-		});
-		replay.addEventListener("click", () => {
-			elapsed = HOLD;
-			if (paused) {
-				paused = false;
-				toggle.textContent = "Pause";
 				last = undefined;
 				requestAnimationFrame(frame);
 			}
