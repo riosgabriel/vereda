@@ -56,6 +56,16 @@ export default defineConfig({
 					attrs: { property: "og:image:alt", content: "Vereda: Make fetch resilient. npm install @vereda/http" },
 				},
 				{ tag: "meta", attrs: { name: "twitter:image", content: "https://vereda.dev/og.png" } },
+				// Cloudflare Web Analytics: cookieless page views. The token is public (it ships in the HTML);
+				// the dashboard is under Analytics & Logs > Web Analytics in the Cloudflare account.
+				{
+					tag: "script",
+					attrs: {
+						type: "module",
+						src: "https://static.cloudflareinsights.com/beacon.min.js",
+						"data-cf-beacon": '{"token": "801fab46bf6e42e49bec265071570bc4"}',
+					},
+				},
 				{ tag: "link", attrs: { rel: "preconnect", href: "https://fonts.googleapis.com" } },
 				{ tag: "link", attrs: { rel: "preconnect", href: "https://fonts.gstatic.com", crossorigin: true } },
 				{
