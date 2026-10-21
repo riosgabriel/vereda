@@ -57,14 +57,29 @@ const TRAIL =
 				<stop offset="0" stop-color="#f37d18" stop-opacity="0.45"></stop>
 				<stop offset="1" stop-color="#f37d18" stop-opacity="0"></stop>
 			</radialGradient>
+			<radialGradient id="horizon-sun">
+				<stop class="sun-core" offset="0"></stop>
+				<stop offset="1" stop-color="#f37d18"></stop>
+			</radialGradient>
+			<radialGradient id="horizon-halo">
+				<stop offset="0.4" stop-color="#ffcf5c" stop-opacity="0.6"></stop>
+				<stop offset="1" stop-color="#ffcf5c" stop-opacity="0"></stop>
+			</radialGradient>
+			<linearGradient id="horizon-sky" x1="0" y1="0" x2="0" y2="1">
+				<stop class="sky-high" offset="0"></stop>
+				<stop class="sky-mid" offset="0.3"></stop>
+				<stop class="sky-low" offset="0.55"></stop>
+			</linearGradient>
 			<linearGradient id="horizon-trail" x1="0" y1="0" x2="0" y2="1">
 				<stop offset="0.6" stop-color="#f7e7c7"></stop>
 				<stop offset="0.965" stop-color="#f7e7c7" stop-opacity="0"></stop>
 			</linearGradient>
 		</defs>
-		<ellipse cx="930" cy="116" rx="480" ry="110" fill="url(#horizon-glow)"></ellipse>
+		<rect class="sky" width="1440" height="240" fill="url(#horizon-sky)"></rect>
+		<ellipse class="glow" cx="930" cy="116" rx="480" ry="110" fill="url(#horizon-glow)"></ellipse>
 		<path class="haze" d="M0 66 C 320 50, 700 70, 930 126 C 1150 72, 1400 52, 1440 54 L1440 240 L0 240 Z"></path>
-		<circle cx="930" cy="104" r="34" fill="#f37d18"></circle>
+		<circle class="halo" cx="930" cy="104" r="80" fill="url(#horizon-halo)"></circle>
+		<circle class="sun" cx="930" cy="104" r="34" fill="url(#horizon-sun)"></circle>
 		<path
 			class="far"
 			d="M0 100 C 320 86, 690 94, 860 118 C 895 123, 918 127, 930 128 C 946 126, 985 116, 1080 106 C 1240 92, 1380 92, 1440 90 L1440 240 L0 240 Z"
@@ -75,7 +90,7 @@ const TRAIL =
 			class="front"
 			d="M0 214 C 300 198, 500 206, 640 226 C 700 236, 860 238, 1000 222 C 1150 206, 1320 208, 1440 214 L1440 240 L0 240 Z"
 		></path>
-		<path d={TRAIL} fill="url(#horizon-trail)"></path>
+		<path class="trail" d={TRAIL} fill="url(#horizon-trail)"></path>
 	</svg>
 </div>
 )}
@@ -84,8 +99,9 @@ const TRAIL =
 	.horizon {
 		/* Full bleed out of the splash column. */
 		margin-inline: calc(50% - 50vw);
-		/* The art's own aspect (240/1440) so nothing is cropped on wide screens; phones crop the sides. */
-		height: clamp(130px, 16.7vw, 300px);
+		/* The art's own aspect (240/1440) so nothing is cropped up to 2400px wide; phones crop the
+		   sides. Past the cap, `slice` crops the top of the sky. */
+		height: clamp(130px, 16.7vw, 400px);
 		margin-top: -1rem;
 	}
 	/* 100vw counts a classic scrollbar (Windows, most Linux) and 50% doesn't, so the full bleed
@@ -100,15 +116,77 @@ const TRAIL =
 		width: 100%;
 		height: 100%;
 	}
-	.haze {
+	/* The sky, glow and haze reach the top of the art, and past the height cap the top is cropped
+	   away. Fading the top of whatever is visible keeps that edge soft at any width; the daytime
+	   sun's top sits below the fade. */
+	.horizon svg {
+		mask-image: linear-gradient(to bottom, transparent, #000 20%);
+	}
+	/* One number, --rise, places the whole painting between the logo's sunset (0) and full sun (1):
+	   every colour and position below is a function of it. Dark theme is the main look, the logo's
+	   valley: sun half-set in the notch under an orange sky. Light theme is the full sun, the whole
+	   disc clear of the ridge. The hills keep the logo's greens in both. It is registered so the browser can tween it, so switching themes plays a
+	   short sunrise or sunset. */
+	@property --rise {
+		syntax: "<number>";
+		inherits: true;
+		initial-value: 1;
+	}
+	:global(:root[data-theme="dark"]) .horizon {
+		--rise: 0;
+	}
+	@media (prefers-reduced-motion: no-preference) {
+		.horizon {
+			transition: --rise 1.2s ease-in-out;
+		}
+	}
+	/* Rust overhead and orange on the ridges at sunset, pale gold in full sun. The top stop is the mid
+	   colour made transparent: SVG gradients blend colour and opacity separately, so a transparent
+	   stop of any other colour tints the fade. */
+	.sky-high,
+	.sky-mid {
+		stop-color: color-mix(in oklab, #fbe7c0 calc(var(--rise) * 100%), #8a3220);
+	}
+	.sky-high {
+		stop-opacity: 0;
+	}
+	.sky-mid {
+		stop-opacity: calc(0.7 - 0.55 * var(--rise));
+	}
+	.sky-low {
+		stop-color: color-mix(in oklab, #f7d79a calc(var(--rise) * 100%), #ee7a2a);
+		stop-opacity: calc(0.9 - 0.55 * var(--rise));
+	}
+	/* The same disc in both themes: half behind the notch at sunset, clear of the ridge in full sun.
+	   In full sun it also burns hotter: a yellow core inside the orange rim, and a halo around it. */
+	.horizon .sun,
+	.horizon .halo {
+		transform: translateY(calc(24px - 36px * var(--rise)));
+	}
+	.sun-core {
+		stop-color: color-mix(in oklab, #ffc23d calc(var(--rise) * 100%), #f37d18);
+	}
+	.horizon .halo {
+		opacity: var(--rise);
+	}
+	.horizon .glow {
+		transform-box: fill-box;
+		transform-origin: center;
+		transform: translateY(calc(24px - 36px * var(--rise))) scale(calc(0.7 + 0.65 * var(--rise)));
+		opacity: calc(0.6 + 0.4 * var(--rise));
+	}
+	.horizon .haze {
 		fill: #dbab33;
-		opacity: 0.28;
+		opacity: calc(0.15 + 0.13 * var(--rise));
 	}
-	.far {
-		fill: #48754f;
+	.horizon .trail {
+		opacity: calc(0.9 + 0.1 * var(--rise));
 	}
-	.mid {
-		fill: #113b36;
+	.horizon .far {
+		fill: color-mix(in oklab, #48754f calc(var(--rise) * 100%), #3a5e40);
+	}
+	.horizon .mid {
+		fill: color-mix(in oklab, #113b36 calc(var(--rise) * 100%), #0e322e);
 	}
 	.front {
 		fill: var(--sl-color-black);

@@ -46,6 +46,19 @@
 }
 
 :root[data-theme="light"] {
+	/* Warm paper instead of Starlight's blue-tinted white: the cream of the logo's trail and the
+	   social card, with grays on the same hue. Text grays keep AA on every surface (gray-3 is
+	   7.2:1 on the page, 6.2:1 on gray-6). Panels stay white, so cards lift off the page. */
+	--sl-color-white: #1d1b17;
+	--sl-color-gray-1: #2a2620;
+	--sl-color-gray-2: #3d3830;
+	--sl-color-gray-3: #5a5348;
+	--sl-color-gray-4: #8b8376;
+	--sl-color-gray-5: #d6cdbd;
+	--sl-color-gray-6: #eee7da;
+	--sl-color-gray-7: #f5f0e6;
+	--sl-color-black: #fbf8f2;
+
 	--sl-color-accent-low: #d9e6dc;
 	--sl-color-accent: #1f5c4f;
 	--sl-color-accent-high: #173d35;
