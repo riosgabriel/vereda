@@ -15,9 +15,7 @@ Vereda has two concurrency limits, and they work independently.
 
 Each limit has a wait queue behind it, sized by `maxQueueSize` (default 100). When a queue is full, the request resolves with `QueueFullError`. For the global queue, the error's `scope` is `"global"`.
 
-**Example** (limits for one host)
-
-```typescript
+```typescript title="Limits for one host"
 import { HttpClient } from "@vereda/http";
 
 const client = HttpClient.create({
@@ -48,8 +46,6 @@ The global limit does apply to every attempt. So a host that fails *slowly* can 
 Instead of listing every host, set `defaultPartition`. It applies to every partition not named in `partitions` and takes the same fields: concurrency, queue size, retry, timeout, circuit breaker, retry budget, rate limit and `limitFirstAttempts`.
 
 A listed partition doesn't inherit from it. Its entry is the whole config for that host, on top of the client-level settings.
-
-**Example**
 
 ```typescript
 import { HttpClient } from "@vereda/http";
@@ -116,8 +112,6 @@ Vereda has two timeouts, and they measure different things.
 | `totalMs` | The whole call, retries included | No, off by default | `DeadlineExceededError`, and no more retries |
 
 They compose. A request can time out on single attempts several times and still be retried, until `totalMs` ends it.
-
-**Example**
 
 ```typescript
 import { HttpClient } from "@vereda/http";
@@ -190,9 +184,7 @@ An `open` entry whose `nextAttemptAt` is in the past hasn't had a request since 
 
 Implement `MetricsSink` and pass it as `metrics`. Its three methods, `counter`, `histogram` and `gauge`, must be synchronous and must not block.
 
-**Example** (a sink that logs every data point)
-
-```typescript
+```typescript title="A sink that logs every data point"
 import { HttpClient, type MetricsSink } from "@vereda/http";
 
 const sink: MetricsSink = {
@@ -243,8 +235,6 @@ There are two ways to close a client.
 | --- | --- | --- |
 | `close()` | Cancels every in-flight ticket at once | A hard, fast exit |
 | `close({ drain: true, timeoutMs })` | Waits for in-flight tickets up to `timeoutMs`, then cancels the rest | Graceful shutdown, so requests about to succeed can finish |
-
-**Example**
 
 ```typescript
 process.on("SIGTERM", async () => {

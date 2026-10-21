@@ -104,7 +104,7 @@
     </section>
     <section>
       <h2>In Vereda</h2>
-      <div class="formula">HttpClient.create(&#123;
+      <pre class="formula">HttpClient.create(&#123;
   timeout: &#123; attemptMs: 5_000 &#125;,
   rateLimit: &#123;
     tokensPerSec: 15,
@@ -116,7 +116,7 @@
       rateLimit: &#123; tokensPerSec: 10, burst: 20 &#125;,
     &#125;,
   &#125;,
-&#125;)</div>
+&#125;)</pre>
       <p class="note">This page runs the same bucket as <code>TokenBucket</code> in <code>src/queue/rate-limiter.ts</code>. An attempt reserves its token when it arrives, and the balance can go below zero.</p>
       <p class="note">That is why waiting is first in, first out without a queue object. A request over <code>maxWaitMs</code> reserves nothing.</p>
       <p class="note">Each attempt calls <code>takeToken</code> in <code>src/queue/bulkhead.ts</code>: the first one in <code>src/core/client.ts</code>, retries in <code>src/queue/retry.ts</code>.</p>
@@ -312,7 +312,7 @@ function drawApi(trace, simT, col) {
   const nb = bins(trace.lanes.with.attempts);
   const yMax = niceMax(Math.max(...na.map((p) => p[1]), ...nb.map((p) => p[1])), 40);
   const { X, Y } = timeAxes(ctx, { w, h, pad: PAD, end: trace.duration, yMax, ticks: [0, 1, 2, 3, 4].map((i) => (yMax / 4) * i), fmt: (v) => String(Math.round(v)), phases: trace.phases, col });
-  playedLine(ctx, na, X, Y, col.fail, simT);
+  playedLine(ctx, na, X, Y, col.without, simT);
   playedLine(ctx, nb, X, Y, col.first, simT);
   const R = PAD[1];
   ctx.strokeStyle = col.cap;
@@ -328,7 +328,7 @@ function drawApi(trace, simT, col) {
   ctx.font = col.strong;
   ctx.textAlign = "right";
   ctx.fillText(`API limit ${API_LIMIT}/s`, w - R - 2, Y(API_LIMIT) - 5);
-  legend(ctx, PAD[3] + 6, 12, [["no limit", col.fail], ["with limit", col.first]], col);
+  legend(ctx, PAD[3] + 6, 12, [["no limit", col.without], ["with limit", col.first]], col);
 }
 
 function drawWait(trace, simT, col) {

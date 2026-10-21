@@ -85,7 +85,7 @@
     </section>
     <section>
       <h2>In Vereda</h2>
-      <div class="formula">HttpClient.create(&#123;
+      <pre class="formula">HttpClient.create(&#123;
   timeout: &#123; attemptMs: 6_000 &#125;,
   retry: &#123; maxRetries: 0 &#125;, // retries off, as on this page
   concurrency: 8,      // global permits
@@ -97,7 +97,7 @@
       limitFirstAttempts: true,
     &#125;,
   &#125;,
-&#125;)</div>
+&#125;)</pre>
       <p class="note">There are two limits. The global semaphore (<code>src/queue/semaphore.ts</code>) counts every attempt in the client.</p>
       <p class="note">The partition bulkhead (<code>src/queue/bulkhead.ts</code>) counts attempts in one partition. A partition is the host unless you set <code>partition</code> on the request.</p>
       <p class="note">With <code>limitFirstAttempts: true</code>, an attempt takes a partition slot first and then a global permit (<code>src/core/client.ts</code>). The slot stays taken while it waits for the permit.</p>
@@ -273,9 +273,9 @@ function drawWait(trace, simT, col) {
       }
     }
   };
-  pts(trace.lanes.without.attempts, col.fail, 0);
+  pts(trace.lanes.without.attempts, col.without, 0);
   pts(trace.lanes.with.attempts, col.first, 3);
-  legend(ctx, pad[3] + 6, 12, [["global only", col.fail], ["with search limit", col.first]], col);
+  legend(ctx, pad[3] + 6, 12, [["global only", col.without], ["with search limit", col.first]], col);
 }
 
 function drawSlots(trace, simT, col) {
@@ -291,9 +291,9 @@ function drawSlots(trace, simT, col) {
   ctx.lineTo(w - pad[1], Y(yMax));
   ctx.stroke();
   ctx.setLineDash([]);
-  playedLine(ctx, trace.lanes.without.series.permitsHeld, X, Y, col.fail, simT);
+  playedLine(ctx, trace.lanes.without.series.permitsHeld, X, Y, col.without, simT);
   playedLine(ctx, trace.lanes.with.series.permitsHeld, X, Y, col.first, simT);
-  legend(ctx, pad[3] + 6, 12, [["global only", col.fail], ["with search limit", col.first]], col);
+  legend(ctx, pad[3] + 6, 12, [["global only", col.without], ["with search limit", col.first]], col);
 }
 
 function setStat(id, text, cls) {

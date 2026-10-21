@@ -8,6 +8,7 @@ export const DOC_PATTERNS = ["book/*.md", "guide/*.md", "operations.md"];
  */
 export const SIDEBAR_ORDER = [
 	"book",
+	"guide/getting-started",
 	"guide/requests",
 	"guide/results-and-errors",
 	"guide/resilience",
