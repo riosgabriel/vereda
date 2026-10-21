@@ -1,10 +1,38 @@
 ---
+import { createMarkdownProcessor } from "@astrojs/markdown-remark";
 import { Code } from "@astrojs/starlight/components";
 import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
 import pkg from "../../../package.json";
+import readme from "../../../README.md?raw";
 import Horizon from "../components/Horizon.astro";
 import PatternThumb from "../components/PatternThumb.astro";
 import { PATTERNS } from "../patterns.ts";
+import { hrefFor } from "../remark/doc-links.ts";
+
+// The README's "Why Vereda?" section, rendered here so the site and the README can't drift:
+// the hand-written retry loop, what Vereda does instead, and the comparison with other
+// libraries. The loop goes through Starlight's Code component, like the quickstart; the rest
+// is Markdown, its repo-relative links pointed at the site (docs/guide/x.md → /guide/x/).
+const section = (from: string, to: string) => {
+	const start = readme.indexOf(from);
+	const end = readme.indexOf(to, start);
+	if (start < 0 || end < 0) throw new Error(`README.md has no "${from}" … "${to}" section`);
+	return readme.slice(start + from.length, end);
+};
+const why = section("## Why Vereda?\n", "## Quick start\n");
+const loopMatch = /```typescript\n([\s\S]*?)```\n/.exec(why);
+if (!loopMatch) throw new Error('README.md "Why Vereda?" has no typescript block');
+const loop = loopMatch[1].trimEnd();
+const [beforeLoop = "", afterLoop = ""] = why.split(loopMatch[0], 2);
+const compareAt = afterLoop.indexOf("### Compared with other libraries");
+if (compareAt < 0) throw new Error('README.md has no "Compared with other libraries"');
+const md = await createMarkdownProcessor({ syntaxHighlight: false, gfm: true });
+const siteLinks = (text: string) =>
+	text.replaceAll(/\]\(((?:docs\/)[^)#\s]+)(#[^)\s]*)?\)/g, (_, path, anchor) => `](${hrefFor(path)}${anchor ?? ""})`);
+const render = async (text: string) => (await md.render(siteLinks(text))).code;
+const whyIntro = await render(beforeLoop);
+const whyTable = await render(afterLoop.slice(0, compareAt));
+const compare = await render(afterLoop.slice(compareAt));
 
 // The README's quickstart, word for word.
 const quickstart = `import { HttpClient } from "@vereda/http";
@@ -95,6 +123,16 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 			</div>
 			<Code code={quickstart} lang="ts" title="quickstart.ts" wrap />
 		</div>
+	</section>
+
+	<section class="band">
+		<h2>Why Vereda?</h2>
+		<div class="split">
+			<div class="prose" set:html={whyIntro} />
+			<Code code={loop} lang="ts" title="retry-by-hand.ts" wrap />
+		</div>
+		<div class="prose" set:html={whyTable} />
+		<div class="prose compare" set:html={compare} />
 	</section>
 
 	<section class="band">
@@ -300,6 +338,31 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 		grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.35fr);
 		gap: 2.5rem;
 		align-items: start;
+	}
+	/* README prose: the lede-sized intro beside the loop, and the two tables scrolling sideways
+	   on narrow screens instead of breaking the page. */
+	.prose {
+		margin-top: 1rem;
+	}
+	.split .prose {
+		margin-top: 0;
+		font-size: var(--sl-text-lg);
+		color: var(--sl-color-gray-2);
+	}
+	.prose :global(table) {
+		display: block;
+		overflow-x: auto;
+		font-size: var(--sl-text-sm);
+	}
+	.compare :global(h3) {
+		margin-top: 2rem;
+	}
+	.compare :global(th),
+	.compare :global(td) {
+		white-space: nowrap;
+	}
+	.compare :global(td:first-child) {
+		white-space: normal;
 	}
 	.cards {
 		list-style: none;
