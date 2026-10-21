@@ -15,6 +15,7 @@
 	--fail: #ff6a5e;
 	--ok: #4cc285;
 	--refused: #6b7684;
+	--without: #a3a9b6;
 	--cap: #edeef3;
 	/* One sans for all text, mono only for code; both come from theme.css. draw.js reads them. */
 	--sans: var(--sl-font);
@@ -36,6 +37,7 @@
 	--fail: #d03f36;
 	--ok: #2b9459;
 	--refused: #98a2ae;
+	--without: #6b7280;
 	--cap: #17181c;
 }
 
@@ -189,7 +191,6 @@
 	border-radius: var(--v-radius);
 	padding: 12px 16px;
 	font-size: var(--sl-text-base);
-	max-width: 70ch;
 }
 .demo .caption .now {
 	display: block;
@@ -320,15 +321,18 @@
 	display: grid;
 	gap: 6px;
 }
+/* A <pre>, not a styled <div>: Astro's HTML compression collapses a div's line breaks. */
 .demo .formula {
+	margin: 0;
 	background: var(--surface);
 	border: 1px solid var(--line);
 	border-radius: var(--v-radius);
 	padding: 12px 14px;
 	font-family: var(--mono);
 	font-size: var(--sl-text-xs);
-	overflow-x: auto;
-	white-space: pre;
+	/* Three columns are narrow: wrap long lines rather than clip or scroll them. */
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
 }
 .demo .note {
 	font-size: var(--sl-text-sm);
@@ -347,6 +351,17 @@
 	}
 	.demo .clock {
 		margin-left: 0;
+	}
+}
+@container demo (max-width: 480px) {
+	.demo .timeline {
+		height: auto;
+		min-height: 34px;
+	}
+	.demo .timeline div {
+		white-space: normal;
+		line-height: 1.2;
+		padding: 6px;
 	}
 }
 

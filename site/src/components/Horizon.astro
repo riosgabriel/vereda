@@ -84,8 +84,9 @@ const TRAIL =
 	.horizon {
 		/* Full bleed out of the splash column. */
 		margin-inline: calc(50% - 50vw);
-		/* The art's own aspect (240/1440) so nothing is cropped on wide screens; phones crop the sides. */
-		height: clamp(130px, 16.7vw, 300px);
+		/* Shorter than the art's own aspect (240/1440): the sky is cropped, the valley keeps its
+		   notch and trail, and the band reads as a divider rather than a section of its own. */
+		height: clamp(110px, 12vw, 210px);
 		margin-top: -1rem;
 	}
 	/* 100vw counts a classic scrollbar (Windows, most Linux) and 50% doesn't, so the full bleed

@@ -20,7 +20,7 @@ export default defineConfig({
 	// The rest are URLs people type by hand: the guide's first page, and what lives on GitHub.
 	redirects: {
 		"/api/": "/api/readme/",
-		"/guide/": "/guide/requests/",
+		"/guide/": "/guide/getting-started/",
 		"/changelog/": "https://github.com/riosgabriel/vereda/blob/main/CHANGELOG.md",
 		"/support/": "https://github.com/riosgabriel/vereda#versioning-and-support",
 	},
@@ -102,16 +102,19 @@ export default defineConfig({
 			sidebar: [
 				// autogenerate matches each entry's filePath, and these load from the repo's docs/
 				// (src/content.config.ts), so the directories are ../docs/guide and ../docs/book.
-				{ label: "Guide", items: [{ autogenerate: { directory: "../docs/guide" } }] },
-				{ label: "Operations", link: "/operations/" },
 				{
-					label: "Patterns, animated",
+					label: "Guide",
+					items: [{ autogenerate: { directory: "../docs/guide" } }, { label: "Operations", link: "/operations/" }],
+				},
+				{
+					label: "Patterns",
 					items: [
 						{ label: "Overview", link: "/patterns/" },
 						...PATTERNS.map((p) => ({ label: p.title, link: `/patterns/${p.slug}/` })),
 					],
 				},
-				{ label: "The Vereda Book", items: [{ autogenerate: { directory: "../docs/book" } }] },
+				// Collapsed outside the Book: Starlight opens the group that holds the current page.
+				{ label: "The Vereda Book", collapsed: true, items: [{ autogenerate: { directory: "../docs/book" } }] },
 				typeDocSidebarGroup,
 			],
 		}),
