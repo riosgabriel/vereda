@@ -161,3 +161,25 @@ describe("Retry-After honors (fake timers)", () => {
 		expect(result.success).toBe(true);
 	});
 });
+
+describe("parseRetryAfter strictness", () => {
+	it.each(["1.5", "-5", "+5", "1e3", "0x10", "5 seconds", "Nov 6 1994"])(
+		"rejects %j rather than reading it as a date",
+		(value) => {
+			expect(parseRetryAfter(value)).toBeUndefined();
+		},
+	);
+
+	it("trims delta-seconds", () => {
+		expect(parseRetryAfter(" 3 ")).toBe(3000);
+	});
+
+	it("reads an IMF-fixdate", () => {
+		vi.useFakeTimers({ now: 0 });
+		try {
+			expect(parseRetryAfter("Thu, 01 Jan 1970 00:00:07 GMT")).toBe(7000);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});

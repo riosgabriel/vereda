@@ -5,6 +5,7 @@ import type {
 	ClientConfig,
 	CloseOptions,
 	PartitionConfig,
+	PauseOnRetryAfterConfig,
 	RateLimitConfig,
 	RedirectMode,
 	RequestOptions,
@@ -77,6 +78,7 @@ export function validateConfig(config: ClientConfig): void {
 	validateCircuitBreakerConfig(config.circuitBreaker, "circuitBreaker");
 	validateRetryBudgetConfig(config.retryBudget, "retryBudget");
 	validateRateLimitConfig(config.rateLimit, "rateLimit");
+	validatePauseOnRetryAfterConfig(config.pauseOnRetryAfter, "pauseOnRetryAfter");
 	validatePartitions(config.partitions);
 	validatePartitionConfig(config.defaultPartition, "defaultPartition");
 	if (config.redirect !== undefined && !REDIRECT_MODES.has(config.redirect)) {
@@ -184,6 +186,23 @@ function validatePartitionConfig(config: PartitionConfig | undefined, prefix: st
 	validateCircuitBreakerConfig(config.circuitBreaker, `${prefix}.circuitBreaker`);
 	validateRetryBudgetConfig(config.retryBudget, `${prefix}.retryBudget`);
 	validateRateLimitConfig(config.rateLimit, `${prefix}.rateLimit`);
+	validatePauseOnRetryAfterConfig(config.pauseOnRetryAfter, `${prefix}.pauseOnRetryAfter`);
+}
+
+function validatePauseOnRetryAfterConfig(pause: PauseOnRetryAfterConfig | false | undefined, prefix: string): void {
+	if (pause === undefined || pause === false) return;
+	if (typeof pause !== "object" || pause === null) {
+		throw new ConfigurationError(`${prefix} must be an object, or false to turn it off`);
+	}
+	if (
+		pause.statuses !== undefined &&
+		!(Array.isArray(pause.statuses) && pause.statuses.every((s) => Number.isInteger(s) && s >= 100 && s <= 599))
+	) {
+		throw new ConfigurationError(`${prefix}.statuses must be an array of HTTP status codes (100-599)`);
+	}
+	if (pause.maxPauseMs !== undefined && !(Number.isFinite(pause.maxPauseMs) && pause.maxPauseMs > 0)) {
+		throw new ConfigurationError(`${prefix}.maxPauseMs must be a positive finite number`);
+	}
 }
 
 function validateRateLimitConfig(rateLimit: RateLimitConfig | false | undefined, prefix: string): void {

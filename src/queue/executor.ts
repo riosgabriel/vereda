@@ -365,15 +365,22 @@ export function composeMiddleware(middlewares: MiddlewareFn[], core: NextFn): Ne
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** IMF-fixdate, the HTTP-date format (`Sun, 06 Nov 1994 08:49:37 GMT`).
+ *  Checked before `Date.parse`, which would also take "1.5" or "-5" as dates. */
+const IMF_FIXDATE =
+	/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), \d{2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4} \d{2}:\d{2}:\d{2} GMT$/;
+
 /** Parse a `Retry-After` header value into a delay in ms, or undefined when
- *  absent/unparseable. Integer seconds → ms; HTTP-date → ms from now, clamped
- *  to ≥ 0; anything else (garbage, negative) → undefined. */
+ *  absent/unparseable. Non-negative integer seconds → ms; HTTP-date
+ *  (IMF-fixdate) → ms from now, clamped to ≥ 0; anything else (garbage,
+ *  negative, fractional) → undefined. */
 export function parseRetryAfter(header: string | null): number | undefined {
 	if (!header) return undefined;
 	const trimmed = header.trim();
 	if (/^\d+$/.test(trimmed)) {
 		return Number(trimmed) * 1000;
 	}
+	if (!IMF_FIXDATE.test(trimmed)) return undefined;
 	const parsed = Date.parse(trimmed);
 	if (Number.isNaN(parsed)) return undefined;
 	return Math.max(0, parsed - Date.now());

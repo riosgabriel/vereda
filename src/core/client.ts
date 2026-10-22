@@ -87,7 +87,7 @@ export class HttpClient {
 			config.maxQueueSize ?? DEFAULT_GLOBAL_QUEUE_SIZE,
 		);
 		this.bulkheads = new BulkheadRegistry(
-			{ rateLimit: config.rateLimit },
+			{ rateLimit: config.rateLimit, pauseOnRetryAfter: config.pauseOnRetryAfter },
 			this.partitionConfig,
 			DEFAULT_PARTITION_TTL_MS,
 			semaphore,
@@ -601,6 +601,7 @@ export class HttpClient {
 					// Record the raw attempt outcome against the circuit breaker
 					// regardless of what the retry policy decides to do with it.
 					permit.failure(result.error);
+					bulkhead.notePushback(result.error);
 					// maxRetries=0: no retries configured, surface the raw error immediately
 					// without entering the bulkhead (which would waste a slot for no work),
 					// and without consulting retryWhen — there is nothing left to decide

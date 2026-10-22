@@ -32,9 +32,9 @@ const NUM_RUNS = Number(process.env.VEREDA_FC_RUNS ?? 100);
 // Every behavior honors the abort signal, like undici does.
 // ---------------------------------------------------------------------------
 
-type Behavior = "ok" | "not_found" | "busy" | "network" | "hang" | "malformed" | "stall_body";
+type Behavior = "ok" | "not_found" | "busy" | "pushback" | "network" | "hang" | "malformed" | "stall_body";
 
-const BEHAVIORS: Behavior[] = ["ok", "not_found", "busy", "network", "hang", "malformed", "stall_body"];
+const BEHAVIORS: Behavior[] = ["ok", "not_found", "busy", "pushback", "network", "hang", "malformed", "stall_body"];
 
 function abortable<T>(signal: AbortSignal | null | undefined, delayMs: number, value: () => T): Promise<T> {
 	return new Promise((resolve, reject) => {
@@ -68,6 +68,9 @@ function respond(behavior: Behavior, signal: AbortSignal | null | undefined): Re
 			return new Response("nope", { status: 404 });
 		case "busy":
 			return new Response("busy", { status: 503, headers: { "retry-after": "0" } });
+		case "pushback":
+			// 1s on the wire; the scenario's maxPauseMs clamps it to a few ms.
+			return new Response("slow down", { status: 429, headers: { "retry-after": "1" } });
 		case "malformed":
 			return new Response("<html>", { status: 200 });
 		case "stall_body":
@@ -137,6 +140,9 @@ const scenarioArb = fc
 			}),
 			{ nil: undefined },
 		),
+		// Pauses the partition on a "pushback" for a few ms: waiters must still
+		// settle, release their tokens and emit one terminal event.
+		pauseOnRetryAfter: fc.option(fc.record({ maxPauseMs: fc.constantFrom(5, 30) }), { nil: undefined }),
 		throwingClientListener: fc.boolean(),
 		throwingSink: fc.boolean(),
 		close: fc.option(
@@ -208,6 +214,7 @@ async function runScenario(s: Scenario): Promise<void> {
 		timeout: { attemptMs: s.attemptMs ?? Number.POSITIVE_INFINITY, totalMs: s.totalMs },
 		retryBudget: s.retryBudget,
 		rateLimit: s.rateLimit,
+		pauseOnRetryAfter: s.pauseOnRetryAfter,
 		partitions: { svc: { concurrency: s.partitionConcurrency, limitFirstAttempts: s.limitFirstAttempts } },
 	});
 

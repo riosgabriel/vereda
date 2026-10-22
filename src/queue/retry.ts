@@ -181,7 +181,10 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 			// in DeadlineExceededError, so fail now instead of sleeping first.
 			// Only the delay is compared, not delay + attemptMs: attemptMs is an
 			// upper bound, and a retry that answers quickly can still fit.
-			if (deadlineAt !== undefined && isBoundedMs(timeoutConfig.totalMs) && Date.now() + delayMs >= deadlineAt) {
+			// A pause the host asked for holds the retry at least that long, so it
+			// counts toward the same check.
+			const holdMs = Math.max(delayMs, bulkhead.pauseRemainingMs);
+			if (deadlineAt !== undefined && isBoundedMs(timeoutConfig.totalMs) && Date.now() + holdMs >= deadlineAt) {
 				onCleanup?.();
 				const error = new DeadlineExceededError(displayUrl, timeoutConfig.totalMs, lastError);
 				onFailure?.(error, totalAttempts, totalQueuedMs);
@@ -348,6 +351,7 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 				case "error":
 					lastError = result.error;
 					permit.failure(lastError);
+					bulkhead.notePushback(lastError);
 					break;
 			}
 		} finally {

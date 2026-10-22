@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `pauseOnRetryAfter` client and partition option (`{ statuses?, maxPauseMs? }`, or `false` on a partition): after a response with a listed status (default `429` and `503`) and a valid `Retry-After`, no new attempt, first or retry, goes to that partition before the time the server named, clamped to `maxPauseMs` (default 30 s). Attempts that arrive meanwhile wait, abort-aware: `cancel()` and `timeout.totalMs` end the wait. A later `Retry-After` can extend the pause, never shorten it. With a `rateLimit`, the wait counts toward `maxWaitMs` (a longer one fails at once with `RateLimitedError`), the bucket drains so traffic resumes at `tokensPerSec` rather than in a burst, and the wait counts toward `queuedMs`. `partitions()` reports `pausedUntil` while a pause is active, and a paused partition isn't pruned. Opt-in: nothing pauses unless it is configured. The circuit breaker is unchanged: a `429` still counts as a failure, so use `isFailure` to exclude it (#191).
+
+### Fixed
+
+- A `Retry-After` of `"1.5"`, `"-5"` or similar is no longer read as a date. Only non-negative whole seconds or an HTTP-date (IMF-fixdate, e.g. `Sun, 06 Nov 1994 08:49:37 GMT`) are accepted; anything else is ignored, as before for garbage.
+
 ## [1.1.1] - 2026-10-20
 
 ### Fixed

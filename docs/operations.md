@@ -98,6 +98,20 @@ const client = HttpClient.create({
 
 Set `maxWaitMs` below `timeout.totalMs` if you'd rather fail fast with `RateLimitedError` than spend most of the deadline waiting for a token.
 
+If the host still answers `429` with `Retry-After`, add [`pauseOnRetryAfter`](guide/resilience.md#pausing-on-retry-after). The whole partition then stops until the time the server named, instead of each ticket finding out for itself.
+
+```typescript
+import { HttpClient } from "@vereda/http";
+
+const client = HttpClient.create({
+  timeout: { attemptMs: 5_000, totalMs: 30_000 },
+  rateLimit: { tokensPerSec: 90, maxWaitMs: 2_000 },
+  pauseOnRetryAfter: { maxPauseMs: 10_000 },
+});
+```
+
+Watch `partitions()`: a `pausedUntil` on a partition means it is waiting on the host. With a `maxWaitMs`, requests that arrive during a long pause fail with `RateLimitedError` rather than queue behind it.
+
 The limit is per process. With N replicas calling the same host, divide the quota by N.
 
 ### Fragile hosts: `limitFirstAttempts`

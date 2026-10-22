@@ -39,6 +39,7 @@ export type {
 	ParsedRequestOptions,
 	ParseFn,
 	PartitionConfig,
+	PauseOnRetryAfterConfig,
 	RateLimitConfig,
 	RedirectMode,
 	RequestOptions,

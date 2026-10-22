@@ -82,6 +82,8 @@ The default backoff is 200 ms × 2^attempt, capped at 30 s, with full jitter. Ji
 
 A retry of a `retryOnStatus` response honors its `Retry-After` header, in seconds or as an HTTP date. That delay is capped at `backoff.maxDelayMs` (30 s when `backoff` is a function) and gets no jitter. Without the header, the configured backoff sets the delay.
 
+By default that delay applies only to the ticket that received the header. To hold every request to the host, see [Pausing on Retry-After](#pausing-on-retry-after).
+
 **Example** (a custom backoff function)
 
 ```typescript
@@ -323,7 +325,84 @@ On the client, where it applies to each partition separately, or per partition. 
 
 A partition's `rateLimit` overrides the client's field by field, and `rateLimit: false` turns the client's limit off for that partition.
 
-A `429`'s `Retry-After` doesn't change the bucket. It still delays only the retry of the ticket that received it.
+A `429`'s `Retry-After` doesn't change the bucket unless you also turn on [pausing](#pausing-on-retry-after).
+
+## Pausing on Retry-After
+
+A server that answers `429` with `Retry-After` is telling every caller to wait. Without this option, only the ticket that got the response listens. Everything else keeps sending, and probably collects its own `429`.
+
+`pauseOnRetryAfter` makes the whole partition listen. It's opt-in.
+
+**Example**
+
+```typescript
+import { HttpClient } from "@vereda/http";
+
+const client = HttpClient.create({
+  timeout: { attemptMs: 5_000, totalMs: 30_000 },
+  pauseOnRetryAfter: { maxPauseMs: 10_000 },
+});
+```
+
+After a `429` or `503` with a valid `Retry-After`, nothing new goes to that partition before the time the server named. That covers first attempts and retries. A request that arrives meanwhile waits, and the wait counts toward `queuedMs`.
+
+### What pauses
+
+- `statuses` lists the statuses that pause. The default is `[429, 503]`. A status also has to be in `retry.retryOnStatus`, which both are by default.
+- `maxPauseMs` caps the pause (default 30 s). A longer `Retry-After` is clamped, so a buggy header can't park the partition for hours.
+- The header is seconds or an HTTP date. A missing, zero, past or unparseable value pauses nothing.
+- A later `Retry-After` can extend the pause. It never shortens it.
+
+### Waiting out a pause
+
+A waiting request holds no bulkhead slot or global `concurrency` permit, as with a rate-limit token.
+
+The wait ends early on `cancel()` or at `timeout.totalMs`. Without a [rate limit](#rate-limiting), those are its only limits besides the pause itself.
+
+A retry waits for the longer of its own backoff delay and the pause. If that would run past the deadline, the ticket fails at once with `DeadlineExceededError`.
+
+### With a rate limit
+
+The pause and the token wait add up, and `maxWaitMs` bounds both. A request that would wait longer fails at once with `RateLimitedError`, and nothing is sent.
+
+When a pause starts, the bucket drains. Traffic resumes at `tokensPerSec` after the pause, not in a burst.
+
+**Example**
+
+```typescript
+import { HttpClient } from "@vereda/http";
+
+const client = HttpClient.create({
+  timeout: { attemptMs: 5_000, totalMs: 30_000 },
+  rateLimit: { tokensPerSec: 10, maxWaitMs: 5_000 },
+  pauseOnRetryAfter: { statuses: [429] },
+});
+```
+
+### Where to set it
+
+On the client, or per partition. A partition's setting overrides the client's field by field, and `pauseOnRetryAfter: false` turns it off for that partition.
+
+`partitions()` reports `pausedUntil` (epoch ms) while a pause is active. A paused partition isn't pruned.
+
+### The circuit breaker
+
+The breaker is unchanged: a `429` still counts as a failure. If you want a throttled host to pause without tripping the breaker, exclude `429` with `isFailure`.
+
+```typescript
+import { HttpClient, RetryableStatusError } from "@vereda/http";
+
+const client = HttpClient.create({
+  timeout: { attemptMs: 5_000 },
+  pauseOnRetryAfter: {},
+  circuitBreaker: {
+    enabled: true,
+    isFailure: (error) => !(error instanceof RetryableStatusError && error.statusCode === 429),
+  },
+});
+```
+
+One limit: a first attempt takes its breaker permit before it waits out the pause. A half-open trial request therefore holds its permit through the pause.
 
 ## Circuit breaker
 
