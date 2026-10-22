@@ -99,10 +99,14 @@ threw). The breaker ignores it. (9)
 **Non-failure outcome** — An attempt that reached the host but failed in a way the breaker doesn't
 count (a 404, a `ValidationError`). The breaker records it as a success. (9)
 
-**Opt-out (`false`)** — Setting a partition's `rateLimit` or `retryBudget` to `false` so it ignores the client-wide one. Leaving the key out inherits it instead; spreading config can't express "none", so `false` is the explicit off switch. (3, 8, 9)
+**Opt-out (`false`)** — Setting a partition's `rateLimit`, `retryBudget` or `pauseOnRetryAfter` to `false` so it ignores the client-wide one. Leaving the key out inherits it instead; spreading config can't express "none", so `false` is the explicit off switch. (3, 8, 9)
 
 **Partition** — The unit of isolation, by default the URL's host (hostname plus non-default port).
 Each has its own bulkhead, breaker, retry budget and rate limiter. (3, 8)
+
+**Partition pause** — A partition's "send nothing before this time", set by a `Retry-After` on a
+429 or 503 when `pauseOnRetryAfter` is configured. It lives in `PartitionPause`
+(`src/queue/pause.ts`), only moves forward, and is clamped to `maxPauseMs`. (7, 8)
 
 **Permit (circuit breaker)** — The object `tryAcquire()` returns. Exactly one of `success()`,
 `failure(err)` or `release()` takes effect; callers always `release()` in a `finally`. (9)
@@ -115,7 +119,7 @@ invariants over randomly generated scenarios with fast-check. (11, 12)
 **`queuedMs`** — Total time a ticket spent waiting for tokens, partition slots and global permits,
 across all its attempts. Measured, not sampled. (5)
 
-**`QueueFullError.scope`** — `"partition"` or `"global"`: which queue was full, the partition bulkhead's or the global semaphore's. (3, 8)
+**`QueueFullError.scope`** — `"partition"` or `"global"`: which queue was full, the partition bulkhead's (retries, and first attempts with `limitFirstAttempts`) or the global semaphore's. (3, 8)
 
 **Registry** — A per-type map from partition name to its bulkhead, breaker or budget, created on
 demand and pruned when idle past a 60 s TTL. (8)
@@ -135,7 +139,8 @@ per-second floor. Opt-in. (9)
 **Retry storm** — Many clients retrying a struggling host at once, multiplying its load just when it can least take it. The retry budget limits it. (9)
 
 **`Retry-After`** — A response header giving seconds or a date to wait. Overrides backoff, without
-jitter, capped at `maxDelayMs`. (7)
+jitter, capped at `maxDelayMs`. Seconds or any of the three RFC 9110 date forms. With
+`pauseOnRetryAfter` it also pauses the whole partition. (7, 8)
 
 **`retryOnStatus`** — The statuses that become a retryable `RetryableStatusError`. Default
 `[408, 425, 429, 500, 502, 503, 504]`. (6, 7)
@@ -161,4 +166,4 @@ matches the `Result`. (5, 11)
 `rateLimit`. (8)
 
 **Trip** — The breaker moving from closed to open, on consecutive failures or a rolling-window
-failure rate. (9)
+failure rate. Closing again empties the window (#219). (9)

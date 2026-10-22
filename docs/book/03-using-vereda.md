@@ -229,7 +229,7 @@ Not every setting exists at every level:
 | --- | --- | --- | --- |
 | `retry`, `timeout` | yes | yes | yes |
 | `circuitBreaker` | yes (default for all partitions) | yes (field by field) | no |
-| `retryBudget`, `rateLimit` | yes (default for all partitions) | yes (field by field), or `false` to opt out | no |
+| `retryBudget`, `rateLimit`, `pauseOnRetryAfter` | yes (default for all partitions) | yes (field by field), or `false` to opt out | no |
 | `concurrency`, `maxQueueSize` | yes, but means the **global** cap | yes, means the **per-partition** retry limit | no |
 | `limitFirstAttempts` | no | yes | no |
 | `partition` (which partition to use) | no | n/a | yes |
@@ -241,7 +241,7 @@ how many tries run at once across all hosts. On a partition, `concurrency` (defa
 many *retries* run at once for that host. Same name, two different mechanisms; chapter 8
 explains both.
 
-The `false` in the budget and rate-limit row lets one partition turn off a limit set on the
+The `false` in the budget, rate-limit and pause row lets one partition turn off a limit set on the
 client. Say the client sets a rate limit for every host, but one internal host is cheap to call
 and shouldn't be limited: give that partition `rateLimit: false`. Merging can't express this on
 its own, since spreading `false` into an object adds nothing, so the code checks for `false`

@@ -84,7 +84,7 @@ flowchart LR
   subgraph mech["Mechanisms"]
     retry["queue/retry.ts"]
     exec["queue/executor.ts"]
-    bh["queue/bulkhead.ts<br/>semaphore, rate-limiter"]
+    bh["queue/bulkhead.ts<br/>semaphore, rate-limiter, pause"]
     cb["queue/circuit-breaker.ts"]
     rb["queue/retry-budget.ts"]
     pol["queue/policy.ts"]
@@ -198,6 +198,7 @@ A lookup table. Each row names the file and the function to open first.
 | Per-host queueing | `src/queue/bulkhead.ts` — `Bulkhead` |
 | The global concurrency cap | `src/queue/semaphore.ts` — `Semaphore` |
 | Rate limiting | `src/queue/rate-limiter.ts` — `TokenBucket`, used by `Bulkhead.takeToken` |
+| Pausing a partition after `Retry-After` | `src/queue/pause.ts` — `PartitionPause`, owned by `Bulkhead` |
 | Circuit breaking | `src/queue/circuit-breaker.ts` — `CircuitBreaker` |
 | Retry budget | `src/queue/retry-budget.ts` — `RetryBudget` |
 | Error classes | `src/core/errors.ts` |
