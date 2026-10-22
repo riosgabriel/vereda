@@ -34,11 +34,11 @@
   <p class="caption" id="caption" aria-live="polite"></p>
 
   <div class="legend">
-    <span><i class="dot" style="background:var(--first)"></i>Request</span>
+    <span><i class="mark" data-state="first"></i>Request</span>
     <span><i class="dot ring"></i>Half-open trial request</span>
-    <span><i class="dot" style="background:var(--ok)"></i>Answered</span>
-    <span><i class="dot" style="background:var(--fail)"></i>Timed out after 1 s</span>
-    <span><i class="dot" style="background:var(--refused)"></i>Rejected by the open breaker (fails at once)</span>
+    <span><i class="mark" data-state="ok"></i>Answered</span>
+    <span><i class="mark" data-state="fail"></i>Timed out after 1 s</span>
+    <span><i class="mark" data-state="refused"></i>Rejected by the open breaker (fails at once)</span>
   </div>
 
   <div class="lanes">
@@ -153,7 +153,7 @@
 <script>
 	// @ts-nocheck: ported from the standalone demo pages, plain JavaScript like engine/*.js
 	// and models/*.js (excluded in tsconfig.json). Their behavior is pinned by test/demos/.
-import { dot, legend, mix, playedLine, roundRect, sizeCanvas, timeAxes, valueAt } from "../../../demos/engine/draw.js";
+import { dot, legend, mix, playedLine, roundRect, sizeCanvas, stateMark, timeAxes, valueAt } from "../../../demos/engine/draw.js";
 import { mountDemo } from "../../../demos/engine/player.js";
 import { isBad, MIN_REQ, PCT, simulate, TIMEOUT, WINDOW_SEC } from "../../../demos/models/circuit-breaker.js";
 
@@ -254,16 +254,16 @@ function drawLane(canvas, lane, simT, col, withBreaker) {
       const half = BOUNCE / 2;
       const go = (simT - (a.sent - half)) / half;
       if (go < 0) continue;
-      if (go < 1) dot(ctx, startX + (gateX - 22 - startX) * go, y, 3.4, col.first);
+      if (go < 1) stateMark(ctx, "first", startX + (gateX - 22 - startX) * go, y, 3.4, col);
       else {
         const back = (simT - a.sent) / half;
-        if (back < 1) dot(ctx, gateX - 22 - (gateX - 22 - startX) * back, y, 3.4, col.refused, 1 - back * 0.6);
+        if (back < 1) stateMark(ctx, "refused", gateX - 22 - (gateX - 22 - startX) * back, y, 3.4, col, 1 - back * 0.6);
       }
       continue;
     }
     let x;
     let yy = y;
-    let color = col.first;
+    let state = "first";
     let alpha = 1;
     if (simT < a.sent) x = startX + (hostIn - startX) * (1 - (a.sent - simT) / G);
     else if (simT < a.end) {
@@ -275,7 +275,7 @@ function drawLane(canvas, lane, simT, col, withBreaker) {
       const back = (simT - a.end) / G;
       if (back >= 1) continue;
       x = hostIn - (hostIn - startX) * back;
-      color = a.outcome === "ok" ? col.ok : col.fail;
+      state = a.outcome === "ok" ? "ok" : "fail";
       alpha = 1 - back * 0.5;
     }
     if (a.trial) {
@@ -286,7 +286,7 @@ function drawLane(canvas, lane, simT, col, withBreaker) {
       ctx.stroke();
       ctx.lineWidth = 1;
     }
-    dot(ctx, x, yy, 3.4, color, alpha);
+    stateMark(ctx, state, x, yy, 3.4, col, alpha);
   }
   ctx.fillStyle = col.muted;
   ctx.font = col.label;
