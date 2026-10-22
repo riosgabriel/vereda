@@ -84,10 +84,14 @@ function respond(behavior: Behavior, signal: AbortSignal | null | undefined): Re
 	}
 }
 
-function scriptedFetch(scripts: Map<string, { behaviors: Behavior[]; delayMs: number }>): typeof fetch {
+function scriptedFetch(
+	scripts: Map<string, { behaviors: Behavior[]; delayMs: number }>,
+	onCall: (url: string) => void = () => {},
+): typeof fetch {
 	const attempts = new Map<string, number>();
 	return async (input, init) => {
 		const url = String(input);
+		onCall(url);
 		const script = scripts.get(url);
 		if (!script) throw new Error(`unscripted URL ${url}`);
 		const n = attempts.get(url) ?? 0;
@@ -207,8 +211,19 @@ async function runScenario(s: Scenario): Promise<void> {
 		},
 	};
 
+	// The pause feature's own invariant: no fetch to a partition starts while
+	// it is paused. The snapshot's `pausedUntil` is only present while the pause
+	// is active.
+	const sentDuringPause: string[] = [];
+	const onFetch = (url: string) => {
+		const until = client.partitions().find((p) => p.name === "svc")?.pausedUntil;
+		if (until !== undefined && Date.now() < until) {
+			sentDuringPause.push(`${url} at ${Date.now()}, partition svc paused until ${until}`);
+		}
+	};
+
 	const client = HttpClient.create({
-		fetch: scriptedFetch(scripts),
+		fetch: scriptedFetch(scripts, onFetch),
 		metrics: sink,
 		retry: { maxRetries: s.maxRetries, backoff: { baseDelayMs: 1, maxDelayMs: 2, jitter: false } },
 		timeout: { attemptMs: s.attemptMs ?? Number.POSITIVE_INFINITY, totalMs: s.totalMs },
@@ -285,6 +300,9 @@ async function runScenario(s: Scenario): Promise<void> {
 
 	// 3. Nothing left running or queued.
 	for (const p of client.partitions()) expect(p.running + p.queued, `partition ${p.name}`).toBe(0);
+
+	// 3b. No attempt was sent into a pause.
+	expect(sentDuringPause).toEqual([]);
 
 	// 4. The in_flight gauge returns to 0.
 	expect(gauges.at(-1)).toBe(0);
