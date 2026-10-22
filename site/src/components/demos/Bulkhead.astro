@@ -22,8 +22,8 @@
   <p class="caption" id="caption" aria-live="polite"></p>
 
   <div class="legend">
-    <span><i class="dot" style="background:var(--first)"></i>payments request</span>
-    <span><i class="dot" style="background:var(--retry)"></i>search request</span>
+    <span><i class="mark" data-state="first"></i>payments request</span>
+    <span><i class="mark" data-state="retry"></i>search request</span>
     <span><i class="dot ring" style="border-color:var(--fail)"></i>Rejected with <code>QueueFullError</code></span>
   </div>
 
@@ -54,7 +54,7 @@
     <div class="panel chart">
       <h3>How long each payments request waited to start</h3>
       <canvas id="chartWait" aria-label="Scatter chart of payments wait time per request"></canvas>
-      <p>Each point is one payments request, and it is placed where the request started. A red ring on the top line marks a request rejected by a full queue; the dot inside shows its lane. Waiting here means waiting for a global permit.</p>
+      <p>Each point is one payments request, and it is placed where the request started. A red ring on the top line marks a request rejected by a full queue; the mark inside shows its lane: a square for global only, a circle for the search limit. Waiting here means waiting for a global permit.</p>
     </div>
     <div class="panel chart">
       <h3>Global permits held by search</h3>
@@ -116,14 +116,15 @@
 <script>
 	// @ts-nocheck: ported from the standalone demo pages, plain JavaScript like engine/*.js
 	// and models/*.js (excluded in tsconfig.json). Their behavior is pinned by test/demos/.
-import { dot, legend, playedLine, roundRect, sizeCanvas, timeAxes, valueAt } from "../../../demos/engine/draw.js";
+import { LANE_SHAPES, legend, mark, playedLine, roundRect, SHAPES, sizeCanvas, stateMark, timeAxes, valueAt } from "../../../demos/engine/draw.js";
 import { mountDemo } from "../../../demos/engine/player.js";
 
 import { GQ, PQ, simulate } from "../../../demos/models/bulkhead.js";
 
 // ---- Drawing --------------------------------------------------------------
 const $ = (id) => document.getElementById(id);
-const partColor = (a, col) => (a.partition === "payments" ? col.first : col.retry);
+// Partitions borrow the first/retry tokens, so they get those shapes too (engine/draw.js SHAPES).
+const partState = (a) => (a.partition === "payments" ? "first" : "retry");
 
 // What each request is doing at time s.
 // pq: waiting for a search slot, gq: waiting for a global permit, run: holding a permit.
@@ -158,8 +159,10 @@ function boxes(ctx, x0, y, n, size, gap, items, col) {
     const it = items[i];
     roundRect(ctx, x, y, size, size, 3);
     if (it) {
-      ctx.fillStyle = partColor(it, col);
+      ctx.fillStyle = col[partState(it)];
       ctx.fill();
+      // The partition's shape, cut out of the box, so a full box doesn't tell its partition by colour alone.
+      mark(ctx, SHAPES[partState(it)], x + size / 2, y + size / 2, size * 0.2, col.surface);
     } else {
       ctx.strokeStyle = col.line;
       ctx.lineWidth = 1;
@@ -217,7 +220,7 @@ function drawLane(canvas, lane, simT, col, bulk) {
   for (const a of sn.flash) {
     const age = (simT - a.end) / 0.8;
     const x = pad + 110 + (((a.request * 37) % 100) / 100) * Math.max(10, inner - 124);
-    dot(ctx, x, h - 12, 3.4, partColor(a, col), 1 - age * 0.7);
+    stateMark(ctx, partState(a), x, h - 12, 3.4, col, 1 - age * 0.7);
     ctx.globalAlpha = 1 - age * 0.7;
     ctx.strokeStyle = col.fail;
     ctx.lineWidth = 2;
@@ -252,14 +255,14 @@ function drawWait(trace, simT, col) {
     phases: trace.phases,
     col,
   });
-  const pts = (attempts, color, dy) => {
+  const pts = (attempts, color, shape, dy) => {
     for (const a of attempts) {
       if (a.partition !== "payments") continue;
       const rej = a.outcome === "rejected";
       const x = rej ? a.end : a.start;
       if (x > simT) continue;
       const alpha = 0.9;
-      dot(ctx, X(x), Y(rej ? waitMax : a.start - a.sent) + dy, rej ? 2 : 2.3, color, alpha);
+      mark(ctx, shape, X(x), Y(rej ? waitMax : a.start - a.sent) + dy, rej ? 2.2 : 2.5, color, alpha);
       if (rej) {
         // A red ring marks a rejection, as in the page legend and the lanes.
         ctx.globalAlpha = alpha;
@@ -273,9 +276,9 @@ function drawWait(trace, simT, col) {
       }
     }
   };
-  pts(trace.lanes.without.attempts, col.fail, 0);
-  pts(trace.lanes.with.attempts, col.first, 3);
-  legend(ctx, pad[3] + 6, 12, [["global only", col.fail], ["with search limit", col.first]], col);
+  pts(trace.lanes.without.attempts, col.fail, LANE_SHAPES.without, 0);
+  pts(trace.lanes.with.attempts, col.first, LANE_SHAPES.with, 3);
+  legend(ctx, pad[3] + 6, 12, [["global only", col.fail, LANE_SHAPES.without], ["with search limit", col.first, LANE_SHAPES.with]], col);
 }
 
 function drawSlots(trace, simT, col) {
@@ -291,9 +294,9 @@ function drawSlots(trace, simT, col) {
   ctx.lineTo(w - pad[1], Y(yMax));
   ctx.stroke();
   ctx.setLineDash([]);
-  playedLine(ctx, trace.lanes.without.series.permitsHeld, X, Y, col.fail, simT);
-  playedLine(ctx, trace.lanes.with.series.permitsHeld, X, Y, col.first, simT);
-  legend(ctx, pad[3] + 6, 12, [["global only", col.fail], ["with search limit", col.first]], col);
+  playedLine(ctx, trace.lanes.without.series.permitsHeld, X, Y, col.fail, simT, LANE_SHAPES.without);
+  playedLine(ctx, trace.lanes.with.series.permitsHeld, X, Y, col.first, simT, LANE_SHAPES.with);
+  legend(ctx, pad[3] + 6, 12, [["global only", col.fail, LANE_SHAPES.without], ["with search limit", col.first, LANE_SHAPES.with]], col);
 }
 
 function setStat(id, text, cls) {

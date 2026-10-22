@@ -7,7 +7,7 @@
 // Expected elements, by id: play, replay, speed, guided, clock, timeline,
 // caption. Missing ones are skipped.
 
-import { readColors } from "./draw.js";
+import { readColors, shapeLegends } from "./draw.js";
 
 const SPEEDS = [0.25, 0.5, 1, 2, 4];
 const SLOW_SPAN = 1.5; // sim seconds of slow motion after a phase starts or a moment happens
@@ -213,6 +213,7 @@ export function mountDemo({ build, render, options, speed = 1, settle = 0 }) {
 		requestAnimationFrame(frame);
 	}
 
+	shapeLegends();
 	drawTimeline();
 	if (reduceMotion) {
 		// Complete at rest: show the whole run, no motion.

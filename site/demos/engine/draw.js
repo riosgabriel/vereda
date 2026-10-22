@@ -60,6 +60,71 @@ export function dot(ctx, x, y, r, color, alpha = 1) {
 	ctx.globalAlpha = 1;
 }
 
+/**
+ * Shape per request state, keyed by colour token, so a dot never tells its state by colour
+ * alone (WCAG 1.4.1). The page legends read it too (see shapeLegends), so the two can't drift.
+ * Shapes: circle, ring, square, diamond, triangle, cross.
+ */
+// No "ring": the circuit breaker's trial halo and the bulkhead's rejection ring already mean something.
+export const SHAPES = {
+	first: "circle",
+	retry: "diamond",
+	ok: "square",
+	fail: "cross",
+	refused: "triangle",
+};
+
+/** A request dot drawn as `shape`; `r` is the radius a circle of the same weight would have. */
+export function mark(ctx, shape, x, y, r, color, alpha = 1) {
+	ctx.globalAlpha = alpha;
+	ctx.fillStyle = color;
+	ctx.strokeStyle = color;
+	ctx.beginPath();
+	if (shape === "ring") {
+		ctx.lineWidth = Math.max(1.5, r * 0.5);
+		ctx.arc(x, y, r - ctx.lineWidth / 2, 0, Math.PI * 2);
+		ctx.stroke();
+	} else if (shape === "cross") {
+		const d = r * 0.95;
+		ctx.lineWidth = Math.max(1.5, r * 0.55);
+		ctx.moveTo(x - d, y - d);
+		ctx.lineTo(x + d, y + d);
+		ctx.moveTo(x + d, y - d);
+		ctx.lineTo(x - d, y + d);
+		ctx.stroke();
+	} else {
+		if (shape === "square") ctx.rect(x - r * 0.9, y - r * 0.9, r * 1.8, r * 1.8);
+		else if (shape === "diamond") {
+			const d = r * 1.25;
+			ctx.moveTo(x, y - d);
+			ctx.lineTo(x + d, y);
+			ctx.lineTo(x, y + d);
+			ctx.lineTo(x - d, y);
+		} else if (shape === "triangle") {
+			const d = r * 1.3;
+			ctx.moveTo(x, y - d);
+			ctx.lineTo(x + d * 0.95, y + d * 0.6);
+			ctx.lineTo(x - d * 0.95, y + d * 0.6);
+		} else ctx.arc(x, y, r, 0, Math.PI * 2);
+		ctx.fill();
+	}
+	ctx.lineWidth = 1;
+	ctx.globalAlpha = 1;
+}
+
+/** A request dot in `state`'s colour and shape. */
+export function stateMark(ctx, state, x, y, r, col, alpha = 1) {
+	mark(ctx, SHAPES[state] ?? "circle", x, y, r, col[state], alpha);
+}
+
+/** Give every legend swatch with a `data-state` the shape its state has on the canvas. */
+export function shapeLegends(root = document) {
+	for (const el of root.querySelectorAll(".mark[data-state]")) {
+		el.dataset.shape = SHAPES[el.dataset.state] ?? "circle";
+		el.style.setProperty("--c", `var(--${el.dataset.state})`);
+	}
+}
+
 /** Value of a `[t, value][]` series at time t (step function), or `fallback` before it starts. */
 export function valueAt(series, t, fallback = 0) {
 	let v = fallback;
@@ -98,9 +163,15 @@ export function timeAxes(ctx, { w, h, pad, end, yMax, ticks, fmt = String, phase
 	return { X, Y };
 }
 
+/**
+ * Shape of each lane's marks in the charts: the playhead of its line, its points in a scatter,
+ * and its legend swatch. The two lanes' colours alone don't tell them apart (WCAG 1.4.1).
+ */
+export const LANE_SHAPES = { without: "square", with: "circle" };
+
 /** A line drawn up to simT, with a dot at the playhead. Nothing after simT: a chart never shows
  *  where the run is going before it gets there. */
-export function playedLine(ctx, pts, X, Y, color, simT) {
+export function playedLine(ctx, pts, X, Y, color, simT, shape = "circle") {
 	const trace = (upTo) => {
 		ctx.beginPath();
 		let last = null;
@@ -119,13 +190,18 @@ export function playedLine(ctx, pts, X, Y, color, simT) {
 	const end = trace(simT);
 	ctx.stroke();
 	ctx.lineWidth = 1;
-	if (end) dot(ctx, end[0], end[1], 3.5, color);
+	if (end) mark(ctx, shape, end[0], end[1], 4, color);
 }
 
+/** Coloured labels in a row; an item's optional shape is drawn as a swatch before its text. */
 export function legend(ctx, x, y, items, col) {
 	ctx.textAlign = "left";
 	ctx.font = col.strong;
-	for (const [text, color] of items) {
+	for (const [text, color, shape] of items) {
+		if (shape) {
+			mark(ctx, shape, x + 4, y - 4, 4, color);
+			x += 13;
+		}
 		ctx.fillStyle = color;
 		ctx.fillText(text, x, y);
 		x += ctx.measureText(text).width + 16;
