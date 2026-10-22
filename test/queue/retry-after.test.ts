@@ -174,12 +174,24 @@ describe("parseRetryAfter strictness", () => {
 		expect(parseRetryAfter(" 3 ")).toBe(3000);
 	});
 
-	it("reads an IMF-fixdate", () => {
+	// RFC 9110 §5.6.7: a recipient must accept all three HTTP-date forms.
+	it.each([
+		["IMF-fixdate", "Thu, 01 Jan 1970 00:00:07 GMT"],
+		["RFC 850", "Thursday, 01-Jan-70 00:00:07 GMT"],
+		["asctime, read as UTC", "Thu Jan  1 00:00:07 1970"],
+	])("reads an %s", (_form, value) => {
 		vi.useFakeTimers({ now: 0 });
 		try {
-			expect(parseRetryAfter("Thu, 01 Jan 1970 00:00:07 GMT")).toBe(7000);
+			expect(parseRetryAfter(value)).toBe(7000);
 		} finally {
 			vi.useRealTimers();
 		}
 	});
+
+	it.each(["Thu, 01 Jan 1970 00:00:07 UTC", "Thu, 1 Jan 1970 00:00:07 GMT", "Thursday, 01-Jan-1970 00:00:07 GMT"])(
+		"rejects the near-miss date %j",
+		(value) => {
+			expect(parseRetryAfter(value)).toBeUndefined();
+		},
+	);
 });
