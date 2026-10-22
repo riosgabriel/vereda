@@ -1,0 +1,20 @@
+---
+import SocialIcons from "@astrojs/starlight/components/SocialIcons.astro";
+
+// Starlight puts the theme picker here on small screens. The header carries the theme button at
+// every width (Header.astro), so the menu keeps only the GitHub link.
+---
+
+<div class="social-icons">
+	<SocialIcons />
+</div>
+
+<style>
+	.social-icons {
+		display: flex;
+		gap: 1rem;
+		align-items: center;
+		padding-block: 1rem;
+		border-top: 1px solid var(--sl-color-gray-6);
+	}
+</style>

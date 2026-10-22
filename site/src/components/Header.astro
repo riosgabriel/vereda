@@ -1,0 +1,28 @@
+---
+import Default from "@astrojs/starlight/components/Header.astro";
+import ThemeSelect from "./ThemeSelect.astro";
+
+// Below 50em Starlight hides the header's right group (GitHub link, theme) and moves it into the
+// sidebar's menu, which the landing page doesn't have. The theme button stays in the header at
+// every width instead, so it is in the same place on every page.
+---
+
+<div class="v-header">
+	<Default />
+	<div class="md:sl-hidden print:hidden">
+		<ThemeSelect />
+	</div>
+</div>
+
+<style>
+	.v-header {
+		display: flex;
+		align-items: center;
+		gap: var(--sl-nav-gap);
+		height: 100%;
+	}
+	.v-header > :global(.header) {
+		flex: 1;
+		min-width: 0;
+	}
+</style>
