@@ -24,11 +24,11 @@
   <p class="caption" id="caption" aria-live="polite"></p>
 
   <div class="legend">
-    <span><i class="dot" style="background:var(--first)"></i>First attempt</span>
-    <span><i class="dot" style="background:var(--retry)"></i>Retry</span>
-    <span><i class="dot" style="background:var(--ok)"></i>Served</span>
-    <span><i class="dot" style="background:var(--refused)"></i>Failed: host down</span>
-    <span><i class="dot" style="background:var(--fail)"></i>Failed: over capacity</span>
+    <span><i class="mark" data-state="first"></i>First attempt</span>
+    <span><i class="mark" data-state="retry"></i>Retry</span>
+    <span><i class="mark" data-state="ok"></i>Served</span>
+    <span><i class="mark" data-state="refused"></i>Failed: host down</span>
+    <span><i class="mark" data-state="fail"></i>Failed: over capacity</span>
   </div>
 
   <div class="lanes">
@@ -118,7 +118,7 @@
 <script>
 	// @ts-nocheck: ported from the standalone demo pages, plain JavaScript like engine/*.js
 	// and models/*.js (excluded in tsconfig.json). Their behavior is pinned by test/demos/.
-import { dot, legend, mix, playedLine, roundRect, sizeCanvas, timeAxes } from "../../../demos/engine/draw.js";
+import { legend, mix, playedLine, roundRect, sizeCanvas, stateMark, timeAxes } from "../../../demos/engine/draw.js";
 import { mountDemo } from "../../../demos/engine/player.js";
 import { STEP, simulate } from "../../../demos/models/backoff-jitter.js";
 
@@ -236,21 +236,21 @@ function drawLane(canvas, lane, simT, col, info) {
     let r = rad;
     if (simT < a.sent) {
       x = startX + (endX - startX) * ((simT - leave[i]) / Math.max(1e-6, a.sent - leave[i]));
-      c = a.n === 0 ? col.first : col.retry;
+      c = a.n === 0 ? "first" : "retry";
     } else {
       const u = (simT - a.sent) / R;
       alpha = 1 - u;
       if (a.outcome === "ok") {
         x = endX + 6;
-        c = col.ok;
+        c = "ok";
         r = rad + 4 * u;
       } else {
         x = endX - 40 * u;
         y += 10 * u * u;
-        c = a.reason === "host_down" ? col.refused : col.fail;
+        c = a.reason === "host_down" ? "refused" : "fail";
       }
     }
-    dot(ctx, x, y, r, c, alpha);
+    stateMark(ctx, c, x, y, r, col, alpha);
   }
 }
 

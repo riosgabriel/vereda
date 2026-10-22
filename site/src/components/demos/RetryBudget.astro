@@ -21,11 +21,11 @@
   <p class="caption" id="caption" aria-live="polite"></p>
 
   <div class="legend">
-    <span><i class="dot" style="background:var(--first)"></i>First attempt</span>
-    <span><i class="dot" style="background:var(--retry)"></i>Retry</span>
-    <span><i class="dot" style="background:var(--ok)"></i>Served</span>
-    <span><i class="dot" style="background:var(--fail)"></i>Timed out / failed</span>
-    <span><i class="dot" style="background:var(--refused)"></i>Retry refused by budget (fails fast)</span>
+    <span><i class="mark" data-state="first"></i>First attempt</span>
+    <span><i class="mark" data-state="retry"></i>Retry</span>
+    <span><i class="mark" data-state="ok"></i>Served</span>
+    <span><i class="mark" data-state="fail"></i>Timed out / failed</span>
+    <span><i class="mark" data-state="refused"></i>Retry refused by budget (fails fast)</span>
   </div>
 
   <div class="lanes">
@@ -111,7 +111,7 @@ retry allowed only while  retriesInWindow &lt; allowed</div>
 <script>
 	// @ts-nocheck: ported from the standalone demo pages, plain JavaScript like engine/*.js
 	// and models/*.js (excluded in tsconfig.json). Their behavior is pinned by test/demos/.
-import { dot, legend, mix, playedLine, roundRect, sizeCanvas, timeAxes, valueAt } from "../../../demos/engine/draw.js";
+import { legend, mix, playedLine, roundRect, sizeCanvas, stateMark, timeAxes, valueAt } from "../../../demos/engine/draw.js";
 import { mountDemo } from "../../../demos/engine/player.js";
 import { DT, END, RATE, simulate } from "../../../demos/models/retry-budget.js";
 
@@ -242,7 +242,7 @@ function drawLane(canvas, lane, simT, col, laneId, withBudget) {
         let x;
         let yy = y;
         let r = 3.2;
-        let color = kind === 0 ? col.first : col.retry;
+        let state = kind === 0 ? "first" : "retry";
         let alpha = 1;
         if (kind === 2) {
           const go = age / (GO / 2);
@@ -252,7 +252,7 @@ function drawLane(canvas, lane, simT, col, laneId, withBudget) {
             if (d >= 1) continue;
             x = gateX + 6 * d;
             yy = y + 80 * d * d;
-            color = col.refused;
+            state = "refused";
             alpha = 1 - d * 0.8;
           }
         } else if (age < GO) {
@@ -264,18 +264,18 @@ function drawLane(canvas, lane, simT, col, laneId, withBudget) {
             if (d >= 1) continue;
             x = endX - 40 * d;
             yy = y + 14 * d * d;
-            color = col.fail;
+            state = "fail";
             alpha = 1 - d;
           } else {
             const d = (age - GO) / OK_T;
             if (d >= 1) continue;
             x = endX + 6;
             r = 3 + 6 * d;
-            color = col.ok;
+            state = "ok";
             alpha = 1 - d;
           }
         }
-        dot(ctx, x, yy, r, color, alpha);
+        stateMark(ctx, state, x, yy, r, col, alpha);
       }
     }
   }

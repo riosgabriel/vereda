@@ -25,7 +25,7 @@
     <span><i class="bar" style="background:var(--first)"></i>First attempt</span>
     <span><i class="bar" style="background:var(--retry)"></i>Retry</span>
     <span><i class="bar dash"></i>Backoff wait</span>
-    <span><i class="dot" style="background:var(--fail)"></i>Attempt ends: timeout or abort</span>
+    <span><i class="mark" data-state="fail"></i>Attempt ends: timeout or abort</span>
     <span><i class="bar host"></i>Host still working on it</span>
     <span><i class="bar deadline"></i>Total deadline</span>
   </div>
@@ -134,7 +134,7 @@ client.get("/slow", &#123;
 <script>
 	// @ts-nocheck: ported from the standalone demo pages, plain JavaScript like engine/*.js
 	// and models/*.js (excluded in tsconfig.json). Their behavior is pinned by test/demos/.
-import { mix, sizeCanvas } from "../../../demos/engine/draw.js";
+import { mix, sizeCanvas, stateMark } from "../../../demos/engine/draw.js";
 import { mountDemo } from "../../../demos/engine/player.js";
 import { INF, runModel, SWEEP_MAX, simulate } from "../../../demos/models/timeouts.js";
 
@@ -211,10 +211,8 @@ function drawLane(canvas, lane, simT, col, { duration, rows, deadline }) {
     ctx.fillStyle = a.n === 0 ? col.first : col.retry;
     ctx.fillRect(x0, y, Math.max(1, X(endNow) - x0), barH);
     if (!hangs && simT >= a.end) {
+      stateMark(ctx, "fail", X(a.end), y + barH / 2, 5, col);
       ctx.fillStyle = col.fail;
-      ctx.beginPath();
-      ctx.arc(X(a.end), y + barH / 2, 5, 0, Math.PI * 2);
-      ctx.fill();
       ctx.font = col.strong;
       const label = a.outcome === "aborted" ? "aborted at deadline" : "timeout";
       const lw = ctx.measureText(label).width;
