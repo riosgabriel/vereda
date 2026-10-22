@@ -161,3 +161,37 @@ describe("Retry-After honors (fake timers)", () => {
 		expect(result.success).toBe(true);
 	});
 });
+
+describe("parseRetryAfter strictness", () => {
+	it.each(["1.5", "-5", "+5", "1e3", "0x10", "5 seconds", "Nov 6 1994"])(
+		"rejects %j rather than reading it as a date",
+		(value) => {
+			expect(parseRetryAfter(value)).toBeUndefined();
+		},
+	);
+
+	it("trims delta-seconds", () => {
+		expect(parseRetryAfter(" 3 ")).toBe(3000);
+	});
+
+	// RFC 9110 §5.6.7: a recipient must accept all three HTTP-date forms.
+	it.each([
+		["IMF-fixdate", "Thu, 01 Jan 1970 00:00:07 GMT"],
+		["RFC 850", "Thursday, 01-Jan-70 00:00:07 GMT"],
+		["asctime, read as UTC", "Thu Jan  1 00:00:07 1970"],
+	])("reads an %s", (_form, value) => {
+		vi.useFakeTimers({ now: 0 });
+		try {
+			expect(parseRetryAfter(value)).toBe(7000);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it.each(["Thu, 01 Jan 1970 00:00:07 UTC", "Thu, 1 Jan 1970 00:00:07 GMT", "Thursday, 01-Jan-1970 00:00:07 GMT"])(
+		"rejects the near-miss date %j",
+		(value) => {
+			expect(parseRetryAfter(value)).toBeUndefined();
+		},
+	);
+});

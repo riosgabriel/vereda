@@ -88,7 +88,15 @@ describe("runRetryLoop", () => {
 			return Promise.resolve({ kind: "error", error: new NetworkError("still failing") });
 		});
 		run.mockImplementation(() => Promise.reject(new QueueFullError("global", 0, 0)));
-		const bulkhead = { name: "test", run, takeToken: () => undefined } as unknown as Bulkhead;
+		const bulkhead = {
+			name: "test",
+			run,
+			takeToken: () => undefined,
+			guard: (task: unknown) => task,
+			refusalAfter: () => undefined,
+			notePushback: () => {},
+			pauseRemainingMs: 0,
+		} as unknown as Bulkhead;
 
 		await expect(
 			runRetryLoop({
@@ -132,6 +140,10 @@ describe("runRetryLoop", () => {
 		const bulkhead = {
 			name: "test",
 			takeToken: () => undefined,
+			guard: (task: unknown) => task,
+			refusalAfter: () => undefined,
+			notePushback: () => {},
+			pauseRemainingMs: 0,
 			run: vi.fn(() => {
 				// Simulate the ticket being cancelled elsewhere while this call
 				// was still in flight, settling it before the rejection below is

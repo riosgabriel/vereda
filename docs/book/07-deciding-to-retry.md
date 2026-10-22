@@ -225,7 +225,7 @@ since a function has no ceiling to read.
 
 The header is read in `src/queue/executor.ts` by `parseRetryAfter`. It accepts whole seconds
 (`"2"` becomes 2,000 ms) or an HTTP date (the time from now until then, never below zero).
-Anything else is ignored, and backoff applies.
+Anything else, such as `"1.5"` or `"-5"`, is ignored, and backoff applies.
 
 If our fake server's 503 carried `Retry-After: 1`, the second wait would be exactly 1,000 ms on
 every run, instead of a random draw. That's chapter 5's first exercise.
@@ -233,8 +233,11 @@ every run, instead of a random draw. That's chapter 5's first exercise.
 `Retry-After` changes only the wait of the ticket that received it. Other requests to the same
 host carry on with their own schedules.
 
-> **Aside: pausing a whole host.** Issue #191 proposes that a 429 with `Retry-After` pause the
-> whole partition, which would be closer to what the server asked for.
+> **Aside: pausing a whole host.** With the opt-in `pauseOnRetryAfter` option (issue #191), a
+> 429 or 503 with `Retry-After` pauses the whole partition, which is closer to what the server
+> asked for. `Bulkhead.guard` records it as the attempt settles, `Bulkhead.takeToken` waits it out
+> ahead of every attempt, and a queued attempt that reaches the front during the pause is bounced
+> back to `takeToken`.
 
 ## What the caller sees when retrying stops
 

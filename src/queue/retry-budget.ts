@@ -1,5 +1,5 @@
 import { DEFAULT_MIN_RETRIES_PER_SEC, type PartitionLookup, type RetryBudgetConfig } from "../core/types.ts";
-import { DEFAULT_PARTITION_TTL_MS } from "./bulkhead.ts";
+import { DEFAULT_PARTITION_TTL_MS, mergeOptional } from "./bulkhead.ts";
 
 // ---------------------------------------------------------------------------
 // Sliding window — fixed-size time buckets counting requests and retries
@@ -156,13 +156,7 @@ export class RetryBudgetRegistry {
 		let entry = this.budgets.get(partitionName);
 		if (!entry) {
 			const partitionConfig = this.partitionConfig(partitionName)?.retryBudget;
-			// `false` opts the partition out; spreading it would keep the client's budget.
-			const merged =
-				partitionConfig === false
-					? undefined
-					: this.globalConfig || partitionConfig
-						? ({ ...this.globalConfig, ...partitionConfig } as RetryBudgetConfig)
-						: undefined;
+			const merged = mergeOptional(this.globalConfig, partitionConfig);
 			entry = [new RetryBudget(merged), Date.now()];
 			this.budgets.set(partitionName, entry);
 		}

@@ -1,4 +1,4 @@
-import { BulkheadRegistry, type BulkheadSnapshot, DEFAULT_PARTITION_TTL_MS } from "../queue/bulkhead.ts";
+import { BulkheadRegistry, type BulkheadSnapshot, DEFAULT_PARTITION_TTL_MS, PAUSED } from "../queue/bulkhead.ts";
 import { type CircuitBreaker, CircuitBreakerRegistry, type CircuitSnapshot } from "../queue/circuit-breaker.ts";
 import { executeRequest, type MiddlewareFn } from "../queue/executor.ts";
 import { type RetryPolicyContext, shouldRetry } from "../queue/policy.ts";
@@ -87,7 +87,7 @@ export class HttpClient {
 			config.maxQueueSize ?? DEFAULT_GLOBAL_QUEUE_SIZE,
 		);
 		this.bulkheads = new BulkheadRegistry(
-			{ rateLimit: config.rateLimit },
+			{ rateLimit: config.rateLimit, pauseOnRetryAfter: config.pauseOnRetryAfter },
 			this.partitionConfig,
 			DEFAULT_PARTITION_TTL_MS,
 			semaphore,
@@ -426,6 +426,29 @@ export class HttpClient {
 			return;
 		}
 
+		// A pause that runs past the whole-ticket deadline can only end in
+		// DeadlineExceededError, so fail now rather than hold the breaker permit
+		// until the deadline. After tryAcquire, so an open breaker still reports
+		// CircuitOpenError. Mirrors the retry loop's check.
+		if (
+			isBoundedMs(timeoutConfig.totalMs) &&
+			bulkhead.pauseRemainingMs >= timeoutConfig.totalMs - (Date.now() - startTime)
+		) {
+			permit.release();
+			const error = new DeadlineExceededError(displayUrl, timeoutConfig.totalMs);
+			this.emit("failure", {
+				ticketId: ticket.id,
+				url: displayUrl,
+				partition: partitionName,
+				attempts: 1,
+				durationMs: Date.now() - startTime,
+				queuedMs: 0,
+				error,
+			});
+			controller.markDone({ success: false, error } as never);
+			cleanup();
+			return;
+		}
 		// Only first attempts the breaker admitted earn retry budget: a rejected
 		// one never reached the host, so it adds no load to spread retries over.
 		retryBudget.recordRequest();
@@ -476,12 +499,15 @@ export class HttpClient {
 				throw err;
 			};
 			// Takes the partition slot (when limitFirstAttempts) and the global
-			// permit, then runs the attempt. queuedMs adds up every wait.
-			const dispatch = (): Promise<Awaited<ReturnType<typeof execute>>> => {
+			// permit, then runs the attempt. queuedMs adds up every wait. The
+			// guarded task resolves PAUSED, sending nothing, if a pause began while
+			// the attempt was queued.
+			const guarded = bulkhead.guard(execute);
+			const dispatch = (): Promise<Awaited<ReturnType<typeof execute>> | typeof PAUSED> => {
 				if (usePartitionBulkhead) {
 					return bulkhead
 						.run(
-							execute,
+							guarded,
 							semaphore,
 							(ms) => {
 								queuedMs += ms;
@@ -495,7 +521,7 @@ export class HttpClient {
 					return semaphore.acquire(ticket.signal).then(
 						(release) => {
 							queuedMs += Date.now() - enqueuedAt;
-							return execute().finally(release);
+							return guarded().finally(release);
 						},
 						(err: unknown) => {
 							queuedMs += Date.now() - enqueuedAt;
@@ -503,44 +529,50 @@ export class HttpClient {
 						},
 					);
 				}
-				return execute();
+				return guarded();
 			};
 
 			// The rate-limit token comes before any slot or permit, so an attempt
 			// waiting for its token never holds concurrency another one could use.
-			let tokenWait: Promise<number> | undefined;
-			try {
-				tokenWait = bulkhead.takeToken(ticket.signal);
-			} catch (err) {
-				if (!(err instanceof RateLimitedError)) throw err;
-				this.emit("failure", {
-					ticketId: ticket.id,
-					url: displayUrl,
-					partition: partitionName,
-					attempts: 1,
-					durationMs: Date.now() - startTime,
-					queuedMs: 0,
-					error: err,
-				});
-				controller.markDone({ success: false, error: err } as never);
-				cleanup();
-				return;
-			}
-			if (tokenWait !== undefined) {
-				const waitStart = Date.now();
-				result = await tokenWait.then(
-					(ms) => {
-						queuedMs += ms;
-						return dispatch();
-					},
-					(err: unknown) => {
-						queuedMs += Date.now() - waitStart;
-						return cancelledWhileQueued(err);
-					},
-				);
-			} else {
-				result = await dispatch();
-			}
+			// An attempt bounced by a pause that began while it was queued comes
+			// back here: it is no attempt yet, and its wait counts as queue time.
+			let outcome: Awaited<ReturnType<typeof execute>> | typeof PAUSED;
+			do {
+				let tokenWait: Promise<number> | undefined;
+				try {
+					tokenWait = bulkhead.takeToken(ticket.signal);
+				} catch (err) {
+					if (!(err instanceof RateLimitedError)) throw err;
+					this.emit("failure", {
+						ticketId: ticket.id,
+						url: displayUrl,
+						partition: partitionName,
+						attempts: 1,
+						durationMs: Date.now() - startTime,
+						queuedMs,
+						error: err,
+					});
+					controller.markDone({ success: false, error: err } as never);
+					cleanup();
+					return;
+				}
+				if (tokenWait !== undefined) {
+					const waitStart = Date.now();
+					outcome = await tokenWait.then(
+						(ms) => {
+							queuedMs += ms;
+							return dispatch();
+						},
+						(err: unknown) => {
+							queuedMs += Date.now() - waitStart;
+							return cancelledWhileQueued(err);
+						},
+					);
+				} else {
+					outcome = await dispatch();
+				}
+			} while (outcome === PAUSED);
+			result = outcome;
 
 			switch (result.kind) {
 				case "success": {

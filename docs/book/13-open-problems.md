@@ -41,6 +41,9 @@ covers the generic registry once instead of once per kind.
 
 ### #191: pause a partition when a 429 says when to come back
 
+*Done: the opt-in `pauseOnRetryAfter` option (chapter 7's aside). Kept here as a worked example of
+the questions below; `src/queue/pause.ts` shows how they were settled.*
+
 *Design and enhancement, milestone 1.3. Chapters 7 and 8.*
 
 When a server answers `429 Too Many Requests` with a `Retry-After` header, it's telling every

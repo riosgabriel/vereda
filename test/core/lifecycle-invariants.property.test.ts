@@ -32,9 +32,9 @@ const NUM_RUNS = Number(process.env.VEREDA_FC_RUNS ?? 100);
 // Every behavior honors the abort signal, like undici does.
 // ---------------------------------------------------------------------------
 
-type Behavior = "ok" | "not_found" | "busy" | "network" | "hang" | "malformed" | "stall_body";
+type Behavior = "ok" | "not_found" | "busy" | "pushback" | "network" | "hang" | "malformed" | "stall_body";
 
-const BEHAVIORS: Behavior[] = ["ok", "not_found", "busy", "network", "hang", "malformed", "stall_body"];
+const BEHAVIORS: Behavior[] = ["ok", "not_found", "busy", "pushback", "network", "hang", "malformed", "stall_body"];
 
 function abortable<T>(signal: AbortSignal | null | undefined, delayMs: number, value: () => T): Promise<T> {
 	return new Promise((resolve, reject) => {
@@ -68,6 +68,9 @@ function respond(behavior: Behavior, signal: AbortSignal | null | undefined): Re
 			return new Response("nope", { status: 404 });
 		case "busy":
 			return new Response("busy", { status: 503, headers: { "retry-after": "0" } });
+		case "pushback":
+			// 1s on the wire; the scenario's maxPauseMs clamps it to a few ms.
+			return new Response("slow down", { status: 429, headers: { "retry-after": "1" } });
 		case "malformed":
 			return new Response("<html>", { status: 200 });
 		case "stall_body":
@@ -81,10 +84,14 @@ function respond(behavior: Behavior, signal: AbortSignal | null | undefined): Re
 	}
 }
 
-function scriptedFetch(scripts: Map<string, { behaviors: Behavior[]; delayMs: number }>): typeof fetch {
+function scriptedFetch(
+	scripts: Map<string, { behaviors: Behavior[]; delayMs: number }>,
+	onCall: (url: string) => void = () => {},
+): typeof fetch {
 	const attempts = new Map<string, number>();
 	return async (input, init) => {
 		const url = String(input);
+		onCall(url);
 		const script = scripts.get(url);
 		if (!script) throw new Error(`unscripted URL ${url}`);
 		const n = attempts.get(url) ?? 0;
@@ -137,6 +144,9 @@ const scenarioArb = fc
 			}),
 			{ nil: undefined },
 		),
+		// Pauses the partition on a "pushback" for a few ms: waiters must still
+		// settle, release their tokens and emit one terminal event.
+		pauseOnRetryAfter: fc.option(fc.record({ maxPauseMs: fc.constantFrom(5, 30) }), { nil: undefined }),
 		throwingClientListener: fc.boolean(),
 		throwingSink: fc.boolean(),
 		close: fc.option(
@@ -152,6 +162,31 @@ const scenarioArb = fc
 	.filter((s) => s.attemptMs !== undefined || s.totalMs !== undefined);
 
 type Scenario = typeof scenarioArb extends fc.Arbitrary<infer S> ? S : never;
+
+// The pause invariant only bites when a 429 comes back while other attempts
+// to its partition are queued, which scenarioArb rarely builds. This one
+// always does: the first ticket is pushed back mid-flight, the others queue
+// behind it for the partition's single slot.
+const pauseScenarioArb = scenarioArb
+	.filter((s) => s.tickets.length >= 2)
+	.map((s) => {
+		const [first, ...rest] = s.tickets;
+		const pushedBack = {
+			...first,
+			behaviors: ["pushback", ...first.behaviors.slice(1)] as Behavior[],
+			delayMs: Math.max(first.delayMs, 5),
+			cancelAtMs: undefined,
+			preAborted: false,
+			earlyExit: undefined,
+		};
+		return {
+			...s,
+			tickets: [pushedBack, ...rest],
+			partitionConcurrency: 1,
+			limitFirstAttempts: true,
+			pauseOnRetryAfter: s.pauseOnRetryAfter ?? { maxPauseMs: 30 },
+		};
+	});
 
 const TERMINAL = ["success", "failure", "cancelled"] as const;
 type Terminal = (typeof TERMINAL)[number];
@@ -201,13 +236,25 @@ async function runScenario(s: Scenario): Promise<void> {
 		},
 	};
 
+	// The pause feature's own invariant: no fetch to a partition starts while
+	// it is paused. The snapshot's `pausedUntil` is only present while the pause
+	// is active.
+	const sentDuringPause: string[] = [];
+	const onFetch = (url: string) => {
+		const until = client.partitions().find((p) => p.name === "svc")?.pausedUntil;
+		if (until !== undefined && Date.now() < until) {
+			sentDuringPause.push(`${url} at ${Date.now()}, partition svc paused until ${until}`);
+		}
+	};
+
 	const client = HttpClient.create({
-		fetch: scriptedFetch(scripts),
+		fetch: scriptedFetch(scripts, onFetch),
 		metrics: sink,
 		retry: { maxRetries: s.maxRetries, backoff: { baseDelayMs: 1, maxDelayMs: 2, jitter: false } },
 		timeout: { attemptMs: s.attemptMs ?? Number.POSITIVE_INFINITY, totalMs: s.totalMs },
 		retryBudget: s.retryBudget,
 		rateLimit: s.rateLimit,
+		pauseOnRetryAfter: s.pauseOnRetryAfter,
 		partitions: { svc: { concurrency: s.partitionConcurrency, limitFirstAttempts: s.limitFirstAttempts } },
 	});
 
@@ -279,6 +326,9 @@ async function runScenario(s: Scenario): Promise<void> {
 	// 3. Nothing left running or queued.
 	for (const p of client.partitions()) expect(p.running + p.queued, `partition ${p.name}`).toBe(0);
 
+	// 3b. No attempt was sent into a pause.
+	expect(sentDuringPause).toEqual([]);
+
 	// 4. The in_flight gauge returns to 0.
 	expect(gauges.at(-1)).toBe(0);
 
@@ -292,6 +342,16 @@ describe("lifecycle invariants under random scenarios (T3, #135)", () => {
 	it("every ticket settles with exactly one matching terminal event and releases its resources", async () => {
 		await fc.assert(
 			fc.asyncProperty(scenarioArb, async (s) => {
+				reported = [];
+				await runScenario(s);
+			}),
+			{ numRuns: NUM_RUNS },
+		);
+	}, 120_000);
+
+	it("holds the same invariants, and sends nothing to a paused partition, when a 429 lands on a queue", async () => {
+		await fc.assert(
+			fc.asyncProperty(pauseScenarioArb, async (s) => {
 				reported = [];
 				await runScenario(s);
 			}),

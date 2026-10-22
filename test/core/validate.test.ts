@@ -365,3 +365,38 @@ describe("validateConfig opting a partition out", () => {
 		);
 	});
 });
+
+describe("validateConfig pauseOnRetryAfter", () => {
+	const base = { timeout: { attemptMs: 1_000 } } satisfies ClientConfig;
+	const cases: Array<[string, NonNullable<ClientConfig["pauseOnRetryAfter"]>, RegExp]> = [
+		["statuses: 99", { statuses: [99] }, /pauseOnRetryAfter\.statuses must be an array of HTTP status codes/],
+		["statuses: 600", { statuses: [600] }, /pauseOnRetryAfter\.statuses/],
+		["statuses: 429.5", { statuses: [429.5] }, /pauseOnRetryAfter\.statuses/],
+		["maxPauseMs: 0", { maxPauseMs: 0 }, /pauseOnRetryAfter\.maxPauseMs must be a positive finite number/],
+		["maxPauseMs: Infinity", { maxPauseMs: Infinity }, /pauseOnRetryAfter\.maxPauseMs/],
+		["maxPauseMs: NaN", { maxPauseMs: Number.NaN }, /pauseOnRetryAfter\.maxPauseMs/],
+	];
+
+	it.each(cases)("client-level %s", (_label, pauseOnRetryAfter, message) => {
+		expect(() => validateConfig({ ...base, pauseOnRetryAfter })).toThrow(message);
+	});
+
+	it("validates partition-level config with the partition in the key", () => {
+		expect(() => validateConfig({ ...base, partitions: { api: { pauseOnRetryAfter: { maxPauseMs: -1 } } } })).toThrow(
+			/partitions\.api\.pauseOnRetryAfter\.maxPauseMs/,
+		);
+		expect(() => validateConfig({ ...base, defaultPartition: { pauseOnRetryAfter: "on" as never } })).toThrow(
+			/defaultPartition\.pauseOnRetryAfter must be an object, or false to turn it off/,
+		);
+	});
+
+	it("accepts a valid config, and false on a partition", () => {
+		expect(() =>
+			validateConfig({
+				...base,
+				pauseOnRetryAfter: { statuses: [429, 503], maxPauseMs: 10_000 },
+				partitions: { api: { pauseOnRetryAfter: false } },
+			}),
+		).not.toThrow();
+	});
+});

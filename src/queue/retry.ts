@@ -22,7 +22,7 @@ import {
 	type TimeoutConfig,
 } from "../core/types.ts";
 import type { Ticket, TicketController } from "../ticket/ticket.ts";
-import type { Bulkhead } from "./bulkhead.ts";
+import { type Bulkhead, PAUSED } from "./bulkhead.ts";
 import type { CircuitBreaker } from "./circuit-breaker.ts";
 import { executeRequest, type MiddlewareFn } from "./executor.ts";
 import { defaultRetryPolicy, type RetryPolicyContext, shouldRetry } from "./policy.ts";
@@ -181,12 +181,26 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 			// in DeadlineExceededError, so fail now instead of sleeping first.
 			// Only the delay is compared, not delay + attemptMs: attemptMs is an
 			// upper bound, and a retry that answers quickly can still fit.
-			if (deadlineAt !== undefined && isBoundedMs(timeoutConfig.totalMs) && Date.now() + delayMs >= deadlineAt) {
+			// A pause the host asked for holds the retry at least that long, so it
+			// counts toward the same check.
+			const holdMs = Math.max(delayMs, bulkhead.pauseRemainingMs);
+			if (deadlineAt !== undefined && isBoundedMs(timeoutConfig.totalMs) && Date.now() + holdMs >= deadlineAt) {
 				onCleanup?.();
 				const error = new DeadlineExceededError(displayUrl, timeoutConfig.totalMs, lastError);
 				onFailure?.(error, totalAttempts, totalQueuedMs);
 				controller.markDone({ success: false, error } as never);
 				return;
+			}
+
+			// A retry the rate limit's maxWaitMs will refuse once it has slept, because
+			// the pause outlasts the sleep, fails now, before it spends budget or
+			// announces a retry that will never go out.
+			const refusal = bulkhead.refusalAfter(delayMs);
+			if (refusal) {
+				onCleanup?.();
+				onFailure?.(refusal, totalAttempts, totalQueuedMs);
+				controller.markDone({ success: false, error: refusal } as never);
+				throw refusal;
 			}
 
 			// Checked after the deadline so a doomed retry never spends budget,
@@ -199,8 +213,10 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 				return;
 			}
 
-			onRetry?.(attempt, delayMs, lastError);
-			controller.markRetrying(attempt, delayMs);
+			// The retry waits out a pause too, so that is the delay to report.
+			const reportedDelayMs = Math.max(delayMs, bulkhead.pauseRemainingMs);
+			onRetry?.(attempt, reportedDelayMs, lastError);
+			controller.markRetrying(attempt, reportedDelayMs);
 
 			try {
 				await sleep(delayMs, ticket.signal);
@@ -243,41 +259,50 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 			// The global semaphore is acquired after the partition slot (D4).
 			let result: Awaited<ReturnType<typeof executeRequest>>;
 			try {
-				// The rate-limit token comes first, as on the first attempt, so a
-				// retry waiting for its token holds no slot or permit.
-				const tokenWait = bulkhead.takeToken(ticket.signal);
-				if (tokenWait !== undefined) {
-					const waitStart = Date.now();
-					totalQueuedMs += await tokenWait.catch((err: unknown) => {
-						totalQueuedMs += Date.now() - waitStart;
-						throw err;
-					});
-				}
-				result = await bulkhead.run(
-					() =>
-						executeRequest(
-							{
-								url,
-								options: requestOptions,
-								timeoutConfig,
-								retryConfig,
-								deadlineAt,
-								displayUrl,
-								signal: ticket.signal,
-								attempt: attempt + 1,
-								ticketId: ticket.id,
-								partition: bulkhead.name,
-								fetch: customFetch,
-								redirect,
-							},
-							middleware,
+				// A pause that starts while the attempt is queued bounces it: it
+				// goes back for a token (the pause wait) and queues again. A bounce
+				// is no attempt, so it adds nothing to totalAttempts and its wait
+				// counts as queue time.
+				let outcome: Awaited<ReturnType<typeof executeRequest>> | typeof PAUSED;
+				do {
+					// The rate-limit token comes first, as on the first attempt, so a
+					// retry waiting for its token holds no slot or permit.
+					const tokenWait = bulkhead.takeToken(ticket.signal);
+					if (tokenWait !== undefined) {
+						const waitStart = Date.now();
+						totalQueuedMs += await tokenWait.catch((err: unknown) => {
+							totalQueuedMs += Date.now() - waitStart;
+							throw err;
+						});
+					}
+					outcome = await bulkhead.run(
+						bulkhead.guard(() =>
+							executeRequest(
+								{
+									url,
+									options: requestOptions,
+									timeoutConfig,
+									retryConfig,
+									deadlineAt,
+									displayUrl,
+									signal: ticket.signal,
+									attempt: attempt + 1,
+									ticketId: ticket.id,
+									partition: bulkhead.name,
+									fetch: customFetch,
+									redirect,
+								},
+								middleware,
+							),
 						),
-					semaphore,
-					(queuedMs) => {
-						totalQueuedMs += queuedMs;
-					},
-					ticket.signal,
-				);
+						semaphore,
+						(queuedMs) => {
+							totalQueuedMs += queuedMs;
+						},
+						ticket.signal,
+					);
+				} while (outcome === PAUSED);
+				result = outcome;
 			} catch (err) {
 				if (err instanceof CancelledError) {
 					// Cancelled (or deadline-aborted) while still queued for a slot or

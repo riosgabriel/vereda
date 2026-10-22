@@ -124,6 +124,9 @@ export interface PartitionConfig {
 	/** Replaces the client-level `rateLimit` for this partition, field by
 	 *  field. `false` turns the client-level limit off for this partition. */
 	rateLimit?: RateLimitConfig | false;
+	/** Replaces the client-level `pauseOnRetryAfter` for this partition, field
+	 *  by field. `false` turns the client-level pause off for this partition. */
+	pauseOnRetryAfter?: PauseOnRetryAfterConfig | false;
 }
 
 /** Resolves the config that applies to a partition: its `partitions` entry
@@ -198,6 +201,32 @@ export interface RateLimitConfig {
 	 *  longer fails at once with `RateLimitedError`. Omit to wait as long as
 	 *  needed, bounded only by `cancel()` and `timeout.totalMs`. */
 	maxWaitMs?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Pause on Retry-After config
+// ---------------------------------------------------------------------------
+
+/** Statuses that pause a partition by default. */
+export const DEFAULT_PAUSE_STATUSES: readonly number[] = [429, 503];
+/** Longest a `Retry-After` may pause a partition by default (ms). */
+export const DEFAULT_MAX_PAUSE_MS = 30_000;
+
+/** Stops a partition from sending anything after a response that says when to
+ *  come back. When a response with one of `statuses` carries a valid
+ *  `Retry-After`, no new attempt, first or retry, goes to that partition
+ *  before the time it names, and attempts that arrive meanwhile wait for it.
+ *  Without this, a `Retry-After` only delays the ticket that received it.
+ *  Opt-in: nothing pauses unless this is configured. A status must also be in
+ *  `retry.retryOnStatus` (429 and 503 are, by default) to be seen. */
+export interface PauseOnRetryAfterConfig {
+	/** Statuses whose `Retry-After` pauses the partition.
+	 *  @default {@link DEFAULT_PAUSE_STATUSES} (429 and 503) */
+	statuses?: number[];
+	/** Longest pause in ms. A longer `Retry-After` is clamped to it, so a
+	 *  hostile or buggy header can't park the partition for hours.
+	 *  @default {@link DEFAULT_MAX_PAUSE_MS} */
+	maxPauseMs?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -280,6 +309,10 @@ export type LifecycleEventMap = {
 		url: string;
 		partition: string;
 		attempt: number;
+		/** How long the retry waits before it is sent: its backoff, or the
+		 *  longer of that and what is left of a `Retry-After` pause on the
+		 *  partition (see `pauseOnRetryAfter`). A rate-limit token wait is
+		 *  not included. */
 		delayMs: number;
 		error: AppError;
 	};
@@ -408,6 +441,8 @@ export interface ClientConfig {
 	retryBudget?: RetryBudgetConfig;
 	/** Default per-partition rate limit. Opt-in — no limit unless set. */
 	rateLimit?: RateLimitConfig;
+	/** Default per-partition pause on `Retry-After`. Opt-in — no pause unless set. */
+	pauseOnRetryAfter?: PauseOnRetryAfterConfig;
 	/** Optional structured logger. A logger that throws never affects a request: the error is rethrown on a microtask (reaching `uncaughtException`), like a throwing listener. */
 	logger?: Logger;
 	/** Optional metrics sink for counters, histograms, and gauges. */

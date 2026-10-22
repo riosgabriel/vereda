@@ -308,21 +308,21 @@ A client-wide rate limit applies to every partition. Sometimes one host shouldn'
 internal service with no quota, say. A partition can set `rateLimit: false`, and when its
 bulkhead is built, the client's limit is dropped instead of merged:
 
-`src/queue/bulkhead.ts` — `mergeRateLimit`
+`src/queue/bulkhead.ts` — `mergeOptional`
 ```typescript
-function mergeRateLimit(
-	global: RateLimitConfig | false | undefined,
-	partition: RateLimitConfig | false | undefined,
-): RateLimitConfig | undefined {
-	// `false` opts the partition out; spreading it would keep the client's limit.
+export function mergeOptional<T extends object>(
+	global: T | false | undefined,
+	partition: T | false | undefined,
+): T | undefined {
 	if (partition === false || global === false) return undefined;
 	if (!global && !partition) return undefined;
-	return { ...global, ...partition } as RateLimitConfig;
+	return { ...global, ...partition } as T;
 }
 ```
 
-The comment points at the trap: copying the fields of `false` into an object adds nothing, so a
-naive merge would quietly keep the client's limit. Any value other than an object or `false`
+The `false` checks are the trap: copying the fields of `false` into an object adds nothing, so a
+naive merge would quietly keep the client's limit. The same function merges `pauseOnRetryAfter`
+and `retryBudget`. Any value other than an object or `false`
 is rejected when the client is created. The retry budget, in the next chapter, has the same
 switch.
 

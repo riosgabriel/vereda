@@ -365,18 +365,48 @@ export function composeMiddleware(middlewares: MiddlewareFn[], core: NextFn): Ne
 // Helpers
 // ---------------------------------------------------------------------------
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTH = `(?<month>${MONTHS.join("|")})`;
+const TIME = String.raw`(?<h>\d{2}):(?<m>\d{2}):(?<s>\d{2})`;
+/** The three HTTP-date forms RFC 9110 §5.6.7 says a recipient must accept. */
+const HTTP_DATES = [
+	// IMF-fixdate: `Sun, 06 Nov 1994 08:49:37 GMT`
+	new RegExp(String.raw`^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), (?<day>\d{2}) ${MONTH} (?<year>\d{4}) ${TIME} GMT$`),
+	// obsolete RFC 850: `Sunday, 06-Nov-94 08:49:37 GMT`
+	new RegExp(
+		String.raw`^(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), (?<day>\d{2})-${MONTH}-(?<year>\d{2}) ${TIME} GMT$`,
+	),
+	// obsolete asctime: `Sun Nov  6 08:49:37 1994`, in UTC though it doesn't say so
+	new RegExp(String.raw`^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) ${MONTH} (?<day>[ \d]\d) ${TIME} (?<year>\d{4})$`),
+];
+
+/** An HTTP-date as epoch ms, or undefined for anything else. Parsed by hand,
+ *  not with `Date.parse`, which takes "1.5" or "-5" as dates and reads
+ *  asctime as local time. */
+function parseHttpDate(value: string): number | undefined {
+	const g = HTTP_DATES.map((re) => re.exec(value)).find((m) => m !== null)?.groups;
+	if (!g) return undefined;
+	let year = Number(g.year);
+	if (g.year.length === 2) {
+		// RFC 9110: a two-digit year more than 50 years ahead is in the past century.
+		year += 2000;
+		if (year > new Date().getUTCFullYear() + 50) year -= 100;
+	}
+	return Date.UTC(year, MONTHS.indexOf(g.month), Number(g.day), Number(g.h), Number(g.m), Number(g.s));
+}
+
 /** Parse a `Retry-After` header value into a delay in ms, or undefined when
- *  absent/unparseable. Integer seconds → ms; HTTP-date → ms from now, clamped
- *  to ≥ 0; anything else (garbage, negative) → undefined. */
+ *  absent/unparseable. Non-negative integer seconds → ms; HTTP-date (any of
+ *  its three forms) → ms from now, clamped to ≥ 0; anything else (garbage,
+ *  negative, fractional) → undefined. */
 export function parseRetryAfter(header: string | null): number | undefined {
 	if (!header) return undefined;
 	const trimmed = header.trim();
 	if (/^\d+$/.test(trimmed)) {
 		return Number(trimmed) * 1000;
 	}
-	const parsed = Date.parse(trimmed);
-	if (Number.isNaN(parsed)) return undefined;
-	return Math.max(0, parsed - Date.now());
+	const at = parseHttpDate(trimmed);
+	return at === undefined ? undefined : Math.max(0, at - Date.now());
 }
 
 /** `pending`, but it rejects with `signal.reason` as soon as `signal` aborts.

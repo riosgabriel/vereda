@@ -12,6 +12,7 @@ export type TicketStatus =
 
 export type TicketUpdate =
 	| { type: "queued" }
+	/** `delayMs` is the backoff, or the rest of a `Retry-After` pause when that is longer. */
 	| { type: "retrying"; attempt: number; delayMs: number }
 	| { type: "done"; result: Result<unknown> }
 	| { type: "cancelled" };

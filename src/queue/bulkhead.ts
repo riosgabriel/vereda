@@ -1,4 +1,4 @@
-import { CancelledError, QueueFullError, RateLimitedError } from "../core/errors.ts";
+import { CancelledError, QueueFullError, RateLimitedError, RetryableStatusError } from "../core/errors.ts";
 import { setLongTimeout } from "../core/timer.ts";
 import {
 	DEFAULT_CONCURRENCY,
@@ -6,8 +6,8 @@ import {
 	type PartitionConfig,
 	type PartitionLookup,
 	partitionLookup,
-	type RateLimitConfig,
 } from "../core/types.ts";
+import { PartitionPause } from "./pause.ts";
 import { TokenBucket } from "./rate-limiter.ts";
 import type { Semaphore } from "./semaphore.ts";
 
@@ -15,6 +15,11 @@ import type { Semaphore } from "./semaphore.ts";
  *  circuit breaker) is swept from its registry. Shared by both registries
  *  so the eviction policy stays in one place. */
 export const DEFAULT_PARTITION_TTL_MS = 60_000;
+
+/** What a guarded attempt resolves with when it reached the front of a queue
+ *  during a pause: nothing was sent, and the caller admits it again. Never
+ *  leaves the code that dispatches attempts. */
+export const PAUSED: unique symbol = Symbol("paused");
 
 export class Bulkhead {
 	public readonly name: string;
@@ -25,6 +30,7 @@ export class Bulkhead {
 	private activeTickets = 0;
 	private readonly _waitQueue: Array<() => void> = [];
 	private readonly bucket?: TokenBucket;
+	private readonly pause?: PartitionPause;
 
 	constructor(name: string, config: PartitionConfig = {}) {
 		this.name = name;
@@ -32,6 +38,7 @@ export class Bulkhead {
 		this.maxQueueSize = config.maxQueueSize ?? DEFAULT_MAX_QUEUE_SIZE;
 		this._limitFirstAttempts = config.limitFirstAttempts ?? false;
 		if (config.rateLimit) this.bucket = new TokenBucket(config.rateLimit);
+		if (config.pauseOnRetryAfter) this.pause = new PartitionPause(config.pauseOnRetryAfter);
 	}
 
 	get queueSize(): number {
@@ -64,8 +71,66 @@ export class Bulkhead {
 			this._waitQueue.length === 0 &&
 			// A drained bucket must outlive its tickets: a fresh one starts full
 			// and would let a burst through that the rate limit forbids.
-			(this.bucket === undefined || this.bucket.isFull())
+			(this.bucket === undefined || this.bucket.isFull()) &&
+			// A pause must outlive its tickets too: a fresh bulkhead would send
+			// straight into the host that just said to wait.
+			this.pauseRemainingMs === 0
 		);
+	}
+
+	/** Ms until the partition may send again; 0 when it isn't paused. */
+	get pauseRemainingMs(): number {
+		return this.pause?.remaining() ?? 0;
+	}
+
+	/** Epoch ms the active pause ends at, or undefined when not paused. */
+	get pausedUntil(): number | undefined {
+		return this.pauseRemainingMs > 0 ? this.pause!.until : undefined;
+	}
+
+	/** Note a failed attempt's error. A `RetryableStatusError` whose status is
+	 *  listed and which carries a positive `Retry-After` pauses the partition
+	 *  (up to `maxPauseMs`) and drains its bucket until then; anything else is
+	 *  ignored. A later pushback can extend a pause, never shorten it. */
+	notePushback(error: unknown): void {
+		const pause = this.pause;
+		if (!pause || !(error instanceof RetryableStatusError)) return;
+		const ms = error.retryAfterMs;
+		if (ms === undefined || !(ms > 0) || !pause.statuses.includes(error.statusCode)) return;
+		const until = pause.extend(ms);
+		this.bucket?.freezeUntil(until);
+	}
+
+	/** Wrap an attempt's task so it respects the pause at the moment it really
+	 *  starts, with its slot and permit already held, and records a pushback
+	 *  the moment it settles. Start during a pause: nothing is sent and the
+	 *  task resolves `PAUSED`, so the usual release paths free the permit and
+	 *  the slot (D4). Settle with an `error` outcome: the pushback is noted
+	 *  here, before the slot is released and the next queued attempt starts,
+	 *  and before any callback of the caller's can throw. */
+	guard<R extends { kind: string }>(task: () => Promise<R>): () => Promise<R | typeof PAUSED> {
+		return () => {
+			if (this.pauseRemainingMs > 0) return Promise.resolve(PAUSED);
+			return task().then((result) => {
+				if (result.kind === "error") this.notePushback((result as { error?: unknown }).error);
+				return result;
+			});
+		};
+	}
+
+	/** The refusal a retry would meet if it waited `afterMs` first, or undefined
+	 *  when it would be admitted, or when that can't be told without trying.
+	 *  Only a pause that is still running by then can make it certain, and the
+	 *  bucket stays frozen until the pause's end, so its wait is known then too.
+	 *  Reserves nothing. */
+	refusalAfter(afterMs: number): RateLimitedError | undefined {
+		const maxWaitMs = this.bucket?.maxWaitMs;
+		const remaining = this.pauseRemainingMs - afterMs;
+		if (!this.bucket || maxWaitMs === undefined || remaining <= 0) return undefined;
+		const now = Date.now();
+		const waitMs = remaining + this.bucket.nextWaitMs(now + this.pauseRemainingMs);
+		if (waitMs <= maxWaitMs) return undefined;
+		return new RateLimitedError(this.name, waitMs, maxWaitMs, this.pause!.until);
 	}
 
 	/** Tokens free right now, or undefined when the partition has no rate limit. */
@@ -73,36 +138,69 @@ export class Bulkhead {
 		return this.bucket?.available();
 	}
 
-	/** Take a rate-limit token for one attempt. Returns undefined when the
-	 *  attempt may go now (a token was free, or there is no rate limit);
-	 *  otherwise a promise that resolves with the ms waited once the token is
-	 *  due. If `signal` aborts first, the token is handed back and the promise
-	 *  rejects with `CancelledError` (B9). Throws `RateLimitedError`, reserving
-	 *  nothing, when the wait would exceed `maxWaitMs`. */
+	/** Admit one attempt: wait out a `Retry-After` pause and take a rate-limit
+	 *  token. Returns undefined when the attempt may go now (no pause, and a
+	 *  token was free or there is no rate limit); otherwise a promise that
+	 *  resolves with the ms waited once the attempt is due. If `signal` aborts
+	 *  first, the token is handed back and the promise rejects with
+	 *  `CancelledError` (B9). Throws `RateLimitedError`, reserving nothing,
+	 *  when the wait, pause included, would exceed `maxWaitMs`. A pause that is
+	 *  extended while an attempt waits makes it wait again, keeping its token.
+	 *  Without a rate limit, only `signal` ends a pause wait early. */
 	takeToken(signal?: AbortSignal): Promise<number> | undefined {
 		const bucket = this.bucket;
-		if (!bucket) return undefined;
-		const waitMs = bucket.reserve();
-		if (waitMs === null) {
-			throw new RateLimitedError(this.name, bucket.nextWaitMs(), bucket.maxWaitMs ?? Number.POSITIVE_INFINITY);
+		const pauseMs = this.pauseRemainingMs;
+		if (!bucket && pauseMs === 0) return undefined;
+		let waitMs = pauseMs;
+		if (bucket) {
+			// A paused bucket reserves as of the pause's end, so the wait below
+			// already covers it and maxWaitMs bounds the whole of it.
+			const now = Date.now();
+			const reserved = bucket.reserve(now, pauseMs > 0 ? this.pause!.until : now);
+			if (reserved === null) {
+				throw new RateLimitedError(
+					this.name,
+					pauseMs + bucket.nextWaitMs(now + pauseMs),
+					bucket.maxWaitMs ?? Number.POSITIVE_INFINITY,
+					pauseMs > 0 ? this.pause!.until : undefined,
+				);
+			}
+			waitMs = reserved;
 		}
 		if (waitMs === 0) return undefined;
+		// When this attempt is due, and how far the bucket's freezes had moved
+		// its turn by then. A pause extended later moves it by the difference,
+		// so waiters keep their order and their spacing behind the new end.
+		const startedAt = Date.now();
+		const dueAt = startedAt + waitMs;
+		const shift0 = bucket?.shiftMs ?? 0;
 		return new Promise<number>((resolve, reject) => {
 			if (signal?.aborted) {
-				bucket.refund();
+				bucket?.refund();
 				reject(new CancelledError());
 				return;
 			}
-			const cancel = setLongTimeout(() => {
-				signal?.removeEventListener("abort", onAbort);
-				resolve(waitMs);
-			}, waitMs);
+			let cancelTimer = () => {};
 			const onAbort = () => {
-				cancel();
-				bucket.refund();
+				cancelTimer();
+				bucket?.refund();
 				reject(new CancelledError());
 			};
+			const sleepFor = (ms: number) => {
+				cancelTimer = setLongTimeout(() => {
+					// The pause may have been extended while this attempt slept.
+					const now = Date.now();
+					const due = Math.max(dueAt + ((bucket?.shiftMs ?? 0) - shift0), this.pause?.until ?? 0);
+					if (due > now) {
+						sleepFor(due - now);
+						return;
+					}
+					signal?.removeEventListener("abort", onAbort);
+					resolve(now - startedAt);
+				}, ms);
+			};
 			signal?.addEventListener("abort", onAbort, { once: true });
+			sleepFor(waitMs);
 		});
 	}
 
@@ -245,6 +343,9 @@ export interface BulkheadSnapshot {
 	/** Rate-limit tokens free right now. Present only when the partition has a
 	 *  `rateLimit`; `0` while attempts are waiting for theirs. */
 	tokens?: number;
+	/** Epoch ms until which the partition sends nothing, after a `Retry-After`
+	 *  (see `pauseOnRetryAfter`). Present only while the pause is active. */
+	pausedUntil?: number;
 }
 
 type BulkheadEntry = [Bulkhead, number];
@@ -280,7 +381,8 @@ export class BulkheadRegistry {
 			const merged: PartitionConfig = {
 				...this.globalConfig,
 				...partitionConfig,
-				rateLimit: mergeRateLimit(this.globalConfig.rateLimit, partitionConfig.rateLimit),
+				rateLimit: mergeOptional(this.globalConfig.rateLimit, partitionConfig.rateLimit),
+				pauseOnRetryAfter: mergeOptional(this.globalConfig.pauseOnRetryAfter, partitionConfig.pauseOnRetryAfter),
 			};
 			this.bulkheads.set(partitionName, [new Bulkhead(partitionName, merged), Date.now()]);
 		}
@@ -324,6 +426,8 @@ export class BulkheadRegistry {
 			};
 			const tokens = bh.tokensAvailable;
 			if (tokens !== undefined) snapshot.tokens = tokens;
+			const pausedUntil = bh.pausedUntil;
+			if (pausedUntil !== undefined) snapshot.pausedUntil = pausedUntil;
 			result.push(snapshot);
 		}
 		return result;
@@ -334,13 +438,14 @@ export class BulkheadRegistry {
 	}
 }
 
-/** Partition fields override the client-level ones one by one. */
-function mergeRateLimit(
-	global: RateLimitConfig | false | undefined,
-	partition: RateLimitConfig | false | undefined,
-): RateLimitConfig | undefined {
-	// `false` opts the partition out; spreading it would keep the client's limit.
+/** Partition fields override the client-level ones one by one (the merge of
+ *  `rateLimit`, `pauseOnRetryAfter` and `retryBudget`). `false` on either side
+ *  opts the partition out; spreading it would keep the client's setting. */
+export function mergeOptional<T extends object>(
+	global: T | false | undefined,
+	partition: T | false | undefined,
+): T | undefined {
 	if (partition === false || global === false) return undefined;
 	if (!global && !partition) return undefined;
-	return { ...global, ...partition } as RateLimitConfig;
+	return { ...global, ...partition } as T;
 }
