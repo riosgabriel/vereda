@@ -1,8 +1,14 @@
 ---
 import { Code } from "@astrojs/starlight/components";
 import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
+import { RATE, simulate } from "../../demos/models/retry-budget.js";
 import Horizon from "../components/Horizon.astro";
 import { PATTERNS } from "../patterns.ts";
+
+// Peak load per lane, in the static HTML, so the hero tells its story before the host slows down.
+const storm = simulate({ maxRetries: 3, ratio: 0.1 });
+const peak = (lane: "without" | "with") =>
+	`${(Math.max(...(storm.lanes[lane].series?.load ?? []).map(([, v]) => v)) / RATE).toFixed(2)}×`;
 
 // The README's quickstart, word for word.
 const quickstart = `import { HttpClient } from "@vereda/http";
@@ -61,8 +67,12 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 			</div>
 			<canvas id="storm" role="img" aria-label="Load on a slow host over 40 seconds: plain retries climb to over 3 times normal load and stay there after the host is fixed; with a retry budget the load stays near normal."></canvas>
 			<div class="storm-stats">
-				<div><span class="v fail" id="storm-a">1.00×</span><span class="k">load, plain retries</span></div>
-				<div><span class="v first" id="storm-b">1.00×</span><span class="k">load, with a retry budget</span></div>
+				<div>
+					<span class="v fail" id="storm-a">1.00×</span><span class="k">load, plain retries · peak {peak("without")}</span>
+				</div>
+				<div>
+					<span class="v first" id="storm-b">1.00×</span><span class="k">load, with a retry budget · peak {peak("with")}</span>
+				</div>
 			</div>
 			<figcaption id="storm-caption">
 				Both clients retry up to 3 times. Without a budget, retries keep the host overloaded even after it is fixed at 24 s.{" "}
