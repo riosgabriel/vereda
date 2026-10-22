@@ -9,6 +9,10 @@ export class TokenBucket {
 	readonly tokensPerSec: number;
 	readonly burst: number;
 	readonly maxWaitMs: number | undefined;
+	/** Total ms the freezes so far have pushed the refill point forward. A
+	 *  waiter that noted it when it reserved can tell how far its own turn
+	 *  moved since, whatever it reserved before or during the pauses. */
+	shiftMs = 0;
 	private tokens: number;
 	private refilledAt: number;
 
@@ -44,14 +48,18 @@ export class TokenBucket {
 	 *  already made stay owed. Never moves the refill point back. */
 	freezeUntil(until: number, now: number = Date.now()): void {
 		this.refill(now);
+		this.shiftMs += Math.max(0, until - this.refilledAt);
 		this.tokens = Math.min(this.tokens, 0);
 		this.refilledAt = Math.max(this.refilledAt, until);
 	}
 
-	/** Hand back a reserved token that was never used (its caller aborted). */
+	/** Hand back a reserved token that was never used (its caller aborted).
+	 *  While the bucket is frozen it can't hold more than 0, or the pause
+	 *  would end with a token to spare. */
 	refund(now: number = Date.now()): void {
 		this.refill(now);
-		this.tokens = Math.min(this.burst, this.tokens + 1);
+		const cap = this.refilledAt > now ? 0 : this.burst;
+		this.tokens = Math.min(cap, this.tokens + 1);
 	}
 
 	/** Tokens free right now; 0 while reservations are outstanding. */

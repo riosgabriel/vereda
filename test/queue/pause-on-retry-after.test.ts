@@ -638,3 +638,64 @@ describe("a pause also holds attempts that were already queued", () => {
 		await client.close();
 	});
 });
+
+describe("waiters through an extended pause", () => {
+	beforeEach(() => {
+		vi.useFakeTimers({ now: 0 });
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	function arrive(bulkhead: Bulkhead, sentAt: number[]) {
+		return bulkhead.takeToken()?.then(() => sentAt.push(Date.now()));
+	}
+
+	it("sends every waiter after the new end, at least 1/rate apart, when the pause is extended", async () => {
+		const bulkhead = new Bulkhead("a", { pauseOnRetryAfter: {}, rateLimit: { tokensPerSec: 1, burst: 1 } });
+		bulkhead.notePushback(pushback(429, 2_000));
+		const sentAt: number[] = [];
+		const waits = [0, 1, 2].map(() => arrive(bulkhead, sentAt));
+		await vi.advanceTimersByTimeAsync(1_500);
+		bulkhead.notePushback(pushback(429, 2_000)); // now ends at 3_500
+		await vi.advanceTimersByTimeAsync(10_000);
+		await Promise.all(waits);
+		expect(sentAt).toHaveLength(3);
+		for (const t of sentAt) expect(t).toBeGreaterThanOrEqual(3_500);
+		for (let i = 1; i < sentAt.length; i++) expect(sentAt[i]! - sentAt[i - 1]!).toBeGreaterThanOrEqual(1_000);
+	});
+
+	it("keeps a waiter reserved before the pause ahead of one that arrives during it", async () => {
+		const bulkhead = new Bulkhead("a", { pauseOnRetryAfter: {}, rateLimit: { tokensPerSec: 1, burst: 1 } });
+		expect(bulkhead.takeToken()).toBeUndefined(); // drains the bucket
+		const sentAt: number[] = [];
+		const w1 = arrive(bulkhead, sentAt); // reserved at 0, due at 1_000
+		await vi.advanceTimersByTimeAsync(500);
+		bulkhead.notePushback(pushback(429, 3_000)); // ends at 3_500
+		await vi.advanceTimersByTimeAsync(500);
+		const w2 = arrive(bulkhead, sentAt); // arrives at 1_000, mid-pause
+		await vi.advanceTimersByTimeAsync(10_000);
+		await Promise.all([w1, w2]);
+		expect(sentAt).toEqual([4_000, 5_000]);
+	});
+
+	it("leaves no tokens at the pause's end when a pre-pause reserver aborts mid-pause", async () => {
+		const bulkhead = new Bulkhead("a", { pauseOnRetryAfter: {}, rateLimit: { tokensPerSec: 1, burst: 1 } });
+		expect(bulkhead.takeToken()).toBeUndefined();
+		const controller = new AbortController();
+		const doomed = bulkhead.takeToken(controller.signal)!;
+		await vi.advanceTimersByTimeAsync(500);
+		bulkhead.notePushback(pushback(429, 3_000)); // ends at 3_500
+		await vi.advanceTimersByTimeAsync(500);
+		controller.abort();
+		await expect(doomed).rejects.toBeInstanceOf(CancelledError);
+		vi.setSystemTime(3_500);
+		expect(bulkhead.tokensAvailable).toBe(0);
+		const sentAt: number[] = [];
+		const waits = [arrive(bulkhead, sentAt), arrive(bulkhead, sentAt)];
+		await vi.advanceTimersByTimeAsync(5_000);
+		await Promise.all(waits);
+		expect(sentAt[1]! - sentAt[0]!).toBeGreaterThanOrEqual(1_000);
+		expect(sentAt[0]! - 3_500).toBeGreaterThanOrEqual(1_000);
+	});
+});

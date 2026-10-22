@@ -154,11 +154,12 @@ export class Bulkhead {
 			waitMs = reserved;
 		}
 		if (waitMs === 0) return undefined;
-		// This attempt's place in the token queue behind the pause's end. If the
-		// pause is extended, it keeps that place behind the new end, so waiters
-		// still go out at tokensPerSec rather than all at once.
-		const lagMs = waitMs - pauseMs;
+		// When this attempt is due, and how far the bucket's freezes had moved
+		// its turn by then. A pause extended later moves it by the difference,
+		// so waiters keep their order and their spacing behind the new end.
 		const startedAt = Date.now();
+		const dueAt = startedAt + waitMs;
+		const shift0 = bucket?.shiftMs ?? 0;
 		return new Promise<number>((resolve, reject) => {
 			if (signal?.aborted) {
 				bucket?.refund();
@@ -174,13 +175,14 @@ export class Bulkhead {
 			const sleepFor = (ms: number) => {
 				cancelTimer = setLongTimeout(() => {
 					// The pause may have been extended while this attempt slept.
-					const more = this.pauseRemainingMs;
-					if (more > 0) {
-						sleepFor(more + lagMs);
+					const now = Date.now();
+					const due = Math.max(dueAt + ((bucket?.shiftMs ?? 0) - shift0), this.pause?.until ?? 0);
+					if (due > now) {
+						sleepFor(due - now);
 						return;
 					}
 					signal?.removeEventListener("abort", onAbort);
-					resolve(Math.max(waitMs, Date.now() - startedAt));
+					resolve(now - startedAt);
 				}, ms);
 			};
 			signal?.addEventListener("abort", onAbort, { once: true });
