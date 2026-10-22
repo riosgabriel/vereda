@@ -163,6 +163,31 @@ const scenarioArb = fc
 
 type Scenario = typeof scenarioArb extends fc.Arbitrary<infer S> ? S : never;
 
+// The pause invariant only bites when a 429 comes back while other attempts
+// to its partition are queued, which scenarioArb rarely builds. This one
+// always does: the first ticket is pushed back mid-flight, the others queue
+// behind it for the partition's single slot.
+const pauseScenarioArb = scenarioArb
+	.filter((s) => s.tickets.length >= 2)
+	.map((s) => {
+		const [first, ...rest] = s.tickets;
+		const pushedBack = {
+			...first,
+			behaviors: ["pushback", ...first.behaviors.slice(1)] as Behavior[],
+			delayMs: Math.max(first.delayMs, 5),
+			cancelAtMs: undefined,
+			preAborted: false,
+			earlyExit: undefined,
+		};
+		return {
+			...s,
+			tickets: [pushedBack, ...rest],
+			partitionConcurrency: 1,
+			limitFirstAttempts: true,
+			pauseOnRetryAfter: s.pauseOnRetryAfter ?? { maxPauseMs: 30 },
+		};
+	});
+
 const TERMINAL = ["success", "failure", "cancelled"] as const;
 type Terminal = (typeof TERMINAL)[number];
 
@@ -317,6 +342,16 @@ describe("lifecycle invariants under random scenarios (T3, #135)", () => {
 	it("every ticket settles with exactly one matching terminal event and releases its resources", async () => {
 		await fc.assert(
 			fc.asyncProperty(scenarioArb, async (s) => {
+				reported = [];
+				await runScenario(s);
+			}),
+			{ numRuns: NUM_RUNS },
+		);
+	}, 120_000);
+
+	it("holds the same invariants, and sends nothing to a paused partition, when a 429 lands on a queue", async () => {
+		await fc.assert(
+			fc.asyncProperty(pauseScenarioArb, async (s) => {
 				reported = [];
 				await runScenario(s);
 			}),

@@ -408,27 +408,6 @@ export class HttpClient {
 			releaseBreaker();
 			releaseBudget();
 		});
-		// A pause that runs past the whole-ticket deadline can only end in
-		// DeadlineExceededError, so fail now rather than hold a breaker permit
-		// until the deadline. Mirrors the retry loop's check.
-		if (
-			isBoundedMs(timeoutConfig.totalMs) &&
-			bulkhead.pauseRemainingMs >= timeoutConfig.totalMs - (Date.now() - startTime)
-		) {
-			const error = new DeadlineExceededError(displayUrl, timeoutConfig.totalMs);
-			this.emit("failure", {
-				ticketId: ticket.id,
-				url: displayUrl,
-				partition: partitionName,
-				attempts: 1,
-				durationMs: Date.now() - startTime,
-				queuedMs: 0,
-				error,
-			});
-			controller.markDone({ success: false, error } as never);
-			cleanup();
-			return;
-		}
 		const permit = breaker.tryAcquire();
 		if (!permit) {
 			const error = new CircuitOpenError(partitionName);
@@ -447,6 +426,29 @@ export class HttpClient {
 			return;
 		}
 
+		// A pause that runs past the whole-ticket deadline can only end in
+		// DeadlineExceededError, so fail now rather than hold the breaker permit
+		// until the deadline. After tryAcquire, so an open breaker still reports
+		// CircuitOpenError. Mirrors the retry loop's check.
+		if (
+			isBoundedMs(timeoutConfig.totalMs) &&
+			bulkhead.pauseRemainingMs >= timeoutConfig.totalMs - (Date.now() - startTime)
+		) {
+			permit.release();
+			const error = new DeadlineExceededError(displayUrl, timeoutConfig.totalMs);
+			this.emit("failure", {
+				ticketId: ticket.id,
+				url: displayUrl,
+				partition: partitionName,
+				attempts: 1,
+				durationMs: Date.now() - startTime,
+				queuedMs: 0,
+				error,
+			});
+			controller.markDone({ success: false, error } as never);
+			cleanup();
+			return;
+		}
 		// Only first attempts the breaker admitted earn retry budget: a rejected
 		// one never reached the host, so it adds no load to spread retries over.
 		retryBudget.recordRequest();

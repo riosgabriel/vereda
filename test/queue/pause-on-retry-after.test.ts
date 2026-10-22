@@ -497,6 +497,41 @@ describe("pauseOnRetryAfter in the client", () => {
 		await client.close();
 	});
 
+	it("reports CircuitOpenError, not the deadline, when the breaker is open during a long pause", async () => {
+		const { client, sentAt } = setup(
+			{
+				timeout: { attemptMs: 10_000, totalMs: 1_000 },
+				circuitBreaker: { enabled: true, failureThreshold: 1, resetTimeoutMs: 60_000 },
+			},
+			[{ status: 429, retryAfter: "5" }, ok],
+		);
+		await client.get(url("a")).toPromise();
+		const result = await client.get(url("b")).toPromise();
+		expect(!result.success && result.error.kind).toBe("circuit_open");
+		expect(sentAt).toEqual([0]);
+		await client.close();
+	});
+
+	it("hands back a half-open trial permit when the pause fails a first attempt at once", async () => {
+		const { client, sentAt } = setup(
+			{
+				timeout: { attemptMs: 10_000, totalMs: 1_000 },
+				circuitBreaker: { enabled: true, failureThreshold: 1, resetTimeoutMs: 1_000, halfOpenMaxAttempts: 1 },
+			},
+			[{ status: 429, retryAfter: "5" }, ok],
+		);
+		await client.get(url("a")).toPromise();
+		await vi.advanceTimersByTimeAsync(1_000); // breaker half-open, partition still paused
+		const doomed = await client.get(url("b")).toPromise();
+		expect(!doomed.success && doomed.error).toBeInstanceOf(DeadlineExceededError);
+		await vi.advanceTimersByTimeAsync(4_000); // pause over
+		// Had b kept the only trial slot, c would get CircuitOpenError.
+		const trial = await client.get(url("c")).toPromise();
+		expect(trial.success).toBe(true);
+		expect(sentAt).toEqual([0, 5_000]);
+		await client.close();
+	});
+
 	it("fails a doomed retry with RateLimitedError at once, spending no budget and emitting no retry", async () => {
 		const { client, sentAt } = setup(
 			{
