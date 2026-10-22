@@ -18,6 +18,11 @@ import type { Semaphore } from "./semaphore.ts";
  *  so the eviction policy stays in one place. */
 export const DEFAULT_PARTITION_TTL_MS = 60_000;
 
+/** What a guarded attempt resolves with when it reached the front of a queue
+ *  during a pause: nothing was sent, and the caller admits it again. Never
+ *  leaves the code that dispatches attempts. */
+export const PAUSED: unique symbol = Symbol("paused");
+
 export class Bulkhead {
 	public readonly name: string;
 	private readonly concurrency: number;
@@ -96,6 +101,23 @@ export class Bulkhead {
 		if (ms === undefined || !(ms > 0) || !pause.statuses.includes(error.statusCode)) return;
 		const until = pause.extend(ms);
 		this.bucket?.freezeUntil(until);
+	}
+
+	/** Wrap an attempt's task so it respects the pause at the moment it really
+	 *  starts, with its slot and permit already held, and records a pushback
+	 *  the moment it settles. Start during a pause: nothing is sent and the
+	 *  task resolves `PAUSED`, so the usual release paths free the permit and
+	 *  the slot (D4). Settle with an `error` outcome: the pushback is noted
+	 *  here, before the slot is released and the next queued attempt starts,
+	 *  and before any callback of the caller's can throw. */
+	guard<R extends { kind: string }>(task: () => Promise<R>): () => Promise<R | typeof PAUSED> {
+		return () => {
+			if (this.pauseRemainingMs > 0) return Promise.resolve(PAUSED);
+			return task().then((result) => {
+				if (result.kind === "error") this.notePushback((result as { error?: unknown }).error);
+				return result;
+			});
+		};
 	}
 
 	/** Tokens free right now, or undefined when the partition has no rate limit. */

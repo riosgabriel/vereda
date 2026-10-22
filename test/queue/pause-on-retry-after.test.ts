@@ -492,3 +492,149 @@ describe("pauseOnRetryAfter in the client", () => {
 		await client.close();
 	});
 });
+
+describe("a pause also holds attempts that were already queued", () => {
+	beforeEach(() => {
+		vi.useFakeTimers({ now: 0 });
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	const url = (host: string, path: string) => `http://${host}/${path}`;
+	const sleepMs = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+	/** fetch answers per path: `slow429` after 100 ms with Retry-After 5,
+	 *  `flaky` with 500 once and then 200, anything else 200. Records the
+	 *  time of every call as `path@host`. */
+	function setup(config: Partial<ClientConfig>) {
+		const calls: Array<{ key: string; at: number }> = [];
+		const seen = new Map<string, number>();
+		const client = HttpClient.create({
+			timeout: { attemptMs: 10_000 },
+			retry: { maxRetries: 0, backoff: { baseDelayMs: 0, maxDelayMs: 0, jitter: false } },
+			pauseOnRetryAfter: {},
+			fetch: async (input) => {
+				const u = new URL(String(input));
+				const key = `${u.pathname.slice(1)}@${u.host}`;
+				calls.push({ key, at: Date.now() });
+				const n = (seen.get(key) ?? 0) + 1;
+				seen.set(key, n);
+				if (u.pathname === "/slow429") {
+					await sleepMs(100);
+					return new Response(null, { status: 429, headers: { "retry-after": "5" } });
+				}
+				if (u.pathname === "/flaky" && n === 1) return new Response(null, { status: 500 });
+				return new Response(null, { status: 200 });
+			},
+			...config,
+		});
+		return { client, calls };
+	}
+
+	const partitionQueue = { defaultPartition: { concurrency: 1, limitFirstAttempts: true } };
+
+	it("holds an attempt queued in the partition bulkhead until the pause is over", async () => {
+		const { client, calls } = setup(partitionQueue);
+		void client.get(url("svc.test", "slow429")).toPromise();
+		const b = client.get(url("svc.test", "b")).toPromise();
+		await vi.advanceTimersByTimeAsync(4_999);
+		expect(calls.map((c) => c.key)).toEqual(["slow429@svc.test"]);
+		await vi.advanceTimersByTimeAsync(101);
+		expect((await b).success).toBe(true);
+		expect(calls.map((c) => [c.key, c.at])).toEqual([
+			["slow429@svc.test", 0],
+			["b@svc.test", 5_100],
+		]);
+		await client.close();
+	});
+
+	it("sends nothing in the same tick the 429 lands", async () => {
+		const { client, calls } = setup(partitionQueue);
+		void client.get(url("svc.test", "slow429")).toPromise();
+		void client.get(url("svc.test", "b")).toPromise();
+		await vi.advanceTimersByTimeAsync(100);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(calls).toHaveLength(1);
+		await client.close();
+	});
+
+	it("frees the global permit of a bounced attempt so another partition runs", async () => {
+		const { client, calls } = setup({ concurrency: 1 });
+		void client.get(url("x.test", "slow429")).toPromise();
+		const b = client.get(url("x.test", "b")).toPromise();
+		const y = client.get(url("y.test", "y")).toPromise();
+		await vi.advanceTimersByTimeAsync(100);
+		expect((await y).success).toBe(true);
+		expect(calls.map((c) => [c.key, c.at])).toEqual([
+			["slow429@x.test", 0],
+			["y@y.test", 100],
+		]);
+		await vi.advanceTimersByTimeAsync(5_000);
+		expect((await b).success).toBe(true);
+		expect(calls.at(-1)).toEqual({ key: "b@x.test", at: 5_100 });
+		await client.close();
+	});
+
+	it("cancels a bounced attempt that is re-waiting, holding nothing", async () => {
+		const { client, calls } = setup({ ...partitionQueue, concurrency: 1 });
+		void client.get(url("svc.test", "slow429")).toPromise();
+		const b = client.get(url("svc.test", "b"));
+		const events: string[] = [];
+		client.on("cancelled", () => events.push("cancelled"));
+		client.on("failure", () => events.push("failure"));
+		await vi.advanceTimersByTimeAsync(1_000);
+		b.cancel();
+		const result = await b.toPromise();
+		expect(!result.success && result.error).toBeInstanceOf(CancelledError);
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(calls.map((c) => c.key)).toEqual(["slow429@svc.test"]);
+		expect(client.partitions()[0]?.running).toBe(0);
+		expect(events).toEqual(["failure", "cancelled"]);
+		await client.close();
+	});
+
+	it("doesn't count a bounce as an attempt, and counts its wait as queued", async () => {
+		const { client, calls } = setup({
+			...partitionQueue,
+			retry: { maxRetries: 1, backoff: { baseDelayMs: 0, maxDelayMs: 0, jitter: false } },
+		});
+		const done: Array<{ attempts: number; queuedMs: number }> = [];
+		client.on("success", (e) => e.url.includes("flaky") && done.push({ attempts: e.attempts, queuedMs: e.queuedMs }));
+		const retries: number[] = [];
+		client.on("retry", (e) => e.url.includes("flaky") && retries.push(e.attempt));
+		void client.get(url("svc.test", "flaky")).toPromise();
+		void client.get(url("svc.test", "slow429")).toPromise();
+		await vi.advanceTimersByTimeAsync(10_000);
+		const flaky = calls.filter((c) => c.key === "flaky@svc.test");
+		expect(flaky).toHaveLength(2);
+		// The retry took the slot right as the 429 landed, bounced, and went at 5.1 s.
+		expect(flaky[1]?.at).toBe(5_100);
+		expect(retries).toEqual([0]);
+		expect(done).toHaveLength(1);
+		expect(done[0]?.attempts).toBe(2);
+		expect(done[0]?.queuedMs).toBeGreaterThanOrEqual(5_000);
+		await client.close();
+	});
+
+	it("still records the pause when a user isFailure throws on the 429", async () => {
+		const { client, calls } = setup({
+			circuitBreaker: {
+				enabled: true,
+				isFailure: () => {
+					throw new Error("boom");
+				},
+			},
+		});
+		const first = client.get(url("svc.test", "slow429")).toPromise();
+		await vi.advanceTimersByTimeAsync(100);
+		await first;
+		expect(client.partitions()[0]?.pausedUntil).toBe(5_100);
+		const next = client.get(url("svc.test", "b")).toPromise();
+		await vi.advanceTimersByTimeAsync(4_999);
+		expect(calls).toHaveLength(1);
+		await vi.advanceTimersByTimeAsync(1);
+		await next;
+		await client.close();
+	});
+});

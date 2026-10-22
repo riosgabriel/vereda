@@ -92,6 +92,7 @@ describe("runRetryLoop", () => {
 			name: "test",
 			run,
 			takeToken: () => undefined,
+			guard: (task: unknown) => task,
 			notePushback: () => {},
 			pauseRemainingMs: 0,
 		} as unknown as Bulkhead;
@@ -138,6 +139,7 @@ describe("runRetryLoop", () => {
 		const bulkhead = {
 			name: "test",
 			takeToken: () => undefined,
+			guard: (task: unknown) => task,
 			notePushback: () => {},
 			pauseRemainingMs: 0,
 			run: vi.fn(() => {

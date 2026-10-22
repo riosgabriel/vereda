@@ -1,4 +1,4 @@
-import { BulkheadRegistry, type BulkheadSnapshot, DEFAULT_PARTITION_TTL_MS } from "../queue/bulkhead.ts";
+import { BulkheadRegistry, type BulkheadSnapshot, DEFAULT_PARTITION_TTL_MS, PAUSED } from "../queue/bulkhead.ts";
 import { type CircuitBreaker, CircuitBreakerRegistry, type CircuitSnapshot } from "../queue/circuit-breaker.ts";
 import { executeRequest, type MiddlewareFn } from "../queue/executor.ts";
 import { type RetryPolicyContext, shouldRetry } from "../queue/policy.ts";
@@ -476,12 +476,15 @@ export class HttpClient {
 				throw err;
 			};
 			// Takes the partition slot (when limitFirstAttempts) and the global
-			// permit, then runs the attempt. queuedMs adds up every wait.
-			const dispatch = (): Promise<Awaited<ReturnType<typeof execute>>> => {
+			// permit, then runs the attempt. queuedMs adds up every wait. The
+			// guarded task resolves PAUSED, sending nothing, if a pause began while
+			// the attempt was queued.
+			const guarded = bulkhead.guard(execute);
+			const dispatch = (): Promise<Awaited<ReturnType<typeof execute>> | typeof PAUSED> => {
 				if (usePartitionBulkhead) {
 					return bulkhead
 						.run(
-							execute,
+							guarded,
 							semaphore,
 							(ms) => {
 								queuedMs += ms;
@@ -495,7 +498,7 @@ export class HttpClient {
 					return semaphore.acquire(ticket.signal).then(
 						(release) => {
 							queuedMs += Date.now() - enqueuedAt;
-							return execute().finally(release);
+							return guarded().finally(release);
 						},
 						(err: unknown) => {
 							queuedMs += Date.now() - enqueuedAt;
@@ -503,44 +506,50 @@ export class HttpClient {
 						},
 					);
 				}
-				return execute();
+				return guarded();
 			};
 
 			// The rate-limit token comes before any slot or permit, so an attempt
 			// waiting for its token never holds concurrency another one could use.
-			let tokenWait: Promise<number> | undefined;
-			try {
-				tokenWait = bulkhead.takeToken(ticket.signal);
-			} catch (err) {
-				if (!(err instanceof RateLimitedError)) throw err;
-				this.emit("failure", {
-					ticketId: ticket.id,
-					url: displayUrl,
-					partition: partitionName,
-					attempts: 1,
-					durationMs: Date.now() - startTime,
-					queuedMs: 0,
-					error: err,
-				});
-				controller.markDone({ success: false, error: err } as never);
-				cleanup();
-				return;
-			}
-			if (tokenWait !== undefined) {
-				const waitStart = Date.now();
-				result = await tokenWait.then(
-					(ms) => {
-						queuedMs += ms;
-						return dispatch();
-					},
-					(err: unknown) => {
-						queuedMs += Date.now() - waitStart;
-						return cancelledWhileQueued(err);
-					},
-				);
-			} else {
-				result = await dispatch();
-			}
+			// An attempt bounced by a pause that began while it was queued comes
+			// back here: it is no attempt yet, and its wait counts as queue time.
+			let outcome: Awaited<ReturnType<typeof execute>> | typeof PAUSED;
+			do {
+				let tokenWait: Promise<number> | undefined;
+				try {
+					tokenWait = bulkhead.takeToken(ticket.signal);
+				} catch (err) {
+					if (!(err instanceof RateLimitedError)) throw err;
+					this.emit("failure", {
+						ticketId: ticket.id,
+						url: displayUrl,
+						partition: partitionName,
+						attempts: 1,
+						durationMs: Date.now() - startTime,
+						queuedMs,
+						error: err,
+					});
+					controller.markDone({ success: false, error: err } as never);
+					cleanup();
+					return;
+				}
+				if (tokenWait !== undefined) {
+					const waitStart = Date.now();
+					outcome = await tokenWait.then(
+						(ms) => {
+							queuedMs += ms;
+							return dispatch();
+						},
+						(err: unknown) => {
+							queuedMs += Date.now() - waitStart;
+							return cancelledWhileQueued(err);
+						},
+					);
+				} else {
+					outcome = await dispatch();
+				}
+			} while (outcome === PAUSED);
+			result = outcome;
 
 			switch (result.kind) {
 				case "success": {
@@ -601,7 +610,6 @@ export class HttpClient {
 					// Record the raw attempt outcome against the circuit breaker
 					// regardless of what the retry policy decides to do with it.
 					permit.failure(result.error);
-					bulkhead.notePushback(result.error);
 					// maxRetries=0: no retries configured, surface the raw error immediately
 					// without entering the bulkhead (which would waste a slot for no work),
 					// and without consulting retryWhen — there is nothing left to decide
