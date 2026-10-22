@@ -1,0 +1,81 @@
+---
+import { Icon } from "@astrojs/starlight/components";
+
+// One icon button in place of Starlight's Dark/Light/Auto menu. It shows where a click goes:
+// the sun on the dark site, the moon on the light one. Until a reader picks, the site follows
+// the system setting, as Starlight's "Auto" does. Both icons are rendered and CSS shows one,
+// so every copy of the button (desktop and mobile header) follows data-theme without script.
+---
+
+<button type="button" class="v-theme print:hidden" aria-label="Switch theme">
+	<Icon name="sun" class="to-light" size="1.25rem" />
+	<Icon name="moon" class="to-dark" size="1.25rem" />
+</button>
+
+<script>
+	/** Starlight's key, so the inline ThemeProvider applies the choice before first paint. */
+	const storageKey = "starlight-theme";
+	const motion = matchMedia("(prefers-reduced-motion: no-preference)");
+	const system = matchMedia("(prefers-color-scheme: light)");
+
+	const label = () => {
+		const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+		document.querySelectorAll(".v-theme").forEach((b) => b.setAttribute("aria-label", `Switch to ${next} theme`));
+	};
+
+	const apply = (theme: "dark" | "light") => {
+		document.documentElement.dataset.theme = theme;
+		label();
+	};
+
+	document.querySelectorAll(".v-theme").forEach((button) =>
+		button.addEventListener("click", () => {
+			const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+			try {
+				localStorage.setItem(storageKey, next);
+			} catch {}
+			// The old theme fades into the new one. Without view transitions, or for readers who
+			// ask for less motion, the swap is instant.
+			if (document.startViewTransition && motion.matches) document.startViewTransition(() => apply(next));
+			else apply(next);
+		}),
+	);
+
+	// No choice stored yet: keep following the system setting.
+	system.addEventListener("change", () => {
+		let stored = null;
+		try {
+			stored = localStorage.getItem(storageKey);
+		} catch {}
+		if (!stored) apply(system.matches ? "light" : "dark");
+	});
+
+	label();
+</script>
+
+<style>
+	.v-theme {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0.5rem;
+		margin: -0.5rem;
+		border: 0;
+		background: none;
+		color: var(--sl-color-gray-2);
+		cursor: pointer;
+	}
+	.v-theme:hover {
+		color: var(--sl-color-white);
+	}
+	:global(:root[data-theme="light"]) .v-theme .to-light,
+	:global(:root[data-theme="dark"]) .v-theme .to-dark {
+		display: none;
+	}
+	/* The default crossfade (0.25s) reads as a flash. */
+	:global(::view-transition-old(root)),
+	:global(::view-transition-new(root)) {
+		animation-duration: 0.35s;
+		animation-timing-function: ease-in-out;
+	}
+</style>

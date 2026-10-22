@@ -30,6 +30,9 @@ export default defineConfig({
 			editLink: { baseUrl: "https://github.com/riosgabriel/vereda/edit/main/docs/" },
 			components: {
 				Head: "./src/components/Head.astro",
+				Header: "./src/components/Header.astro",
+				MobileMenuFooter: "./src/components/MobileMenuFooter.astro",
+				ThemeSelect: "./src/components/ThemeSelect.astro",
 				SiteTitle: "./src/components/SiteTitle.astro",
 				Footer: "./src/components/Footer.astro",
 				PageTitle: "./src/components/PageTitle.astro",
