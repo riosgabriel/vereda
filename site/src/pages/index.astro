@@ -1,6 +1,7 @@
 ---
 import { Code } from "@astrojs/starlight/components";
 import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
+import readme from "../../../README.md?raw";
 import { RATE, simulate } from "../../demos/models/retry-budget.js";
 import Horizon from "../components/Horizon.astro";
 import { PATTERNS } from "../patterns.ts";
@@ -10,21 +11,16 @@ const storm = simulate({ maxRetries: 3, ratio: 0.1 });
 const peak = (lane: "without" | "with") =>
 	`${(Math.max(...(storm.lanes[lane].series?.load ?? []).map(([, v]) => v)) / RATE).toFixed(2)}×`;
 
-// The README's quickstart, word for word.
-const quickstart = `import { HttpClient } from "@vereda/http";
-
-const api = HttpClient.create({
-  baseUrl: "https://api.example.com",
-  timeout: { attemptMs: 5_000 },
-});
-
-const result = await api.get("/users/42").toPromise(); // never rejects
-
-if (result.success) {
-  const user = await result.raw.json();
-} else {
-  console.error(result.error.kind, result.error.message); // a typed error
-}`;
+// Both snippets come from the README, word for word, so the two can't drift;
+// test/docs/readme-snippets.test.ts typechecks them there.
+const readmeBlock = (after: string) => {
+	const from = readme.indexOf(after);
+	const block = from < 0 ? null : /```typescript\n([\s\S]*?)```/.exec(readme.slice(from));
+	if (!block) throw new Error(`README.md has no typescript block after "${after}"`);
+	return block[1].trimEnd();
+};
+const quickstart = readmeBlock("</p>"); // the first block, right under the badges
+const byHand = readmeBlock("## Why Vereda?");
 
 const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 ---
@@ -84,6 +80,23 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 	<Horizon />
 
 	<section class="band first">
+		<div class="split by-hand">
+			<div>
+				<h2>The loop you'd write by hand</h2>
+				<p><code>fetch</code> makes one attempt. Everything after that is yours to write, and the comments are the questions it leaves open.</p>
+				<p>Even once it's correct, the loop still has:</p>
+				<ul class="gaps">
+					<li>no limit on how many retries pile onto a struggling host,</li>
+					<li>no way to cancel,</li>
+					<li>errors you can only tell apart by parsing a message.</li>
+				</ul>
+				<p>Vereda is that loop written carefully, once.</p>
+			</div>
+			<Code code={byHand} lang="ts" title="by-hand.ts" wrap />
+		</div>
+	</section>
+
+	<section class="band">
 		<div class="split">
 			<div>
 				<h2>One call, every safeguard</h2>
@@ -296,6 +309,13 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 		gap: 2.5rem;
 		align-items: start;
 	}
+	/* The loop's longest line is longer than the quickstart's. */
+	.split.by-hand {
+		grid-template-columns: minmax(0, 0.6fr) minmax(0, 1.5fr);
+	}
+	.gaps {
+		padding-inline-start: 1.25rem;
+	}
 	.cards {
 		list-style: none;
 		padding: 0;
@@ -329,7 +349,8 @@ const code = (s: string) => s.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
 
 	@media (max-width: 50rem) {
 		.hero,
-		.split {
+		.split,
+		.split.by-hand {
 			grid-template-columns: 1fr;
 			gap: 2rem;
 		}
