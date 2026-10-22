@@ -123,6 +123,22 @@ describe("Bulkhead pause", () => {
 		await expect(wait).resolves.toBe(2_500);
 	});
 
+	it("keeps waiters spaced at tokensPerSec when the pause is extended while they sleep", async () => {
+		const bulkhead = new Bulkhead("a", {
+			pauseOnRetryAfter: {},
+			rateLimit: { tokensPerSec: 10, burst: 1 },
+		});
+		bulkhead.notePushback(pushback(429, 1_000));
+		const sentAt: number[] = [];
+		const waits = [0, 1, 2].map(() => bulkhead.takeToken()?.then(() => sentAt.push(Date.now())));
+		await vi.advanceTimersByTimeAsync(500);
+		bulkhead.notePushback(pushback(429, 2_000));
+		await vi.advanceTimersByTimeAsync(3_000);
+		await Promise.all(waits);
+		// Not all three at 2_500: each keeps its place behind the new end.
+		expect(sentAt).toEqual([2_600, 2_700, 2_800]);
+	});
+
 	it("rejects with CancelledError on abort, and refunds the token", async () => {
 		const bulkhead = new Bulkhead("a", {
 			pauseOnRetryAfter: {},

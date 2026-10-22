@@ -132,6 +132,10 @@ export class Bulkhead {
 			waitMs = reserved;
 		}
 		if (waitMs === 0) return undefined;
+		// This attempt's place in the token queue behind the pause's end. If the
+		// pause is extended, it keeps that place behind the new end, so waiters
+		// still go out at tokensPerSec rather than all at once.
+		const lagMs = waitMs - pauseMs;
 		const startedAt = Date.now();
 		return new Promise<number>((resolve, reject) => {
 			if (signal?.aborted) {
@@ -150,7 +154,7 @@ export class Bulkhead {
 					// The pause may have been extended while this attempt slept.
 					const more = this.pauseRemainingMs;
 					if (more > 0) {
-						sleepFor(more);
+						sleepFor(more + lagMs);
 						return;
 					}
 					signal?.removeEventListener("abort", onAbort);
