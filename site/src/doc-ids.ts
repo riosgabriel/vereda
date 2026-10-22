@@ -12,6 +12,7 @@ export const SIDEBAR_ORDER = [
 	"guide/results-and-errors",
 	"guide/resilience",
 	"guide/observability",
+	"guide/comparison",
 ];
 
 const SERVED = /^(book|guide)\/[^/]+\.md$|^operations\.md$/;
