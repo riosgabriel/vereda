@@ -346,11 +346,13 @@ const client = HttpClient.create({
 
 After a `429` or `503` with a valid `Retry-After`, nothing new goes to that partition before the time the server named. That covers first attempts and retries. A request that arrives meanwhile waits, and the wait counts toward `queuedMs`.
 
+Requests that were already queued wait too. One that reaches the front of the partition's `concurrency` queue, or of the global one, during the pause goes back and waits it out. It sends nothing, and it doesn't count as an attempt.
+
 ### What pauses
 
 - `statuses` lists the statuses that pause. The default is `[429, 503]`. A status also has to be in `retry.retryOnStatus`, which both are by default.
 - `maxPauseMs` caps the pause (default 30 s). A longer `Retry-After` is clamped, so a buggy header can't park the partition for hours.
-- The header is seconds or an HTTP date. A missing, zero, past or unparseable value pauses nothing.
+- The header is seconds or an HTTP date, in any of the three forms RFC 9110 allows. A missing, zero, past or unparseable value pauses nothing.
 - A later `Retry-After` can extend the pause. It never shortens it.
 
 ### Waiting out a pause
@@ -359,11 +361,15 @@ A waiting request holds no bulkhead slot or global `concurrency` permit, as with
 
 The wait ends early on `cancel()` or at `timeout.totalMs`. Without a [rate limit](#rate-limiting), those are its only limits besides the pause itself.
 
-A retry waits for the longer of its own backoff delay and the pause. If that would run past the deadline, the ticket fails at once with `DeadlineExceededError`.
+A retry waits for the longer of its own backoff delay and the pause. The `retry` event's `delayMs` (and a ticket's `retrying` update) reports that longer wait.
+
+If the pause would run past the deadline, the ticket fails at once with `DeadlineExceededError`. That goes for a first attempt too.
 
 ### With a rate limit
 
-The pause and the token wait add up, and `maxWaitMs` bounds both. A request that would wait longer fails at once with `RateLimitedError`, and nothing is sent.
+The pause and the token wait add up, and `maxWaitMs` bounds both. A request that would wait longer fails at once with `RateLimitedError`, and nothing is sent. A retry that is sure to be refused once it has slept fails before it spends retry budget or emits a `retry` event.
+
+When the pause is part of the reason, the error says so: its message names the pause, and `pausedUntil` holds the epoch ms it ends at. Without a pause, `pausedUntil` is `undefined`.
 
 When a pause starts, the bucket drains. Traffic resumes at `tokensPerSec` after the pause, not in a burst.
 
@@ -402,7 +408,7 @@ const client = HttpClient.create({
 });
 ```
 
-One limit: a first attempt takes its breaker permit before it waits out the pause. A half-open trial request therefore holds its permit through the pause.
+One limit: a first attempt takes its breaker permit before it waits out the pause. A half-open trial request therefore holds its permit through the pause, unless the pause alone would pass its deadline. Then it fails before taking one.
 
 ## Circuit breaker
 

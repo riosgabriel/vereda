@@ -235,8 +235,9 @@ host carry on with their own schedules.
 
 > **Aside: pausing a whole host.** With the opt-in `pauseOnRetryAfter` option (issue #191), a
 > 429 or 503 with `Retry-After` pauses the whole partition, which is closer to what the server
-> asked for. `Bulkhead.notePushback` records it and `Bulkhead.takeToken` waits it out, ahead of
-> every attempt.
+> asked for. `Bulkhead.guard` records it as the attempt settles, `Bulkhead.takeToken` waits it out
+> ahead of every attempt, and a queued attempt that reaches the front during the pause is bounced
+> back to `takeToken`.
 
 ## What the caller sees when retrying stops
 
