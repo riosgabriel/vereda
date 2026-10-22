@@ -57,7 +57,7 @@
     <div class="panel chart">
       <h3>When the caller hears back, by totalMs</h3>
       <canvas id="chartSweep" aria-label="Chart of the time the caller waits for an answer, for each totalMs value"></canvas>
-      <p>The red line is the client with no deadline. The blue line is the client with a deadline. The dot marks your current totalMs. Past the red line, the deadline no longer helps.</p>
+      <p>The flat line ending in a square is the client with no deadline. The rising line is the client with a deadline, and its dot marks your current totalMs. Past the flat line, the deadline no longer helps.</p>
     </div>
     <div class="panel chart">
       <h3>Host time spent on hung attempts</h3>
@@ -134,7 +134,7 @@ client.get("/slow", &#123;
 <script>
 	// @ts-nocheck: ported from the standalone demo pages, plain JavaScript like engine/*.js
 	// and models/*.js (excluded in tsconfig.json). Their behavior is pinned by test/demos/.
-import { mix, sizeCanvas, stateMark } from "../../../demos/engine/draw.js";
+import { LANE_SHAPES, legend, mark, mix, sizeCanvas, stateMark } from "../../../demos/engine/draw.js";
 import { mountDemo } from "../../../demos/engine/player.js";
 import { INF, runModel, SWEEP_MAX, simulate } from "../../../demos/models/timeouts.js";
 
@@ -315,12 +315,7 @@ function drawSweep(trace, col, done) {
   }
   ctx.textAlign = "center";
   for (let d = 1; d <= SWEEP_MAX; d += 2) ctx.fillText(d === SWEEP_MAX ? "off" : `${d}s`, X(d), h - 8);
-  ctx.textAlign = "left";
-  ctx.font = col.strong;
-  ctx.fillStyle = col.fail;
-  ctx.fillText("no deadline", L + 6, 12);
-  ctx.fillStyle = col.first;
-  ctx.fillText("with deadline", L + 100, 12);
+  legend(ctx, L + 6, 12, [["no deadline", col.fail, LANE_SHAPES.without], ["with deadline", col.first, LANE_SHAPES.with]], col);
   // The axes and legend are setup; the lines are the run's conclusion, drawn once it ends so
   // they don't answer the question before the lanes do.
   if (!done) return;
@@ -331,6 +326,7 @@ function drawSweep(trace, col, done) {
     ctx.moveTo(L, Y(base));
     ctx.lineTo(w - R, Y(base));
     ctx.stroke();
+    mark(ctx, LANE_SHAPES.without, w - R - 4, Y(base), 4, col.fail);
   } else {
     ctx.setLineDash([2, 4]);
     ctx.beginPath();
@@ -338,8 +334,10 @@ function drawSweep(trace, col, done) {
     ctx.lineTo(w - R, Y(yMax));
     ctx.stroke();
     ctx.setLineDash([]);
+    mark(ctx, LANE_SHAPES.without, w - R - 4, Y(yMax), 4, col.fail);
   }
   ctx.strokeStyle = col.first;
+  ctx.lineWidth = 2.5;
   ctx.beginPath();
   sweep.forEach((p, i) => {
     const x = X(p.d);
@@ -395,7 +393,7 @@ function drawWaste(trace, simT, col) {
   }
   ctx.textAlign = "center";
   for (const v of ticksFor(END)) ctx.fillText(`${v}s`, X(v), h - 8);
-  const line = (arr, color) => {
+  const line = (arr, color, shape) => {
     ctx.strokeStyle = color;
     ctx.lineWidth = 2.5;
     ctx.beginPath();
@@ -409,21 +407,11 @@ function drawWaste(trace, simT, col) {
     }
     ctx.stroke();
     ctx.lineWidth = 1;
-    if (lp) {
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.arc(lp[0], lp[1], 4, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    if (lp) mark(ctx, shape, lp[0], lp[1], 4, color);
   };
-  line(sa, col.fail);
-  line(sb, col.first);
-  ctx.textAlign = "left";
-  ctx.font = col.strong;
-  ctx.fillStyle = col.fail;
-  ctx.fillText("no deadline", L + 6, 12);
-  ctx.fillStyle = col.first;
-  ctx.fillText("with deadline", L + 100, 12);
+  line(sa, col.fail, LANE_SHAPES.without);
+  line(sb, col.first, LANE_SHAPES.with);
+  legend(ctx, L + 6, 12, [["no deadline", col.fail, LANE_SHAPES.without], ["with deadline", col.first, LANE_SHAPES.with]], col);
 }
 
 function setStat(id, text, cls) {

@@ -163,9 +163,15 @@ export function timeAxes(ctx, { w, h, pad, end, yMax, ticks, fmt = String, phase
 	return { X, Y };
 }
 
+/**
+ * Shape of each lane's marks in the charts: the playhead of its line, its points in a scatter,
+ * and its legend swatch. The two lanes' colours alone don't tell them apart (WCAG 1.4.1).
+ */
+export const LANE_SHAPES = { without: "square", with: "circle" };
+
 /** A line drawn up to simT, with a dot at the playhead. Nothing after simT: a chart never shows
  *  where the run is going before it gets there. */
-export function playedLine(ctx, pts, X, Y, color, simT) {
+export function playedLine(ctx, pts, X, Y, color, simT, shape = "circle") {
 	const trace = (upTo) => {
 		ctx.beginPath();
 		let last = null;
@@ -184,13 +190,18 @@ export function playedLine(ctx, pts, X, Y, color, simT) {
 	const end = trace(simT);
 	ctx.stroke();
 	ctx.lineWidth = 1;
-	if (end) dot(ctx, end[0], end[1], 3.5, color);
+	if (end) mark(ctx, shape, end[0], end[1], 4, color);
 }
 
+/** Coloured labels in a row; an item's optional shape is drawn as a swatch before its text. */
 export function legend(ctx, x, y, items, col) {
 	ctx.textAlign = "left";
 	ctx.font = col.strong;
-	for (const [text, color] of items) {
+	for (const [text, color, shape] of items) {
+		if (shape) {
+			mark(ctx, shape, x + 4, y - 4, 4, color);
+			x += 13;
+		}
 		ctx.fillStyle = color;
 		ctx.fillText(text, x, y);
 		x += ctx.measureText(text).width + 16;

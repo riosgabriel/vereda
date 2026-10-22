@@ -153,7 +153,7 @@
 <script>
 	// @ts-nocheck: ported from the standalone demo pages, plain JavaScript like engine/*.js
 	// and models/*.js (excluded in tsconfig.json). Their behavior is pinned by test/demos/.
-import { dot, legend, mix, playedLine, roundRect, sizeCanvas, stateMark, timeAxes, valueAt } from "../../../demos/engine/draw.js";
+import { dot, LANE_SHAPES, legend, mark, mix, playedLine, roundRect, sizeCanvas, stateMark, timeAxes, valueAt } from "../../../demos/engine/draw.js";
 import { mountDemo } from "../../../demos/engine/player.js";
 import { isBad, MIN_REQ, PCT, simulate, TIMEOUT, WINDOW_SEC } from "../../../demos/models/circuit-breaker.js";
 
@@ -345,12 +345,12 @@ function drawWait(trace, simT, col) {
   const { ctx, w, h } = sizeCanvas($("chartWait"));
   const pad = [22, 10, 22, 50];
   const { X, Y } = timeAxes(ctx, { w, h, pad, end: trace.duration, yMax: 1.2, ticks: [0, 0.4, 0.8, 1.2], fmt: (v) => `${Math.round(v * 1000)}ms`, phases: trace.phases, col });
-  const pts = (attempts, color, dy) => {
-    for (const a of attempts) if (a.end <= simT) dot(ctx, X(a.end), Y(a.end - a.sent) + dy, 2.3, color, 0.9);
+  const pts = (attempts, color, shape, dy) => {
+    for (const a of attempts) if (a.end <= simT) mark(ctx, shape, X(a.end), Y(a.end - a.sent) + dy, 2.5, color, 0.9);
   };
-  pts(trace.lanes.without.attempts, col.fail, -2);
-  pts(trace.lanes.with.attempts, col.first, 2);
-  legend(ctx, pad[3] + 6, 12, [["no breaker", col.fail], ["with breaker", col.first]], col);
+  pts(trace.lanes.without.attempts, col.fail, LANE_SHAPES.without, -2);
+  pts(trace.lanes.with.attempts, col.first, LANE_SHAPES.with, 2);
+  legend(ctx, pad[3] + 6, 12, [["no breaker", col.fail, LANE_SHAPES.without], ["with breaker", col.first, LANE_SHAPES.with]], col);
 }
 
 function drawHost(trace, simT, col) {
@@ -362,9 +362,9 @@ function drawHost(trace, simT, col) {
     for (const a of attempts) if (a.start !== null) n[Math.min(trace.duration - 1, Math.floor(a.sent))]++;
     return n.map((v, i) => [i + 0.5, v]);
   };
-  playedLine(ctx, perSecond(trace.lanes.without.attempts), X, Y, col.fail, simT);
-  playedLine(ctx, perSecond(trace.lanes.with.attempts), X, Y, col.first, simT);
-  legend(ctx, pad[3] + 6, 12, [["no breaker", col.fail], ["with breaker", col.first]], col);
+  playedLine(ctx, perSecond(trace.lanes.without.attempts), X, Y, col.fail, simT, LANE_SHAPES.without);
+  playedLine(ctx, perSecond(trace.lanes.with.attempts), X, Y, col.first, simT, LANE_SHAPES.with);
+  legend(ctx, pad[3] + 6, 12, [["no breaker", col.fail, LANE_SHAPES.without], ["with breaker", col.first, LANE_SHAPES.with]], col);
   const states = trace.lanes.with.states;
   const sy = h - pad[2] + 20;
   states.forEach((s, i) => {

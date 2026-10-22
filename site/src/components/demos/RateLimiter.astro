@@ -130,7 +130,7 @@
 <script>
 	// @ts-nocheck: ported from the standalone demo pages, plain JavaScript like engine/*.js
 	// and models/*.js (excluded in tsconfig.json). Their behavior is pinned by test/demos/.
-import { dot, legend, mix, playedLine, roundRect, sizeCanvas, stateMark, timeAxes } from "../../../demos/engine/draw.js";
+import { dot, LANE_SHAPES, legend, mix, playedLine, roundRect, SHAPES, sizeCanvas, stateMark, timeAxes } from "../../../demos/engine/draw.js";
 import { mountDemo } from "../../../demos/engine/player.js";
 import { API_LIMIT, END, simulate } from "../../../demos/models/rate-limiter.js";
 
@@ -312,8 +312,8 @@ function drawApi(trace, simT, col) {
   const nb = bins(trace.lanes.with.attempts);
   const yMax = niceMax(Math.max(...na.map((p) => p[1]), ...nb.map((p) => p[1])), 40);
   const { X, Y } = timeAxes(ctx, { w, h, pad: PAD, end: trace.duration, yMax, ticks: [0, 1, 2, 3, 4].map((i) => (yMax / 4) * i), fmt: (v) => String(Math.round(v)), phases: trace.phases, col });
-  playedLine(ctx, na, X, Y, col.fail, simT);
-  playedLine(ctx, nb, X, Y, col.first, simT);
+  playedLine(ctx, na, X, Y, col.fail, simT, LANE_SHAPES.without);
+  playedLine(ctx, nb, X, Y, col.first, simT, LANE_SHAPES.with);
   const R = PAD[1];
   ctx.strokeStyle = col.cap;
   ctx.lineWidth = 1.5;
@@ -328,7 +328,7 @@ function drawApi(trace, simT, col) {
   ctx.font = col.strong;
   ctx.textAlign = "right";
   ctx.fillText(`API limit ${API_LIMIT}/s`, w - R - 2, Y(API_LIMIT) - 5);
-  legend(ctx, PAD[3] + 6, 12, [["no limit", col.fail], ["with limit", col.first]], col);
+  legend(ctx, PAD[3] + 6, 12, [["no limit", col.fail, LANE_SHAPES.without], ["with limit", col.first, LANE_SHAPES.with]], col);
 }
 
 function drawWait(trace, simT, col) {
@@ -359,7 +359,7 @@ function drawWait(trace, simT, col) {
     ctx.textAlign = "right";
     ctx.fillText(`maxWaitMs ${maxWaitMs / 1000}s`, w - PAD[1] - 2, Y(maxWaitMs / 1000) - 5);
   }
-  legend(ctx, PAD[3] + 6, 12, [["waited", col.first], ["retry", col.retry], ["failed", col.refused]], col);
+  legend(ctx, PAD[3] + 6, 12, [["waited", col.first, SHAPES.first], ["retry", col.retry, SHAPES.retry], ["failed", col.refused, SHAPES.refused]], col);
 }
 
 function setStat(id, text, cls) {
