@@ -170,6 +170,39 @@ describe("Bulkhead pause", () => {
 		await expect(next).resolves.toBe(100);
 	});
 
+	it("says the pause caused a refusal, and when it ends", () => {
+		const bulkhead = new Bulkhead("a", {
+			pauseOnRetryAfter: {},
+			rateLimit: { tokensPerSec: 10, burst: 1, maxWaitMs: 1_000 },
+		});
+		bulkhead.notePushback(pushback(429, 2_000));
+		let error: unknown;
+		try {
+			void bulkhead.takeToken();
+		} catch (err) {
+			error = err;
+		}
+		expect(error).toBeInstanceOf(RateLimitedError);
+		const limited = error as RateLimitedError;
+		expect(limited.pausedUntil).toBe(2_000);
+		expect(limited.message).toBe(
+			`Partition 'a' is paused by the host's Retry-After until ${new Date(2_000).toISOString()}; waiting would take 2100 ms (maxWaitMs 1000)`,
+		);
+	});
+
+	it("leaves pausedUntil off a refusal the rate limit alone caused", () => {
+		const bulkhead = new Bulkhead("a", { rateLimit: { tokensPerSec: 1, burst: 1, maxWaitMs: 100 } });
+		void bulkhead.takeToken();
+		let error: unknown;
+		try {
+			void bulkhead.takeToken();
+		} catch (err) {
+			error = err;
+		}
+		expect((error as RateLimitedError).pausedUntil).toBeUndefined();
+		expect((error as RateLimitedError).message).toContain("Rate limit for partition 'a'");
+	});
+
 	it("isn't idle while paused", () => {
 		const bulkhead = new Bulkhead("a", { pauseOnRetryAfter: {} });
 		bulkhead.notePushback(pushback(429, 2_000));
@@ -448,6 +481,59 @@ describe("pauseOnRetryAfter in the client", () => {
 		expect(!result.success && result.error).toBeInstanceOf(DeadlineExceededError);
 		expect(Date.now()).toBe(0);
 		expect(sentAt).toEqual([0]);
+		await client.close();
+	});
+
+	it("fails a first attempt at once when the pause alone would pass its deadline", async () => {
+		const { client, sentAt } = setup({ timeout: { attemptMs: 10_000, totalMs: 1_000 } }, [
+			{ status: 429, retryAfter: "5" },
+			ok,
+		]);
+		await client.get(url("a")).toPromise();
+		const result = await client.get(url("b")).toPromise();
+		expect(!result.success && result.error).toBeInstanceOf(DeadlineExceededError);
+		expect(Date.now()).toBe(0);
+		expect(sentAt).toEqual([0]);
+		await client.close();
+	});
+
+	it("fails a doomed retry with RateLimitedError at once, spending no budget and emitting no retry", async () => {
+		const { client, sentAt } = setup(
+			{
+				rateLimit: { tokensPerSec: 10, burst: 5, maxWaitMs: 1_000 },
+				retryBudget: { ratio: 1, windowMs: 10_000, minRetriesPerSec: 1 },
+				retry: { maxRetries: 1, backoff: { baseDelayMs: 100, maxDelayMs: 100, jitter: false } },
+			},
+			[{ status: 429, retryAfter: "5" }, ok],
+		);
+		const events: string[] = [];
+		client.on("retry", () => events.push("retry"));
+		client.on("retryBudgetExhausted", () => events.push("exhausted"));
+		const result = await client.get(url("a")).toPromise();
+		expect(!result.success && result.error).toBeInstanceOf(RateLimitedError);
+		expect(!result.success && (result.error as RateLimitedError).pausedUntil).toBe(5_000);
+		expect(Date.now()).toBe(0);
+		expect(events).toEqual([]);
+		expect(sentAt).toEqual([0]);
+		await client.close();
+	});
+
+	it("reports the pause as the retry's delay when it outlasts the backoff", async () => {
+		const { client } = setup(
+			{ retry: { maxRetries: 1, backoff: { baseDelayMs: 500, maxDelayMs: 500, jitter: false } } },
+			[{ status: 429, retryAfter: "2" }, ok],
+		);
+		const delays: number[] = [];
+		client.on("retry", (e) => delays.push(e.delayMs));
+		const updates: number[] = [];
+		const ticket = client.get(url("a"));
+		void (async () => {
+			for await (const u of ticket.subscribe()) if (u.type === "retrying") updates.push(u.delayMs);
+		})();
+		await vi.advanceTimersByTimeAsync(2_000);
+		await ticket.toPromise();
+		expect(delays).toEqual([2_000]);
+		expect(updates).toEqual([2_000]);
 		await client.close();
 	});
 

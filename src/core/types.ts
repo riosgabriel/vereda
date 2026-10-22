@@ -309,6 +309,10 @@ export type LifecycleEventMap = {
 		url: string;
 		partition: string;
 		attempt: number;
+		/** How long the retry waits before it is sent: its backoff, or the
+		 *  longer of that and what is left of a `Retry-After` pause on the
+		 *  partition (see `pauseOnRetryAfter`). A rate-limit token wait is
+		 *  not included. */
 		delayMs: number;
 		error: AppError;
 	};

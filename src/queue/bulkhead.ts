@@ -5,9 +5,7 @@ import {
 	DEFAULT_MAX_QUEUE_SIZE,
 	type PartitionConfig,
 	type PartitionLookup,
-	type PauseOnRetryAfterConfig,
 	partitionLookup,
-	type RateLimitConfig,
 } from "../core/types.ts";
 import { PartitionPause } from "./pause.ts";
 import { TokenBucket } from "./rate-limiter.ts";
@@ -120,6 +118,21 @@ export class Bulkhead {
 		};
 	}
 
+	/** The refusal a retry would meet if it waited `afterMs` first, or undefined
+	 *  when it would be admitted, or when that can't be told without trying.
+	 *  Only a pause that is still running by then can make it certain, and the
+	 *  bucket stays frozen until the pause's end, so its wait is known then too.
+	 *  Reserves nothing. */
+	refusalAfter(afterMs: number): RateLimitedError | undefined {
+		const maxWaitMs = this.bucket?.maxWaitMs;
+		const remaining = this.pauseRemainingMs - afterMs;
+		if (!this.bucket || maxWaitMs === undefined || remaining <= 0) return undefined;
+		const now = Date.now();
+		const waitMs = remaining + this.bucket.nextWaitMs(now + this.pauseRemainingMs);
+		if (waitMs <= maxWaitMs) return undefined;
+		return new RateLimitedError(this.name, waitMs, maxWaitMs, this.pause!.until);
+	}
+
 	/** Tokens free right now, or undefined when the partition has no rate limit. */
 	get tokensAvailable(): number | undefined {
 		return this.bucket?.available();
@@ -149,6 +162,7 @@ export class Bulkhead {
 					this.name,
 					pauseMs + bucket.nextWaitMs(now + pauseMs),
 					bucket.maxWaitMs ?? Number.POSITIVE_INFINITY,
+					pauseMs > 0 ? this.pause!.until : undefined,
 				);
 			}
 			waitMs = reserved;
@@ -367,8 +381,8 @@ export class BulkheadRegistry {
 			const merged: PartitionConfig = {
 				...this.globalConfig,
 				...partitionConfig,
-				rateLimit: mergeRateLimit(this.globalConfig.rateLimit, partitionConfig.rateLimit),
-				pauseOnRetryAfter: mergePause(this.globalConfig.pauseOnRetryAfter, partitionConfig.pauseOnRetryAfter),
+				rateLimit: mergeOptional(this.globalConfig.rateLimit, partitionConfig.rateLimit),
+				pauseOnRetryAfter: mergeOptional(this.globalConfig.pauseOnRetryAfter, partitionConfig.pauseOnRetryAfter),
 			};
 			this.bulkheads.set(partitionName, [new Bulkhead(partitionName, merged), Date.now()]);
 		}
@@ -424,23 +438,14 @@ export class BulkheadRegistry {
 	}
 }
 
-/** Partition fields override the client-level ones one by one. */
-function mergeRateLimit(
-	global: RateLimitConfig | false | undefined,
-	partition: RateLimitConfig | false | undefined,
-): RateLimitConfig | undefined {
-	// `false` opts the partition out; spreading it would keep the client's limit.
+/** Partition fields override the client-level ones one by one (the merge of
+ *  `rateLimit`, `pauseOnRetryAfter` and `retryBudget`). `false` on either side
+ *  opts the partition out; spreading it would keep the client's setting. */
+export function mergeOptional<T extends object>(
+	global: T | false | undefined,
+	partition: T | false | undefined,
+): T | undefined {
 	if (partition === false || global === false) return undefined;
 	if (!global && !partition) return undefined;
-	return { ...global, ...partition } as RateLimitConfig;
-}
-
-/** Same merge as `mergeRateLimit`, for `pauseOnRetryAfter`. */
-function mergePause(
-	global: PauseOnRetryAfterConfig | false | undefined,
-	partition: PauseOnRetryAfterConfig | false | undefined,
-): PauseOnRetryAfterConfig | undefined {
-	if (partition === false || global === false) return undefined;
-	if (!global && !partition) return undefined;
-	return { ...global, ...partition };
+	return { ...global, ...partition } as T;
 }

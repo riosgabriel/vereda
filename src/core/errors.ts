@@ -184,18 +184,24 @@ export class CircuitOpenError extends RequestError {
 export class RateLimitedError extends RequestError {
 	declare readonly kind: "rate_limited";
 	public readonly partition: string;
-	/** How long the attempt would have had to wait for a token. */
+	/** How long the attempt would have had to wait, a pause included. */
 	public readonly waitMs: number;
 	public readonly maxWaitMs: number;
+	/** Epoch ms the partition's `Retry-After` pause ends at. Present only when
+	 *  that pause is part of why the attempt was refused. */
+	public readonly pausedUntil?: number;
 
-	constructor(partition: string, waitMs: number, maxWaitMs: number) {
+	constructor(partition: string, waitMs: number, maxWaitMs: number, pausedUntil?: number) {
 		super(
 			"rate_limited",
-			`Rate limit for partition '${partition}' would delay the attempt ${waitMs}ms (maxWaitMs ${maxWaitMs})`,
+			pausedUntil === undefined
+				? `Rate limit for partition '${partition}' would delay the attempt ${waitMs}ms (maxWaitMs ${maxWaitMs})`
+				: `Partition '${partition}' is paused by the host's Retry-After until ${new Date(pausedUntil).toISOString()}; waiting would take ${waitMs} ms (maxWaitMs ${maxWaitMs})`,
 		);
 		this.partition = partition;
 		this.waitMs = waitMs;
 		this.maxWaitMs = maxWaitMs;
+		if (pausedUntil !== undefined) this.pausedUntil = pausedUntil;
 	}
 }
 

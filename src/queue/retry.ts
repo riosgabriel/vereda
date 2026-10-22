@@ -192,6 +192,17 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 				return;
 			}
 
+			// A retry the rate limit's maxWaitMs will refuse once it has slept, because
+			// the pause outlasts the sleep, fails now, before it spends budget or
+			// announces a retry that will never go out.
+			const refusal = bulkhead.refusalAfter(delayMs);
+			if (refusal) {
+				onCleanup?.();
+				onFailure?.(refusal, totalAttempts, totalQueuedMs);
+				controller.markDone({ success: false, error: refusal } as never);
+				throw refusal;
+			}
+
 			// Checked after the deadline so a doomed retry never spends budget,
 			// and before the sleep so a refused one fails without waiting.
 			if (retryBudget && !retryBudget.tryWithdraw()) {
@@ -202,8 +213,10 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 				return;
 			}
 
-			onRetry?.(attempt, delayMs, lastError);
-			controller.markRetrying(attempt, delayMs);
+			// The retry waits out a pause too, so that is the delay to report.
+			const reportedDelayMs = Math.max(delayMs, bulkhead.pauseRemainingMs);
+			onRetry?.(attempt, reportedDelayMs, lastError);
+			controller.markRetrying(attempt, reportedDelayMs);
 
 			try {
 				await sleep(delayMs, ticket.signal);
