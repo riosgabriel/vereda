@@ -1,6 +1,7 @@
-import { BulkheadRegistry, type BulkheadSnapshot, DEFAULT_PARTITION_TTL_MS, PAUSED } from "../queue/bulkhead.ts";
+import { BulkheadRegistry, type BulkheadSnapshot, PAUSED } from "../queue/bulkhead.ts";
 import { type CircuitBreaker, CircuitBreakerRegistry, type CircuitSnapshot } from "../queue/circuit-breaker.ts";
 import { executeRequest, type MiddlewareFn } from "../queue/executor.ts";
+import { DEFAULT_PARTITION_TTL_MS } from "../queue/partition-registry.ts";
 import { type RetryPolicyContext, shouldRetry } from "../queue/policy.ts";
 import { runRetryLoop } from "../queue/retry.ts";
 import { type RetryBudget, RetryBudgetRegistry } from "../queue/retry-budget.ts";

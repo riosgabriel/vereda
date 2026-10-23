@@ -12,11 +12,6 @@ import { PartitionPause } from "./pause.ts";
 import { TokenBucket } from "./rate-limiter.ts";
 import type { Semaphore } from "./semaphore.ts";
 
-/** Default TTL (ms) before an idle partition registry entry (bulkhead,
- *  circuit breaker or retry budget) is swept from its registry. Shared by all
- *  three registries so the eviction policy stays in one place. */
-export const DEFAULT_PARTITION_TTL_MS = 60_000;
-
 /** What a guarded attempt resolves with when it reached the front of a queue
  *  during a pause: nothing was sent, and the caller admits it again. Never
  *  leaves the code that dispatches attempts. */
@@ -65,17 +60,17 @@ export class Bulkhead {
 	/** True when nothing is running or queued and no live ticket holds a
 	 *  reference, so the bulkhead can be discarded without changing the
 	 *  effective concurrency cap. */
-	isEvictable(_now: number): boolean {
+	isEvictable(now: number): boolean {
 		return (
 			this.activeTickets === 0 &&
 			this.running === 0 &&
 			this._waitQueue.length === 0 &&
 			// A drained bucket must outlive its tickets: a fresh one starts full
 			// and would let a burst through that the rate limit forbids.
-			(this.bucket === undefined || this.bucket.isFull()) &&
+			(this.bucket === undefined || this.bucket.isFull(now)) &&
 			// A pause must outlive its tickets too: a fresh bulkhead would send
 			// straight into the host that just said to wait.
-			this.pauseRemainingMs === 0
+			(this.pause?.remaining(now) ?? 0) === 0
 		);
 	}
 
@@ -349,49 +344,33 @@ export interface BulkheadSnapshot {
 	pausedUntil?: number;
 }
 
-export class BulkheadRegistry {
-	private readonly partitions: PartitionRegistry<Bulkhead>;
-	private readonly globalConfig: PartitionConfig;
-	private readonly partitionConfig: PartitionLookup;
+export class BulkheadRegistry extends PartitionRegistry<Bulkhead> {
 	private readonly semaphore?: Semaphore;
 
 	constructor(
 		globalConfig: PartitionConfig = {},
 		partitionConfigs: Record<string, PartitionConfig> | PartitionLookup = {},
-		ttlMs: number = DEFAULT_PARTITION_TTL_MS,
+		ttlMs?: number,
 		semaphore?: Semaphore,
 	) {
-		this.globalConfig = globalConfig;
-		this.partitionConfig =
+		const partitionConfig =
 			typeof partitionConfigs === "function" ? partitionConfigs : partitionLookup(partitionConfigs);
-		this.semaphore = semaphore;
-		this.partitions = new PartitionRegistry((name) => {
-			const partitionConfig = this.partitionConfig(name) ?? {};
+		super((name) => {
+			const overrides = partitionConfig(name) ?? {};
 			const merged: PartitionConfig = {
-				...this.globalConfig,
-				...partitionConfig,
-				rateLimit: mergeOptional(this.globalConfig.rateLimit, partitionConfig.rateLimit),
-				pauseOnRetryAfter: mergeOptional(this.globalConfig.pauseOnRetryAfter, partitionConfig.pauseOnRetryAfter),
+				...globalConfig,
+				...overrides,
+				rateLimit: mergeOptional(globalConfig.rateLimit, overrides.rateLimit),
+				pauseOnRetryAfter: mergeOptional(globalConfig.pauseOnRetryAfter, overrides.pauseOnRetryAfter),
 			};
 			return new Bulkhead(name, merged);
 		}, ttlMs);
-	}
-
-	get(partitionName: string): Bulkhead {
-		return this.partitions.get(partitionName);
-	}
-
-	prune(): void {
-		this.partitions.prune();
-	}
-
-	delete(partitionName: string): void {
-		this.partitions.delete(partitionName);
+		this.semaphore = semaphore;
 	}
 
 	getAll(): BulkheadSnapshot[] {
 		const result: BulkheadSnapshot[] = [];
-		for (const bh of this.partitions.values()) {
+		for (const bh of this.values()) {
 			const snapshot: BulkheadSnapshot = {
 				partition: bh.name,
 				name: bh.name,

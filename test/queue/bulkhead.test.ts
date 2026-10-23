@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { RetryableStatusError } from "../../src/core/errors.ts";
 import { Bulkhead, BulkheadRegistry } from "../../src/queue/bulkhead.ts";
 import { Semaphore } from "../../src/queue/semaphore.ts";
 
@@ -153,6 +154,23 @@ describe("Bulkhead", () => {
 
 		await expect(p1).resolves.toBe("a");
 		await expect(p2).resolves.toBe("b");
+	});
+});
+
+describe("Bulkhead.isEvictable", () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it("judges the bucket and pause at the time it is given", () => {
+		vi.useFakeTimers();
+		const bulkhead = new Bulkhead("a", { rateLimit: { tokensPerSec: 1, burst: 1 }, pauseOnRetryAfter: {} });
+		void bulkhead.takeToken();
+		bulkhead.notePushback(new RetryableStatusError("slow down", 429, new Response(), 5_000));
+		const now = Date.now();
+		expect(bulkhead.isEvictable(now)).toBe(false);
+		// Real time hasn't moved; only the argument says the pause is over.
+		expect(bulkhead.isEvictable(now + 60_000)).toBe(true);
 	});
 });
 

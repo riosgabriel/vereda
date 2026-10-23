@@ -375,10 +375,10 @@ switch.
 ## Registries and eviction
 
 Partitions are created on demand. The first request to `api.example.com` creates its bulkhead,
-in the bulkhead registry's `get`. That registry is a thin wrapper over `PartitionRegistry`
-(`src/queue/partition-registry.ts`), which the breaker and retry budget registries share. It
-remembers when each entry was last used, and every tenth `get()` (or whenever it holds more than 100 entries) it **prunes**: it deletes
-entries that are idle and unused for 60 seconds. Without this, a client that calls many
+in the bulkhead registry's `get`. That registry extends `PartitionRegistry`
+(`src/queue/partition-registry.ts`), which the breaker and retry budget registries extend too. It
+remembers when each entry was last used, and every tenth `get()` (or whenever it holds more than
+100 entries) it **prunes**: it deletes entries that are idle and unused for 60 seconds. Without this, a client that calls many
 different hosts would grow its map forever.
 
 The danger is evicting a bulkhead that's still in use. The next `get()` would build a fresh one,
@@ -387,17 +387,17 @@ a careful definition:
 
 `src/queue/bulkhead.ts` — `isEvictable`
 ```typescript
-isEvictable(_now: number): boolean {
+isEvictable(now: number): boolean {
 	return (
 		this.activeTickets === 0 &&
 		this.running === 0 &&
 		this._waitQueue.length === 0 &&
 		// A drained bucket must outlive its tickets: a fresh one starts full
 		// and would let a burst through that the rate limit forbids.
-		(this.bucket === undefined || this.bucket.isFull()) &&
+		(this.bucket === undefined || this.bucket.isFull(now)) &&
 		// A pause must outlive its tickets too: a fresh bulkhead would send
 		// straight into the host that just said to wait.
-		this.pauseRemainingMs === 0
+		(this.pause?.remaining(now) ?? 0) === 0
 	);
 }
 ```

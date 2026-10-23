@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HttpClient } from "../../src/core/client.ts";
-import { DEFAULT_PARTITION_TTL_MS } from "../../src/queue/bulkhead.ts";
-import { PartitionRegistry } from "../../src/queue/partition-registry.ts";
+import { DEFAULT_PARTITION_TTL_MS, PartitionRegistry } from "../../src/queue/partition-registry.ts";
 
 type Registries = {
 	bulkheads: { get(name: string): unknown; prune(): void };
@@ -136,16 +135,34 @@ describe("PartitionRegistry", () => {
 		expect([...registry.values()]).not.toContain(stale);
 	});
 
-	it("values() and delete() don't refresh last access", () => {
+	it("values() doesn't refresh last access", () => {
 		const { registry } = makeRegistry();
 		const entry = registry.get("a");
 		vi.advanceTimersByTime(TTL_MS + 1);
 		expect([...registry.values()]).toEqual([entry]);
 		registry.prune();
 		expect([...registry.values()]).toEqual([]);
+	});
 
-		const other = registry.get("b");
+	it("delete() of one entry leaves another's last access alone", () => {
+		const { registry } = makeRegistry();
+		const kept = registry.get("a");
+		const gone = registry.get("b");
+		vi.advanceTimersByTime(TTL_MS + 1);
 		registry.delete("b");
-		expect(registry.get("b")).not.toBe(other);
+		expect(registry.get("b")).not.toBe(gone);
+		vi.advanceTimersByTime(TTL_MS + 1);
+		registry.prune();
+		// "a" was only ever touched by its own get, a TTL ago.
+		expect([...registry.values()]).not.toContain(kept);
+	});
+
+	it("values() is safe to delete from while iterating", () => {
+		const { registry } = makeRegistry();
+		registry.get("a");
+		registry.get("b");
+		registry.get("c");
+		for (const entry of registry.values()) registry.delete(entry.name);
+		expect([...registry.values()]).toEqual([]);
 	});
 });

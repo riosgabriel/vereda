@@ -1,5 +1,5 @@
 import { DEFAULT_MIN_RETRIES_PER_SEC, type PartitionLookup, type RetryBudgetConfig } from "../core/types.ts";
-import { DEFAULT_PARTITION_TTL_MS, mergeOptional } from "./bulkhead.ts";
+import { mergeOptional } from "./bulkhead.ts";
 import { PartitionRegistry } from "./partition-registry.ts";
 
 // ---------------------------------------------------------------------------
@@ -130,32 +130,11 @@ export class RetryBudget {
 }
 
 // ---------------------------------------------------------------------------
-// RetryBudgetRegistry — one budget per partition, mirrors CircuitBreakerRegistry
+// RetryBudgetRegistry — one budget per partition, on PartitionRegistry
 // ---------------------------------------------------------------------------
 
-export class RetryBudgetRegistry {
-	private readonly partitions: PartitionRegistry<RetryBudget>;
-	private readonly globalConfig?: RetryBudgetConfig;
-	private readonly partitionConfig: PartitionLookup;
-
-	constructor(
-		globalConfig: RetryBudgetConfig | undefined,
-		partitionConfig: PartitionLookup,
-		ttlMs: number = DEFAULT_PARTITION_TTL_MS,
-	) {
-		this.globalConfig = globalConfig;
-		this.partitionConfig = partitionConfig;
-		this.partitions = new PartitionRegistry((name) => {
-			const partitionConfig = this.partitionConfig(name)?.retryBudget;
-			return new RetryBudget(mergeOptional(this.globalConfig, partitionConfig));
-		}, ttlMs);
-	}
-
-	get(partitionName: string): RetryBudget {
-		return this.partitions.get(partitionName);
-	}
-
-	prune(): void {
-		this.partitions.prune();
+export class RetryBudgetRegistry extends PartitionRegistry<RetryBudget> {
+	constructor(globalConfig: RetryBudgetConfig | undefined, partitionConfig: PartitionLookup, ttlMs?: number) {
+		super((name) => new RetryBudget(mergeOptional(globalConfig, partitionConfig(name)?.retryBudget)), ttlMs);
 	}
 }

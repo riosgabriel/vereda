@@ -30,7 +30,7 @@ from (chapter 11, Rule 2: never remove state that's still in use).
 The issue proposes one generic registry, built from a function that makes an entry for a
 partition name, and used by all three. Each caller keeps merging its own config.
 
-**Where to start.** Put the three `get` methods side by side, in `src/queue/bulkhead.ts`,
+**Where to start.** Put the three registries side by side, in `src/queue/bulkhead.ts`,
 `src/queue/circuit-breaker.ts` and `src/queue/retry-budget.ts`, and list every difference. Two to
 look for. First, the bulkhead and breaker registries can list every entry without updating when
 each was last used, so watching a partition never keeps it alive; the generic version must keep
@@ -40,8 +40,9 @@ with `false` (#194, #256). Those three merge through one function, `mergeOptiona
 stays with the callers, but make sure the shared code doesn't get in its way.
 
 **Acceptance (from the issue).** All three registries use it with no change in behavior, the
-existing prune tests stay green without edits, and `test/queue/prune-held-reference.test.ts`
-covers the generic registry once instead of once per kind.
+existing prune tests keep passing (only their `isIdle` calls are renamed to `isEvictable`), and
+`test/queue/prune-held-reference.test.ts` covers the generic registry once instead of once per
+kind.
 
 ### #191: pause a partition when a 429 says when to come back
 

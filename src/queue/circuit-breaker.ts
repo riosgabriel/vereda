@@ -8,7 +8,6 @@ import {
 	type PartitionLookup,
 	partitionLookup,
 } from "../core/types.ts";
-import { DEFAULT_PARTITION_TTL_MS } from "./bulkhead.ts";
 import { PartitionRegistry } from "./partition-registry.ts";
 import { RETRIABLE_KINDS } from "./policy.ts";
 
@@ -384,52 +383,33 @@ export class CircuitBreaker {
 }
 
 // ---------------------------------------------------------------------------
-// CircuitBreakerRegistry — one breaker per partition, mirrors BulkheadRegistry
+// CircuitBreakerRegistry — one breaker per partition, on PartitionRegistry
 // ---------------------------------------------------------------------------
 
-export class CircuitBreakerRegistry {
-	private readonly partitions: PartitionRegistry<CircuitBreaker>;
-	private readonly globalConfig: CircuitBreakerConfig;
-	private readonly partitionConfig: PartitionLookup;
-	private readonly onStateChange?: (partition: string, state: "open" | "closed") => void;
-
+export class CircuitBreakerRegistry extends PartitionRegistry<CircuitBreaker> {
 	constructor(
 		globalConfig: CircuitBreakerConfig = {},
 		partitionConfigs: Record<string, PartitionConfig> | PartitionLookup = {},
-		ttlMs: number = DEFAULT_PARTITION_TTL_MS,
+		ttlMs?: number,
 		onStateChange?: (partition: string, state: "open" | "closed") => void,
 	) {
-		this.globalConfig = globalConfig;
-		this.partitionConfig =
+		const partitionConfig =
 			typeof partitionConfigs === "function" ? partitionConfigs : partitionLookup(partitionConfigs);
-		this.onStateChange = onStateChange;
-		this.partitions = new PartitionRegistry((name) => {
-			const partitionConfig = this.partitionConfig(name)?.circuitBreaker ?? {};
+		super((name) => {
+			const overrides = partitionConfig(name)?.circuitBreaker ?? {};
 			const merged: CircuitBreakerConfig = {
-				...this.globalConfig,
-				...partitionConfig,
+				...globalConfig,
+				...overrides,
 			};
-			return new CircuitBreaker(name, merged, this.onStateChange);
+			return new CircuitBreaker(name, merged, onStateChange);
 		}, ttlMs);
-	}
-
-	get(partitionName: string): CircuitBreaker {
-		return this.partitions.get(partitionName);
-	}
-
-	prune(): void {
-		this.partitions.prune();
-	}
-
-	delete(partitionName: string): void {
-		this.partitions.delete(partitionName);
 	}
 
 	/** Snapshots of every enabled breaker. Doesn't refresh last-access times,
 	 *  so observing a partition never keeps it from being evicted. */
 	getAll(): CircuitSnapshot[] {
 		const result: CircuitSnapshot[] = [];
-		for (const cb of this.partitions.values()) {
+		for (const cb of this.values()) {
 			if (cb.enabled) result.push(cb.snapshot());
 		}
 		return result;
