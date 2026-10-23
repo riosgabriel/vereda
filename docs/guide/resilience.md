@@ -66,9 +66,9 @@ client.post("/orders", () => JSON.stringify(order), {
 
 ### Generating the key for you
 
-To skip writing the key yourself, set `retry: { idempotencyKey: true }`. Vereda makes one key per request with `crypto.randomUUID()`, before the first attempt, and sends that same key on every attempt as `Idempotency-Key`. The server can then tell a retry from a new order.
+To skip writing the key yourself, set `retry: { idempotencyKey: true }`. Vereda makes one key per request (a random v4 UUID built from `crypto.getRandomValues`), before the first attempt, and sends that same key on every attempt as `Idempotency-Key`. The server can then tell a retry from a new order.
 
-The option is off by default. It only applies to methods that are not already idempotent, and a header you set yourself always wins. Pass a function instead of `true` to build the key your own way; it is called once per request. If it throws or returns an empty string, the request fails with a `ConfigurationError`. The key is added even when `maxRetries` is `0`.
+The option is off by default. It only applies to methods that are not already idempotent, and a non-empty header you set yourself always wins (an empty one is replaced). Pass a function instead of `true` to build the key your own way; it is called once per request. If it throws or returns a blank string, the request fails with a `ConfigurationError`. The key is added even when `maxRetries` is `0`.
 
 **Example** (a POST with an automatic key)
 

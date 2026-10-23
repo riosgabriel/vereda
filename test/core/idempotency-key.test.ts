@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HttpClient } from "../../src/core/client.ts";
+import { uuidV4 } from "../../src/core/nanoid.ts";
 import type { RetryConfig } from "../../src/core/types.ts";
 import { validateConfig } from "../../src/core/validate.ts";
 
@@ -157,6 +158,7 @@ describe("retry.idempotencyKey (fake timers)", () => {
 		],
 		["returns an empty string", () => ""],
 		["returns a non-string", () => 42 as unknown as string],
+		["returns a blank string", () => "   "],
 	])("fails with ConfigurationError when the generator %s", async (_name, generator) => {
 		const fetchMock = vi.fn().mockResolvedValue(ok());
 		const client = make(fetchMock, { idempotencyKey: generator });
@@ -164,6 +166,67 @@ describe("retry.idempotencyKey (fake timers)", () => {
 		expect(result.success).toBe(false);
 		expect(result.error?.kind).toBe("configuration");
 		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["a non-Latin-1 key", () => "ключ"],
+		["a key with a newline", () => "a\nb"],
+	])("fails with ConfigurationError caused by a TypeError when the generator returns %s", async (_name, generator) => {
+		const fetchMock = vi.fn().mockResolvedValue(ok());
+		const client = make(fetchMock, { idempotencyKey: generator });
+		const result = (await run(client.post(URL_, () => "{}"))) as {
+			success: boolean;
+			error?: { kind: string; cause?: unknown };
+		};
+		expect(result.success).toBe(false);
+		expect(result.error?.kind).toBe("configuration");
+		expect(result.error?.cause).toBeInstanceOf(TypeError);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("fails with ConfigurationError for an invalid caller header name when the option is on", async () => {
+		const fetchMock = vi.fn().mockResolvedValue(ok());
+		const client = make(fetchMock, { idempotencyKey: true });
+		const result = (await run(client.post(URL_, () => "{}", { headers: { "bad header": "x" } }))) as {
+			success: boolean;
+			error?: { kind: string; cause?: unknown };
+		};
+		expect(result.success).toBe(false);
+		expect(result.error?.kind).toBe("configuration");
+		expect(result.error?.cause).toBeInstanceOf(TypeError);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("leaves an invalid caller header name a network error when the option is off", async () => {
+		const fetchMock = vi.fn().mockResolvedValue(ok());
+		const client = make(fetchMock);
+		const result = (await run(client.post(URL_, () => "{}", { headers: { "bad header": "x" } }))) as {
+			success: boolean;
+			error?: { kind: string };
+		};
+		expect(result.success).toBe(false);
+		expect(result.error?.kind).toBe("network");
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("replaces an empty caller Idempotency-Key with a generated one", async () => {
+		const fetchMock = vi.fn().mockResolvedValueOnce(busy()).mockResolvedValueOnce(ok());
+		const client = make(fetchMock, { idempotencyKey: true });
+		const result = await run(client.post(URL_, () => "{}", { headers: { "Idempotency-Key": "" } }));
+		expect(result.success).toBe(true);
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+		const first = keyOf(fetchMock, 0);
+		expect(first).toMatch(UUID);
+		expect(keyOf(fetchMock, 1)).toBe(first);
+	});
+
+	it("builds RFC 4122 v4 UUIDs that differ between calls", () => {
+		const v4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+		const a = uuidV4();
+		const b = uuidV4();
+		expect(a).toMatch(v4);
+		expect(b).toMatch(v4);
+		expect(a).not.toBe(b);
 	});
 });
 

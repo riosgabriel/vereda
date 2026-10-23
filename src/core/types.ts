@@ -273,13 +273,13 @@ export interface RetryConfig {
 	 *  `Idempotency-Key` header also enables retries. Default: false. */
 	idempotent?: boolean;
 	/** Sends an `Idempotency-Key` header so a POST/PATCH can be retried safely.
-	 *  Off by default. `true` generates a key with `crypto.randomUUID()`; a
+	 *  Off by default. `true` generates a random v4 UUID key; a
 	 *  function returns your own key. One key is generated per request, before
 	 *  the first attempt, and the same key is sent on every attempt. Only
 	 *  requests with a non-idempotent method (not GET, HEAD, OPTIONS, PUT or
 	 *  DELETE) get one, and a request that already has an `Idempotency-Key`
-	 *  header keeps the caller's value. The key is added even when
-	 *  `maxRetries` is 0. A generator that throws or returns an empty or
+	 *  non-empty header keeps the caller's value. The key is added even when
+	 *  `maxRetries` is 0. A generator that throws or returns a blank or
 	 *  non-string value fails the request with a `ConfigurationError`.
 	 *  Default: false. */
 	idempotencyKey?: boolean | (() => string);
