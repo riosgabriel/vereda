@@ -45,12 +45,17 @@ jobs:
           path: site/public/downloads
           key: book-downloads-${{ hashFiles('docs/book/**', 'site/scripts/book-download.ts', 'site/scripts/book-print.css', 'site/scripts/book-callouts.css', 'site/src/remark/callouts.ts', 'site/scripts/book-cover.html', 'site/src/assets/logo.png', 'site/src/doc-ids.ts', 'site/bun.lock') }}
 
+      # No apt here: a slow Azure mirror once stretched this step to 22 minutes. pandoc comes
+      # from its GitHub release, and the runner image already has Chromium's system libraries.
       - name: Build book downloads
         if: steps.book-cache.outputs.cache-hit != 'true'
         working-directory: site
+        timeout-minutes: 10
         run: |
-          sudo apt-get update && sudo apt-get install -y pandoc
-          bunx playwright install --with-deps chromium
+          curl -sL https://github.com/jgm/pandoc/releases/download/3.10.2/pandoc-3.10.2-linux-amd64.tar.gz \
+            | tar xz -C "$RUNNER_TEMP"
+          export PATH="$RUNNER_TEMP/pandoc-3.10.2/bin:$PATH"
+          bunx playwright install chromium
           bun run book:download
           # W3C's validator: a broken EPUB never reaches the site.
           curl -sL -o "$RUNNER_TEMP/epubcheck.zip" https://github.com/w3c/epubcheck/releases/download/v5.4.0/epubcheck-5.4.0.zip
