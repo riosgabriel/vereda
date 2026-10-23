@@ -296,7 +296,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: site/public/downloads
-          key: book-downloads-${{ hashFiles('docs/book/**', 'site/scripts/book-download.ts', 'site/scripts/book-print.css', 'site/src/doc-ids.ts', 'site/bun.lock') }}
+          key: book-downloads-${{ hashFiles('docs/book/**', 'site/scripts/book-download.ts', 'site/scripts/book-print.css', 'site/scripts/book-cover.html', 'site/src/assets/logo.png', 'site/src/doc-ids.ts', 'site/bun.lock') }}
 
       # As in docs.yml; the sidebar links to these files, so the link check needs them.
       - name: Build book downloads

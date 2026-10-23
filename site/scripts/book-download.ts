@@ -15,6 +15,7 @@ const BOOK = join(REPO_ROOT, "docs/book");
 const OUT = fileURLToPath(new URL("../public/downloads/", import.meta.url));
 const MERMAID = fileURLToPath(new URL("../node_modules/mermaid/dist/mermaid.min.js", import.meta.url));
 const PRINT_CSS = fileURLToPath(new URL("./book-print.css", import.meta.url));
+const COVER = fileURLToPath(new URL("./book-cover.html", import.meta.url));
 
 // Fail before the slow part (Chromium, diagrams) rather than with a spawn stack trace after it.
 try {
@@ -108,6 +109,20 @@ try {
 	const source = join(work, "book.md");
 	writeFileSync(source, parts.join("\n\n"));
 
+	// The cover, in an e-reader's 2:3 for the EPUB and in A4's shape for the PDF's first page.
+	const cover = await browser.newPage();
+	for (const [name, height] of [
+		["cover.png", 2400],
+		["cover-a4.png", Math.round(1600 * Math.SQRT2)],
+	] as const) {
+		await cover.setViewportSize({ width: 1600, height });
+		await cover.goto(`file://${COVER}#${pin.slice(0, 7)}`, { waitUntil: "networkidle" });
+		await cover.evaluate(() => document.fonts.ready);
+		await cover.screenshot({ path: join(work, name) });
+	}
+	const coverPage = join(work, "cover.html");
+	writeFileSync(coverPage, '<img class="cover" src="cover-a4.png" alt="" />');
+
 	mkdirSync(OUT, { recursive: true });
 	const pandoc = (...args: string[]) =>
 		execFileSync(
@@ -126,18 +141,33 @@ try {
 			{ stdio: "inherit" },
 		);
 
-	pandoc("--to=epub3", "--split-level=1", "--toc-depth=2", `--output=${join(OUT, "vereda-book.epub")}`);
+	pandoc(
+		"--to=epub3",
+		"--split-level=1",
+		"--toc-depth=2",
+		`--epub-cover-image=${join(work, "cover.png")}`,
+		`--output=${join(OUT, "vereda-book.epub")}`,
+	);
 
-	// The PDF is the same book as one HTML page, printed by Chromium. Its contents list only the
-	// chapters: on paper, every section would take five pages.
+	// The PDF is the same book as one HTML page, printed by Chromium, the cover as its first page.
+	// Its contents list only the chapters: on paper, every section would take five pages.
 	const html = join(work, "book.html");
-	pandoc("--to=html5", "--standalone", "--toc-depth=1", "--embed-resources", `--css=${PRINT_CSS}`, `--output=${html}`);
+	pandoc(
+		"--to=html5",
+		"--standalone",
+		"--toc-depth=1",
+		"--embed-resources",
+		`--css=${PRINT_CSS}`,
+		`--include-before-body=${coverPage}`,
+		`--output=${html}`,
+	);
 	await page.goto(`file://${html}`);
 	await page.pdf({
 		path: join(OUT, "vereda-book.pdf"),
 		format: "A4",
 		printBackground: true,
-		margin: { top: "20mm", bottom: "20mm", left: "18mm", right: "18mm" },
+		// Margins come from book-print.css, so the cover's page can have none.
+		preferCSSPageSize: true,
 		displayHeaderFooter: true,
 		headerTemplate: "<span></span>",
 		footerTemplate: `<div style="font-size:8px;width:100%;text-align:center;color:#777"><span class="pageNumber"></span></div>`,

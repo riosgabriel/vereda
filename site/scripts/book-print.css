@@ -1,6 +1,10 @@
 /* The PDF edition of the book (scripts/book-download.ts): warm paper, the site's light theme. */
 @page {
 	size: A4;
+	margin: 20mm 18mm;
+}
+@page :first {
+	margin: 0;
 }
 
 body {
@@ -23,18 +27,21 @@ h3 {
 	break-after: avoid;
 }
 
-/* Each chapter starts a page; the title page and table of contents get one each too. */
+/* Each chapter starts a page, and so does the table of contents. */
 h1,
 #TOC {
 	break-before: page;
 }
+/* The cover (scripts/book-cover.html) is the title page, so pandoc's own is left out. */
 header#title-block-header {
-	break-after: page;
-	padding-top: 35%;
-	text-align: center;
+	display: none;
 }
-header#title-block-header + h1 {
-	break-before: avoid;
+img.cover {
+	width: 210mm;
+	height: 297mm;
+	max-height: none;
+	margin: 0;
+	break-after: page;
 }
 
 a {
