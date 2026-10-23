@@ -80,13 +80,11 @@ The default retry policy is two rules, and the function is short enough to read 
 ```typescript
 export const RETRIABLE_KINDS: ReadonlySet<AppError["kind"]> = new Set(["network", "timeout", "retryable_status"]);
 
-const IDEMPOTENT_METHODS = new Set(["GET", "HEAD", "OPTIONS", "PUT", "DELETE"]);
-
 export function defaultRetryPolicy(error: AppError, _attempt: number, ctx: RetryPolicyContext): boolean {
 	// Rule 2 — the error kind must be transient.
 	if (!RETRIABLE_KINDS.has(error.kind)) return false;
 	// Rule 3 — the request must be safe to repeat (idempotent by method or opt-in).
-	if (IDEMPOTENT_METHODS.has(ctx.method.toUpperCase())) return true;
+	if (isIdempotentMethod(ctx.method)) return true;
 	if (ctx.idempotent) return true;
 	if (ctx.headers && new Headers(ctx.headers).has("idempotency-key")) return true;
 	return false;
@@ -103,10 +101,12 @@ PATCH are not. Think of a POST that creates a payment and then times out: the se
 created it before the connection died, and a retry could create a second one. Our request is a
 GET, so it passes.
 
-A POST or PATCH is retried only if you say it's safe, in one of two ways: set
-`idempotent: true` in the request's retry options, or send an `Idempotency-Key` header. That
-header is a common convention: the server remembers the key and ignores a repeat. The check goes
-through the standard `Headers` class, so the header's capitalisation doesn't matter.
+A POST or PATCH is retried only if you say it's safe, in one of three ways: set
+`idempotent: true` in the request's retry options, send an `Idempotency-Key` header yourself, or
+set `retry.idempotencyKey: true` and let Vereda generate that header. That header is a common
+convention: the server remembers the key and ignores a repeat. The check goes through the
+standard `Headers` class, so the header's capitalisation doesn't matter. The generated key is one
+per request, reused on every attempt.
 
 The comments say "Rule 2" and "Rule 3" because the function's doc comment lists five rules. The
 other three live elsewhere: the attempt limit is the retry loop's bound, your own predicate is

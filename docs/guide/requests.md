@@ -126,6 +126,8 @@ By default, each attempt calls `globalThis.fetch`. Pass `fetch` to swap in your 
 
 Use it to route requests through your own undici dispatcher, add a proxy, or stub the network in tests.
 
+To make calls fail on purpose in tests, wrap a `fetch` with [`faultyFetch`](testing.md).
+
 Your function runs inside the innermost middleware, once per attempt, retries included. It receives the final URL and a `RequestInit` that carries:
 
 - `method`, `headers`, `body` and `signal`

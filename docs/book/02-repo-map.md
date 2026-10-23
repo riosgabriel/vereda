@@ -112,7 +112,7 @@ free of cycles, even though the client and the retry loop both use almost everyt
 
 ## The public surface
 
-There are four entry points, declared in the `exports` field of `package.json`:
+There are five entry points, declared in the `exports` field of `package.json`:
 
 | Import path | Source file | What it exports |
 | --- | --- | --- |
@@ -120,9 +120,10 @@ There are four entry points, declared in the `exports` field of `package.json`:
 | `@vereda/http/middleware` | `src/middleware/index.ts` | `defaultHeaders`, `requestLogger`, and the middleware types |
 | `@vereda/http/zod` | `src/adapters/zod.ts` | `withZod` |
 | `@vereda/http/otel` | `src/otel/index.ts` | `instrumentTracing`, `otelMetricsSink` |
+| `@vereda/http/testing` | `src/testing/index.ts` | `faultyFetch` and its option and fault types |
 
 The README's "Versioning and support" section makes the rule explicit: the public surface is
-exactly what those four files export. Anything in `src/queue/` or `src/ticket/` that they don't
+exactly what those five files export. Anything in `src/queue/` or `src/ticket/` that they don't
 re-export is internal, even though it ships as readable source. So you may rename a method on
 the circuit breaker freely, but renaming a field of a type the entry point re-exports is a
 breaking change. Chapter 3 shows how the project handles such changes before 2.0.
@@ -207,8 +208,9 @@ A lookup table. Each row names the file and the function to open first.
 | URL redaction | `src/core/redact.ts` — `redactUrl` |
 | Middleware helpers | `src/middleware/index.ts` |
 | OpenTelemetry | `src/otel/index.ts` |
+| Fault injection for tests | `src/testing/index.ts` |
 
-## Design note: four entry points instead of one
+## Design note: five entry points instead of one
 
 Why not export the Zod and OpenTelemetry helpers from the main entry point? Because a module
 that imports `zod` fails to load when `zod` isn't installed, and making Zod a hard dependency
@@ -217,7 +219,9 @@ entry point means a user pays for it only by importing it.
 
 The middleware helpers have no optional dependency. They live in their own entry point because
 they are optional *features*, and `sideEffects: false` in `package.json` lets bundlers drop
-what isn't imported. The history doesn't record a deeper reason for that split.
+what isn't imported. The history doesn't record a deeper reason for that split. The testing
+helper (`faultyFetch`) is the same case: no optional dependency, and production code has no
+reason to load it.
 
 > **Aside: where the `node:` rule came from.** Until #174 the package used `node:events` and
 > `node:crypto`. That PR replaced them with a small internal emitter (`src/core/listeners.ts`)
@@ -231,7 +235,7 @@ what isn't imported. The history doesn't record a deeper reason for that split.
 - Only `src/adapters/zod.ts` imports `zod`; only `src/otel/index.ts` imports
   `@opentelemetry/api`. Not checked automatically.
 - No file in `src/` imports a `node:` module (`test/core/emitter.test.ts`).
-- The public API is exactly what the four entry-point files export.
+- The public API is exactly what the five entry-point files export.
 - Every directory of `.ts` files is covered by one of the four `npm run typecheck` legs.
 
 ## Try it

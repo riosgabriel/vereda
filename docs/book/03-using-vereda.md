@@ -288,7 +288,7 @@ and `attemptMs: NaN` would silently mean "no timeout".
 
 ## Changing the public API before 2.0
 
-Chapter 2 said the public API is what the four entry points export. Changing it in a
+Chapter 2 said the public API is what the five entry points export. Changing it in a
 compatible way is easy: add things. Removing or renaming something has to wait for 2.0. Until
 then, the project **deprecates** it: the old form keeps working, the new form exists beside
 it, and the changelog says what will change. These are the deprecations so far:
