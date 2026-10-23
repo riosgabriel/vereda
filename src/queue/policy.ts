@@ -13,6 +13,11 @@ export const RETRIABLE_KINDS: ReadonlySet<AppError["kind"]> = new Set(["network"
 
 const IDEMPOTENT_METHODS = new Set(["GET", "HEAD", "OPTIONS", "PUT", "DELETE"]);
 
+/** True for methods that are safe to repeat by definition (GET HEAD OPTIONS PUT DELETE). */
+export function isIdempotentMethod(method: string): boolean {
+	return IDEMPOTENT_METHODS.has(method.toUpperCase());
+}
+
 /**
  * The default retry policy (decision D3). An attempt is retried iff all hold:
  * 1. attempts so far < maxRetries + 1 (enforced by the retry loop bounds)
@@ -26,7 +31,7 @@ export function defaultRetryPolicy(error: AppError, _attempt: number, ctx: Retry
 	// Rule 2 — the error kind must be transient.
 	if (!RETRIABLE_KINDS.has(error.kind)) return false;
 	// Rule 3 — the request must be safe to repeat (idempotent by method or opt-in).
-	if (IDEMPOTENT_METHODS.has(ctx.method.toUpperCase())) return true;
+	if (isIdempotentMethod(ctx.method)) return true;
 	if (ctx.idempotent) return true;
 	if (ctx.headers && new Headers(ctx.headers).has("idempotency-key")) return true;
 	return false;

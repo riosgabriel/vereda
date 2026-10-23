@@ -67,7 +67,7 @@ Even once that loop is correct, it has no limit on how many retries pile onto a 
 | When… | Vereda… |
 | --- | --- |
 | A request fails transiently (connection reset, timeout, `408`, `425`, `429`, `500`, `502`–`504`) | retries it with exponential backoff and full jitter, honoring `Retry-After` |
-| A retry could duplicate a side effect | retries only idempotent methods unless you opt in or send an `Idempotency-Key` |
+| A retry could duplicate a side effect | retries only idempotent methods unless you opt in or send an `Idempotency-Key` (`retry.idempotencyKey` can generate one) |
 | A request hangs | aborts each attempt at `timeout.attemptMs`; an optional `timeout.totalMs` caps the whole request |
 | One failing host would soak up your retries | caps retry concurrency and queue size per host, so one host's retries can't fill another's queue (all hosts still share the global `concurrency` cap) |
 | A host has a requests-per-second quota | an opt-in token bucket per host spaces attempts out, retries included |

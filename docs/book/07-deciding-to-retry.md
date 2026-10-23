@@ -107,6 +107,7 @@ A POST or PATCH is retried only if you say it's safe, in one of two ways: set
 `idempotent: true` in the request's retry options, or send an `Idempotency-Key` header. That
 header is a common convention: the server remembers the key and ignores a repeat. The check goes
 through the standard `Headers` class, so the header's capitalisation doesn't matter.
+Setting `retry.idempotencyKey: true` makes Vereda generate that header for you, one key per request, reused on every attempt.
 
 The comments say "Rule 2" and "Rule 3" because the function's doc comment lists five rules. The
 other three live elsewhere: the attempt limit is the retry loop's bound, your own predicate is

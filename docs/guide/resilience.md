@@ -54,13 +54,27 @@ The busy-status list is `retry.retryOnStatus`. The underlying `defaultRetryPolic
 
 `GET`, `HEAD`, `OPTIONS`, `PUT` and `DELETE` are idempotent, so they're retried.
 
-`POST` and `PATCH` are not. Repeating them blindly could duplicate a side effect. To opt in, set `retry: { idempotent: true }` or send an `Idempotency-Key` header.
+`POST` and `PATCH` are not. Repeating them blindly could duplicate a side effect. To opt in, set `retry: { idempotent: true }`, send an `Idempotency-Key` header, or let Vereda generate one with [`idempotencyKey`](#generating-the-key-for-you).
 
 **Example** (retrying a POST)
 
 ```typescript
 client.post("/orders", () => JSON.stringify(order), {
   headers: { "Idempotency-Key": order.id },
+});
+```
+
+### Generating the key for you
+
+To skip writing the key yourself, set `retry: { idempotencyKey: true }`. Vereda makes one key per request with `crypto.randomUUID()`, before the first attempt, and sends that same key on every attempt as `Idempotency-Key`. The server can then tell a retry from a new order.
+
+The option is off by default. It only applies to methods that are not already idempotent, and a header you set yourself always wins. Pass a function instead of `true` to build the key your own way; it is called once per request. If it throws or returns an empty string, the request fails with a `ConfigurationError`. The key is added even when `maxRetries` is `0`.
+
+**Example** (a POST with an automatic key)
+
+```typescript
+client.post("/orders", () => JSON.stringify(order), {
+  retry: { idempotencyKey: true },
 });
 ```
 

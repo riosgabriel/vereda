@@ -18,6 +18,7 @@ import {
 	RateLimitedError,
 	TimeoutError,
 } from "./errors.ts";
+import { withIdempotencyKey } from "./idempotency.ts";
 import { Emitter, reportCallbackError } from "./listeners.ts";
 import { METRICS, type MetricsSink } from "./metrics.ts";
 import { nanoid } from "./nanoid.ts";
@@ -382,6 +383,26 @@ export class HttpClient {
 
 		const timeoutConfig = this.mergeTimeout(options, partitionName);
 		const retryConfig = this.mergeRetry(options, partitionName);
+
+		// Opt-in Idempotency-Key: generated once per ticket, here, so every
+		// attempt (first and retries) and the retry policy see the same header.
+		try {
+			options = withIdempotencyKey(options, retryConfig);
+		} catch (err) {
+			const error = err as ConfigurationError;
+			this.emit("failure", {
+				ticketId: ticket.id,
+				url: this.logUrl(url),
+				partition: partitionName,
+				attempts: 1,
+				durationMs: Date.now() - startTime,
+				queuedMs: 0,
+				error,
+			});
+			controller.markDone({ success: false, error } as never);
+			cleanup();
+			return;
+		}
 		const bulkhead = this.bulkheads.get(partitionName);
 		const displayUrl = this.logUrl(fullUrl);
 
