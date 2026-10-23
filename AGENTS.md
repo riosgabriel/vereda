@@ -46,7 +46,7 @@ logger in `src/middleware/index.ts`. Both sites carry `biome-ignore` comments ex
 
 ## Architecture
 
-Four public entry points, mirrored by `package.json` `exports`:
+Five public entry points, mirrored by `package.json` `exports`:
 
 | Export | Source | Notes |
 | --- | --- | --- |

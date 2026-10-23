@@ -19,3 +19,24 @@ export function setLongTimeout(callback: () => void, ms: number): () => void {
 	arm();
 	return () => clearTimeout(timer);
 }
+
+/** Resolves after `ms` (past `MAX_TIMER_MS` too), or rejects with `signal.reason`
+ *  once `signal` aborts, clearing the timer. A signal that is already aborted
+ *  rejects at once. */
+export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+	return new Promise((resolve, reject) => {
+		if (signal?.aborted) {
+			reject(signal.reason);
+			return;
+		}
+		const cancel = setLongTimeout(() => {
+			signal?.removeEventListener("abort", onAbort);
+			resolve();
+		}, ms);
+		const onAbort = () => {
+			cancel();
+			reject(signal?.reason);
+		};
+		signal?.addEventListener("abort", onAbort, { once: true });
+	});
+}

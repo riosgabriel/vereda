@@ -209,7 +209,7 @@ A lookup table. Each row names the file and the function to open first.
 | OpenTelemetry | `src/otel/index.ts` |
 | Fault injection for tests | `src/testing/index.ts` |
 
-## Design note: four entry points instead of one
+## Design note: five entry points instead of one
 
 Why not export the Zod and OpenTelemetry helpers from the main entry point? Because a module
 that imports `zod` fails to load when `zod` isn't installed, and making Zod a hard dependency
@@ -218,7 +218,9 @@ entry point means a user pays for it only by importing it.
 
 The middleware helpers have no optional dependency. They live in their own entry point because
 they are optional *features*, and `sideEffects: false` in `package.json` lets bundlers drop
-what isn't imported. The history doesn't record a deeper reason for that split.
+what isn't imported. The history doesn't record a deeper reason for that split. The testing
+helper (`faultyFetch`) is the same case: no optional dependency, and production code has no
+reason to load it.
 
 > **Aside: where the `node:` rule came from.** Until #174 the package used `node:events` and
 > `node:crypto`. That PR replaced them with a small internal emitter (`src/core/listeners.ts`)

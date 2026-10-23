@@ -1,4 +1,5 @@
 import { ConfigurationError } from "../core/errors.ts";
+import { sleep } from "../core/timer.ts";
 
 /** One thing `faultyFetch` can do to a call. Exactly one shape per fault. */
 export type Fault =
@@ -21,7 +22,8 @@ export interface FaultyFetchOptions {
 	 *  Omit it to draw from `Math.random`. */
 	seed?: number;
 	/** Only calls for which this returns `true` can get a fault; the others pass straight through
-	 *  and don't consume a draw from the sequence. */
+	 *  and don't consume a draw from the sequence. It sees the URL, method and headers, not the
+	 *  signal or the body. */
 	match?: (request: Request) => boolean;
 }
 
@@ -40,8 +42,22 @@ function mulberry32(seed: number): () => number {
 const FAULT_KEYS = ["status", "latencyMs", "networkError", "hang"] as const;
 const BODYLESS_STATUSES = new Set([204, 205, 304]);
 
-function validate(options: FaultyFetchOptions): void {
-	const { rate, faults, seed } = options;
+/** The response headers for a status fault. Built per response, so no `Headers` is shared. */
+function responseHeaders(fault: { headers?: HeadersInit; retryAfter?: number | string }): Headers {
+	const headers = new Headers(fault.headers);
+	if (fault.retryAfter !== undefined) headers.set("Retry-After", String(fault.retryAfter));
+	return headers;
+}
+
+function validate(inner: unknown, options: FaultyFetchOptions): void {
+	if (typeof inner !== "function") throw new ConfigurationError("faultyFetch.inner must be a function");
+	if (options === null || typeof options !== "object") {
+		throw new ConfigurationError("faultyFetch.options must be an object");
+	}
+	const { rate, faults, seed, match } = options;
+	if (match !== undefined && typeof match !== "function") {
+		throw new ConfigurationError("faultyFetch.match must be a function");
+	}
 	if (rate !== undefined && !(typeof rate === "number" && rate >= 0 && rate <= 1)) {
 		throw new ConfigurationError("faultyFetch.rate must be a number from 0 to 1");
 	}
@@ -68,12 +84,21 @@ function validate(options: FaultyFetchOptions): void {
 				if (BODYLESS_STATUSES.has(status as number) && f.body !== undefined) {
 					throw new ConfigurationError(`${at}.body is not allowed with status ${status}`);
 				}
+				if (f.body !== undefined && typeof f.body !== "string") {
+					throw new ConfigurationError(`${at}.body must be a string`);
+				}
+				// Vereda reads only whole seconds (/^\d+$/), so anything else would be silently ignored.
 				const ra = f.retryAfter;
 				if (
 					ra !== undefined &&
-					!(typeof ra === "string" ? ra !== "" : typeof ra === "number" && Number.isFinite(ra) && ra >= 0)
+					!(typeof ra === "string" ? ra !== "" : typeof ra === "number" && Number.isSafeInteger(ra) && ra >= 0)
 				) {
-					throw new ConfigurationError(`${at}.retryAfter must be a non-negative number or a non-empty string`);
+					throw new ConfigurationError(`${at}.retryAfter must be a non-negative safe integer or a non-empty string`);
+				}
+				try {
+					responseHeaders(f as { headers?: HeadersInit; retryAfter?: number | string });
+				} catch (cause) {
+					throw new ConfigurationError(`${at}.headers or ${at}.retryAfter is not a valid header: ${String(cause)}`);
 				}
 				break;
 			}
@@ -92,18 +117,25 @@ function validate(options: FaultyFetchOptions): void {
 	});
 }
 
-function signalOf(input: Parameters<typeof fetch>[0], init: RequestInit | undefined): AbortSignal | undefined {
-	return init?.signal ?? (input instanceof Request ? input.signal : undefined) ?? undefined;
+/** A `Request` from any realm (undici, a polyfill) passes `instanceof` only in its own, so look at the shape. */
+function asRequestLike(input: Parameters<typeof fetch>[0]): Request | undefined {
+	return typeof input === "object" && input !== null && typeof (input as Request).url === "string"
+		? (input as Request)
+		: undefined;
 }
 
-/** The request as `match` sees it. It never reads or transfers the body, so the real call still can. */
+function signalOf(input: Parameters<typeof fetch>[0], init: RequestInit | undefined): AbortSignal | undefined {
+	return init?.signal ?? asRequestLike(input)?.signal;
+}
+
+/** The request as `match` sees it. It never reads or transfers the body, so the real call still can.
+ *  The signal is left out: handing it to a new `Request` would add an abort listener to the caller's
+ *  signal for every matched call. */
 function toRequest(input: Parameters<typeof fetch>[0], init: RequestInit | undefined): Request {
-	const url = input instanceof Request ? input.url : String(input);
-	const base = input instanceof Request ? input : undefined;
-	return new Request(url, {
+	const base = asRequestLike(input);
+	return new Request(base ? base.url : String(input), {
 		method: init?.method ?? base?.method,
 		headers: init?.headers ?? base?.headers,
-		signal: signalOf(input, init),
 	});
 }
 
@@ -111,22 +143,10 @@ function abortReason(signal: AbortSignal): unknown {
 	return signal.reason ?? new DOMException("This operation was aborted", "AbortError");
 }
 
-/** Settles after `ms` (never, when `ms` is `undefined`), or rejects with the signal's reason as soon as it aborts. */
-function wait(ms: number | undefined, signal: AbortSignal | undefined): Promise<void> {
-	return new Promise((resolve, reject) => {
-		if (signal?.aborted) return reject(abortReason(signal));
-		let timer: ReturnType<typeof setTimeout> | undefined;
-		const onAbort = () => {
-			if (timer !== undefined) clearTimeout(timer);
-			reject(abortReason(signal as AbortSignal));
-		};
-		if (ms !== undefined) {
-			timer = setTimeout(() => {
-				signal?.removeEventListener("abort", onAbort);
-				resolve();
-			}, ms);
-		}
-		signal?.addEventListener("abort", onAbort, { once: true });
+/** Never resolves; rejects with the signal's reason as soon as it aborts. */
+function hang(signal: AbortSignal | undefined): Promise<never> {
+	return new Promise((_, reject) => {
+		signal?.addEventListener("abort", () => reject(abortReason(signal)), { once: true });
 	});
 }
 
@@ -139,18 +159,21 @@ function wait(ms: number | undefined, signal: AbortSignal | undefined): Promise<
  * pick sequence doesn't shift when `rate` changes. A call `match` rejects takes none.
  * With a `seed`, the sequence is the same every run.
  *
- * Waits (`latencyMs`, `hang`) use the global `setTimeout` at call time, so fake timers
- * work, and end with the signal's reason as soon as the request's signal aborts.
+ * `latencyMs` uses the global `setTimeout` at call time, so fake timers work, and waits its
+ * full length even past the 2^31 - 1 ms a plain timer allows. Both waits end with the signal's
+ * reason as soon as the request's signal aborts, and any fault rejects with it at once when the
+ * signal is already aborted.
  *
  * @example
  * const client = HttpClient.create({
  *   fetch: faultyFetch(fetch, { faults: [{ status: 503, retryAfter: 1 }], seed: 42, rate: 0.5 }),
  * });
  *
- * @throws {ConfigurationError} when `options` is invalid.
+ * @throws {ConfigurationError} when `inner` or `options` is invalid, including headers a
+ * `Response` would refuse.
  */
 export function faultyFetch(inner: typeof fetch, options: FaultyFetchOptions): typeof fetch {
-	validate(options);
+	validate(inner, options);
 	const { faults, match } = options;
 	const rate = options.rate ?? 1;
 	const random = options.seed === undefined ? Math.random : mulberry32(options.seed);
@@ -162,18 +185,15 @@ export function faultyFetch(inner: typeof fetch, options: FaultyFetchOptions): t
 		if (!faulted) return inner(input, init);
 
 		const signal = signalOf(input, init);
+		if (signal?.aborted) throw abortReason(signal);
 		if ("status" in fault) {
-			if (signal?.aborted) throw abortReason(signal);
-			const headers = new Headers(fault.headers);
-			if (fault.retryAfter !== undefined) headers.set("Retry-After", String(fault.retryAfter));
-			return new Response(fault.body ?? null, { status: fault.status, headers });
+			return new Response(fault.body ?? null, { status: fault.status, headers: responseHeaders(fault) });
 		}
 		if ("latencyMs" in fault) {
-			await wait(fault.latencyMs, signal);
+			await sleep(fault.latencyMs, signal);
 			return inner(input, init);
 		}
 		if ("networkError" in fault) throw new TypeError("fetch failed");
-		await wait(undefined, signal);
-		return inner(input, init);
+		return hang(signal);
 	};
 }

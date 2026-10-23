@@ -84,6 +84,11 @@ describe("faultyFetch: status", () => {
 		expect(inner).not.toHaveBeenCalled();
 	});
 
+	it("sends a numeric Retry-After that Vereda's parser reads", async () => {
+		const res = await faultyFetch(okFetch(), { faults: [{ status: 429, retryAfter: 0 }] })(URL_);
+		expect(res.headers.get("retry-after")).toBe("0");
+	});
+
 	it("passes a string Retry-After through as is", async () => {
 		const date = "Sun, 06 Nov 1994 08:49:37 GMT";
 		const res = await faultyFetch(okFetch(), { faults: [{ status: 429, retryAfter: date }] })(URL_);
@@ -92,6 +97,11 @@ describe("faultyFetch: status", () => {
 });
 
 describe("faultyFetch: networkError", () => {
+	it("rejects with the abort reason first when the signal is already aborted", async () => {
+		const f = faultyFetch(okFetch(), { faults: [{ networkError: true }] });
+		await expect(f(URL_, { signal: AbortSignal.abort(new Error("gone")) })).rejects.toThrow("gone");
+	});
+
 	it("rejects with a TypeError", async () => {
 		const inner = okFetch();
 		const f = faultyFetch(inner, { faults: [{ networkError: true }] });
@@ -101,6 +111,16 @@ describe("faultyFetch: networkError", () => {
 });
 
 describe("faultyFetch: latency", () => {
+	it("waits the full latencyMs past the 2^31 - 1 ms timer limit", async () => {
+		const inner = okFetch();
+		const f = faultyFetch(inner, { faults: [{ latencyMs: 2_147_483_647 + 5_000 }] });
+		const p = f(URL_);
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(inner).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(2_147_483_647);
+		expect((await p).status).toBe(200);
+	});
+
 	it("calls inner only after latencyMs", async () => {
 		const inner = okFetch();
 		const f = faultyFetch(inner, { faults: [{ latencyMs: 2_000 }] });
@@ -163,7 +183,47 @@ describe("faultyFetch: hang", () => {
 	});
 });
 
+/** A Request from another realm: same shape, not an `instanceof Request`. */
+class ForeignRequest {
+	readonly url = URL_;
+	readonly method = "PUT";
+	readonly headers = new Headers({ "x-a": "1" });
+	constructor(readonly signal: AbortSignal) {}
+}
+
+describe("faultyFetch: Request from another realm", () => {
+	it("hang sees its signal", async () => {
+		const f = faultyFetch(okFetch(), { faults: [{ hang: true }] });
+		const ac = new AbortController();
+		const p = f(new ForeignRequest(ac.signal) as never);
+		const assertion = expect(p).rejects.toMatchObject({ name: "AbortError" });
+		ac.abort();
+		await assertion;
+	});
+
+	it("match sees its URL, method and headers", async () => {
+		const seen: unknown[] = [];
+		const f = faultyFetch(okFetch(), {
+			faults: [{ status: 500 }],
+			match: (req) => {
+				seen.push([req.url, req.method, req.headers.get("x-a")]);
+				return true;
+			},
+		});
+		expect((await f(new ForeignRequest(new AbortController().signal) as never)).status).toBe(500);
+		expect(seen).toEqual([[URL_, "PUT", "1"]]);
+	});
+});
+
 describe("faultyFetch: match", () => {
+	it("adds no abort listener to the caller's signal", async () => {
+		const ac = new AbortController();
+		const add = vi.spyOn(ac.signal, "addEventListener");
+		const f = faultyFetch(okFetch(), { faults: [{ status: 500 }], rate: 0, match: () => true });
+		await f(URL_, { signal: ac.signal });
+		expect(add).not.toHaveBeenCalled();
+	});
+
 	it("passes non-matching calls through", async () => {
 		const inner = okFetch();
 		const f = faultyFetch(inner, {
@@ -219,6 +279,8 @@ describe("faultyFetch: options are validated eagerly", () => {
 		["rate NaN", { faults: [{ hang: true }], rate: Number.NaN }],
 		["no faults", { faults: [] }],
 		["faults missing", {}],
+		["options null", null],
+		["options a string", "faults"],
 		["non-integer seed", { faults: [{ hang: true }], seed: 1.5 }],
 		["empty fault", { faults: [{}] }],
 		["two shapes in one fault", { faults: [{ status: 500, hang: true }] }],
@@ -227,6 +289,14 @@ describe("faultyFetch: options are validated eagerly", () => {
 		["status 503.5", { faults: [{ status: 503.5 }] }],
 		["body on a 204", { faults: [{ status: 204, body: "x" }] }],
 		["negative retryAfter", { faults: [{ status: 503, retryAfter: -1 }] }],
+		["fractional retryAfter", { faults: [{ status: 503, retryAfter: 0.5 }] }],
+		["retryAfter beyond safe integers", { faults: [{ status: 503, retryAfter: 1e21 }] }],
+		["empty retryAfter string", { faults: [{ status: 503, retryAfter: "" }] }],
+		["retryAfter string with a newline", { faults: [{ status: 503, retryAfter: "1\n2" }] }],
+		["invalid header name", { faults: [{ status: 503, headers: { "bad name": "x" } }] }],
+		["invalid header value", { faults: [{ status: 503, headers: { "x-a": "a\nb" } }] }],
+		["non-string body", { faults: [{ status: 503, body: 5 }] }],
+		["match not a function", { faults: [{ hang: true }], match: true }],
 		["negative latencyMs", { faults: [{ latencyMs: -1 }] }],
 		["infinite latencyMs", { faults: [{ latencyMs: Number.POSITIVE_INFINITY }] }],
 		["networkError: false", { faults: [{ networkError: false }] }],
@@ -234,6 +304,17 @@ describe("faultyFetch: options are validated eagerly", () => {
 	];
 	it.each(bad)("throws ConfigurationError for %s", (_name, options) => {
 		expect(() => faultyFetch(ok, options as never)).toThrow(ConfigurationError);
+	});
+
+	it("throws ConfigurationError when inner is not a function", () => {
+		expect(() => faultyFetch("fetch" as never, { faults: [{ hang: true }] })).toThrow(ConfigurationError);
+	});
+
+	it("builds a fresh Headers for each response", async () => {
+		const f = faultyFetch(ok, { faults: [{ status: 503, retryAfter: 1, headers: { "x-a": "1" } }] });
+		const a = await f(URL_);
+		a.headers.set("x-a", "changed");
+		expect((await f(URL_)).headers.get("x-a")).toBe("1");
 	});
 });
 
