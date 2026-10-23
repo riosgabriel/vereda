@@ -16,6 +16,14 @@ const OUT = fileURLToPath(new URL("../public/downloads/", import.meta.url));
 const MERMAID = fileURLToPath(new URL("../node_modules/mermaid/dist/mermaid.min.js", import.meta.url));
 const PRINT_CSS = fileURLToPath(new URL("./book-print.css", import.meta.url));
 
+// Fail before the slow part (Chromium, diagrams) rather than with a spawn stack trace after it.
+try {
+	execFileSync("pandoc", ["--version"], { stdio: "ignore" });
+} catch {
+	console.error("pandoc is not on PATH. Install it (https://pandoc.org/installing.html, 3.1 or later) and run again.");
+	process.exit(1);
+}
+
 // The README opens the book, the numbered chapters follow in order, the glossary closes it.
 const chapters = [
 	"README.md",
