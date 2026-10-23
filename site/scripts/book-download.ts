@@ -166,7 +166,14 @@ try {
 	);
 	await page.goto(`file://${html}`);
 	await page.addStyleTag({ url: FONTS });
-	await page.evaluate(() => document.fonts.ready);
+	// If Google Fonts didn't answer, Chromium would print in a fallback sans without a word.
+	// (document.fonts.check() won't do: with no @font-face for a family at all, it returns true.)
+	const loaded = await page.evaluate(async () => {
+		await document.fonts.ready;
+		const faces = [...document.fonts].filter((f) => f.status === "loaded").map((f) => f.family.replaceAll('"', ""));
+		return faces.includes("Schibsted Grotesk") && faces.includes("JetBrains Mono");
+	});
+	if (!loaded) throw new Error(`The book's fonts didn't load from ${FONTS}`);
 	await page.pdf({
 		path: join(OUT, "vereda-book.pdf"),
 		format: "A4",

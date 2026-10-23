@@ -52,6 +52,10 @@ jobs:
           sudo apt-get update && sudo apt-get install -y pandoc
           bunx playwright install --with-deps chromium
           bun run book:download
+          # W3C's validator: a broken EPUB never reaches the site.
+          curl -sL -o "$RUNNER_TEMP/epubcheck.zip" https://github.com/w3c/epubcheck/releases/download/v5.4.0/epubcheck-5.4.0.zip
+          unzip -q "$RUNNER_TEMP/epubcheck.zip" -d "$RUNNER_TEMP"
+          java -jar "$RUNNER_TEMP/epubcheck-5.4.0/epubcheck.jar" --failonwarnings public/downloads/vereda-book.epub
 
       # The site reads docs/book, docs/guide and docs/operations.md in place, and
       # starlight-typedoc generates the API pages from src/ (no dist/ build needed).
