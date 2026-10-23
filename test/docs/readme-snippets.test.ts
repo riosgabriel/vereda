@@ -21,6 +21,7 @@ const DOCS = [
 	"docs/guide/results-and-errors.md",
 	"docs/guide/requests.md",
 	"docs/guide/observability.md",
+	"docs/guide/testing.md",
 ];
 
 interface CodeBlock {
@@ -138,6 +139,7 @@ function writeTsconfig(dir: string): string {
 				"@vereda/http/middleware": [path.join(repoRoot, "src/middleware/index.ts")],
 				"@vereda/http/zod": [path.join(repoRoot, "src/adapters/zod.ts")],
 				"@vereda/http/otel": [path.join(repoRoot, "src/otel/index.ts")],
+				"@vereda/http/testing": [path.join(repoRoot, "src/testing/index.ts")],
 			},
 		},
 		include: ["*.ts"],

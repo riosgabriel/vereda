@@ -20,6 +20,10 @@
 		"./otel": {
 			"types": "./dist/otel/index.d.ts",
 			"import": "./dist/otel/index.js"
+		},
+		"./testing": {
+			"types": "./dist/testing/index.d.ts",
+			"import": "./dist/testing/index.js"
 		}
 	},
 	"scripts": {

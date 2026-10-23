@@ -2,7 +2,7 @@
 // through retry, events, ids, cancellation and the total deadline. It uses
 // only web-standard APIs and an injected fetch (no server), so the same file
 // runs on every runtime a host script loads it into.
-// One import per package entry point ("." "./middleware" "./zod" "./otel"),
+// One import per package entry point ("." "./middleware" "./zod" "./otel" "./testing"),
 // so a non-portable import in any of them fails here. The OTel entry also
 // loads its optional peer, @opentelemetry/api.
 import { metrics, trace } from "@opentelemetry/api";
@@ -10,6 +10,7 @@ import { withZod } from "../../dist/adapters/zod.js";
 import { CancelledError, DeadlineExceededError, HttpClient } from "../../dist/core/index.js";
 import { defaultHeaders } from "../../dist/middleware/index.js";
 import { instrumentTracing, otelMetricsSink } from "../../dist/otel/index.js";
+import { faultyFetch } from "../../dist/testing/index.js";
 
 /** First call per path answers 503, later calls 200 `{ ok: true }`; `/hang`
  *  never answers and rejects once the attempt's signal aborts. Records the
@@ -70,6 +71,33 @@ export async function smoke() {
 	assert(!late.success && late.error instanceof DeadlineExceededError, "totalMs resolves DeadlineExceededError");
 
 	await client.close();
+
+	// faultyFetch: a seeded 503 never reaches the inner fetch; a hang ends with the signal's reason.
+	let innerCalls = 0;
+	const faulty = faultyFetch(
+		() => {
+			innerCalls++;
+			return Promise.resolve(new Response("ok"));
+		},
+		{
+			faults: [{ status: 503, retryAfter: 1 }],
+			seed: 1,
+		},
+	);
+	const faulted = await faulty("http://smoke.test/x");
+	assert(
+		faulted.status === 503 && faulted.headers.get("retry-after") === "1" && innerCalls === 0,
+		"faultyFetch status fault",
+	);
+	const hung = faultyFetch(() => Promise.resolve(new Response("ok")), { faults: [{ hang: true }] });
+	const ac = new AbortController();
+	const pending = hung("http://smoke.test/x", { signal: ac.signal }).then(
+		() => "settled",
+		() => "aborted",
+	);
+	ac.abort();
+	assert((await pending) === "aborted", "faultyFetch hang ends on abort");
+
 	// Counts, not order: a cancelled ticket's events land asynchronously.
 	const expected = ["cancelled", "failure", "request", "request", "request", "retry", "success"];
 	assert(JSON.stringify(events.sort()) === JSON.stringify(expected), `events: ${events.join(",")}`);

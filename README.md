@@ -264,13 +264,14 @@ Each card links into one of four guides: [Resilience](docs/guide/resilience.md) 
   - [Results and errors](docs/guide/results-and-errors.md) — typed results, the Zod adapter, error handling.
   - [Working with requests](docs/guide/requests.md) — cancellation, tickets, middleware, custom fetch.
   - [Observability](docs/guide/observability.md) — lifecycle events, metrics, OpenTelemetry.
+  - [Testing](docs/guide/testing.md) — `faultyFetch` from `@vereda/http/testing`, a seeded fault-injecting `fetch`.
 - **[Operations guide](docs/operations.md)** — sizing concurrency and queues, `attemptMs` vs. `totalMs`, reading `partitions()` and `circuits()`, wiring a metrics sink, the shutdown sequence, and log redaction.
 - **[The Vereda Book](docs/book/README.md)** — how the library works inside: the request lifecycle, the invariants, and the bugs that shaped them. For contributors.
 - **[API reference](https://vereda.dev/api/)** — generated from source via TypeDoc on every push to `main`; every public option documents its default.
 
 ## Versioning and support
 
-Vereda follows [Semantic Versioning](https://semver.org/) from `1.0.0` onward: breaking changes land only in a major version, and anything scheduled for removal is deprecated in a minor release first and noted in [CHANGELOG.md](CHANGELOG.md) before it goes. The error hierarchy is open to additions: a minor release may add an error class with a new `kind` (always listed in the CHANGELOG), so give a `switch` over `error.kind` a `default` branch rather than a `never` check. Existing classes, kinds and fields don't change outside a major. The public surface is exactly what `src/core/index.ts`, `src/middleware/index.ts`, `src/adapters/zod.ts`, and `src/otel/index.ts` export — anything under `src/queue/` and `src/ticket/` that those entry points don't re-export is internal, even though it's readable source.
+Vereda follows [Semantic Versioning](https://semver.org/) from `1.0.0` onward: breaking changes land only in a major version, and anything scheduled for removal is deprecated in a minor release first and noted in [CHANGELOG.md](CHANGELOG.md) before it goes. The error hierarchy is open to additions: a minor release may add an error class with a new `kind` (always listed in the CHANGELOG), so give a `switch` over `error.kind` a `default` branch rather than a `never` check. Existing classes, kinds and fields don't change outside a major. The public surface is exactly what `src/core/index.ts`, `src/middleware/index.ts`, `src/adapters/zod.ts`, `src/otel/index.ts`, and `src/testing/index.ts` export — anything under `src/queue/` and `src/ticket/` that those entry points don't re-export is internal, even though it's readable source.
 
 **Node support:** the currently supported line is whatever `engines.node` in `package.json` declares (`>=22` today); CI runs the full suite against Node 22 and 24 on every change, so those two are the versions actually verified. The floor moves only in a major release.
 
