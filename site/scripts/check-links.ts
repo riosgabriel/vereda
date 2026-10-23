@@ -44,7 +44,9 @@ for (const file of htmlFiles(DIST)) {
 		checked++;
 		const [pathAndQuery = "", anchor] = url.split("#", 2);
 		const path = pathAndQuery.split("?", 1)[0] ?? "";
-		const target = path ? fileFor(posix.resolve(posix.dirname(page), path)) : file;
+		// posix.resolve drops a trailing slash, and `file.pdf/` 404s where `file.pdf` doesn't.
+		const resolved = path ? posix.resolve(posix.dirname(page), path) + (path.endsWith("/") ? "/" : "") : "";
+		const target = path ? fileFor(resolved) : file;
 		if (!target) broken.push(`${page}: ${attr}="${url}" (no such page or file)`);
 		else if (anchor && target.endsWith(".html") && !idsIn(target).has(decodeURIComponent(anchor)))
 			broken.push(`${page}: ${attr}="${url}" (no #${anchor} on that page)`);

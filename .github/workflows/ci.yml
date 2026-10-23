@@ -289,6 +289,28 @@ jobs:
         working-directory: site
         run: bun run check
 
+      # Pandoc and Chromium take a minute or two to install, so the files are cached under a key
+      # made from everything that shapes them and only rebuilt when one of those changes.
+      - name: Restore book downloads
+        id: book-cache
+        uses: actions/cache@v6
+        with:
+          path: site/public/downloads
+          key: book-downloads-${{ hashFiles('docs/book/**', 'site/scripts/book-download.ts', 'site/scripts/book-print.css', 'site/scripts/book-callouts.css', 'site/src/remark/callouts.ts', 'site/scripts/book-cover.html', 'site/src/assets/logo.png', 'site/src/doc-ids.ts', 'site/bun.lock') }}
+
+      # As in docs.yml; the sidebar links to these files, so the link check needs them.
+      - name: Build book downloads
+        if: steps.book-cache.outputs.cache-hit != 'true'
+        working-directory: site
+        run: |
+          sudo apt-get update && sudo apt-get install -y pandoc
+          bunx playwright install --with-deps chromium
+          bun run book:download
+          # W3C's validator: a broken EPUB never reaches the site.
+          curl -sL -o "$RUNNER_TEMP/epubcheck.zip" https://github.com/w3c/epubcheck/releases/download/v5.4.0/epubcheck-5.4.0.zip
+          unzip -q "$RUNNER_TEMP/epubcheck.zip" -d "$RUNNER_TEMP"
+          java -jar "$RUNNER_TEMP/epubcheck-5.4.0/epubcheck.jar" --failonwarnings public/downloads/vereda-book.epub
+
       - name: Build
         working-directory: site
         run: bun run build

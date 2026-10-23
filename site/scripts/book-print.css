@@ -1,0 +1,107 @@
+/* The PDF edition of the book (scripts/book-download.ts): white paper, so it prints cleanly, with
+   the site's light-theme tints on code and asides. Chromium paints no background into the page
+   margins, so a paper colour would show as a cream card on a white sheet. */
+/* Wide margins keep a line near 75 characters, a comfortable measure for long reading. */
+@page {
+	size: A4;
+	margin: 24mm 28mm 26mm;
+}
+@page :first {
+	margin: 0;
+}
+
+body {
+	max-width: none;
+	margin: 0;
+	padding: 0;
+	font:
+		11pt / 1.6 "Schibsted Grotesk",
+		"Helvetica Neue",
+		Arial,
+		sans-serif;
+	color: #2b2420;
+}
+
+h1,
+h2,
+h3 {
+	line-height: 1.25;
+	break-after: avoid;
+}
+
+/* Each chapter starts a page, and so does the table of contents. */
+h1,
+#TOC {
+	break-before: page;
+}
+/* The cover (scripts/book-cover.html) is the title page, so pandoc's own is left out. */
+header#title-block-header {
+	display: none;
+}
+img.cover {
+	width: 210mm;
+	height: 297mm;
+	max-height: none;
+	margin: 0;
+	break-after: page;
+}
+
+a {
+	color: #b4501e;
+}
+
+blockquote {
+	margin: 1em 0;
+	padding: 0.4em 1em;
+	border-left: 3px solid #e08a3c;
+	background: #fbefdf;
+}
+
+pre,
+code {
+	font-family: "JetBrains Mono", Menlo, Consolas, monospace;
+	font-size: 8.5pt;
+	/* JetBrains Mono draws =>, ===, ++, ?. and // as one glyph. In a PDF those glyphs copy and
+	   extract as the wrong characters (init.: for init?., https:./ for https://), so code is
+	   set one character per glyph, as typed. */
+	font-variant-ligatures: none;
+}
+/* Long lines wrap, as on the site, instead of running off the page. */
+pre {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	padding: 0.6em 0.8em;
+	background: #f6ecdc;
+	border-radius: 4px;
+	/* A long listing splits across pages rather than leaving a blank half page, but never with
+	   fewer than four lines on either side. */
+	orphans: 4;
+	widows: 4;
+}
+/* A listing's label ("src/core/client.ts — send") stays on the page with its code. */
+p:has(+ div.sourceCode) {
+	break-after: avoid;
+}
+
+table {
+	border-collapse: collapse;
+	font-size: 9.5pt;
+}
+tr {
+	break-inside: avoid;
+}
+th,
+td {
+	border: 1px solid #e3d4bf;
+	padding: 0.3em 0.6em;
+	text-align: left;
+}
+
+img {
+	display: block;
+	max-width: 100%;
+	/* A tall flowchart shrinks to fit one page instead of being cut across two. */
+	max-height: 235mm;
+	margin: 1em auto;
+	break-inside: avoid;
+}

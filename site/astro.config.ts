@@ -112,7 +112,16 @@ export default defineConfig({
 						...PATTERNS.map((p) => ({ label: p.title, link: `/patterns/${p.slug}/` })),
 					],
 				},
-				{ label: "The Vereda Book", items: [{ autogenerate: { directory: "../docs/book" } }] },
+				{
+					label: "The Vereda Book",
+					items: [
+						{ autogenerate: { directory: "../docs/book" } },
+						// Built by scripts/book-download.ts before the site build (see .github/workflows/docs.yml).
+						// Absolute, because Starlight adds trailingSlash to site paths and `book.pdf/` 404s.
+						{ label: "Download EPUB", link: "https://vereda.dev/downloads/vereda-book.epub", attrs: { download: "" } },
+						{ label: "Download PDF", link: "https://vereda.dev/downloads/vereda-book.pdf", attrs: { download: "" } },
+					],
+				},
 				typeDocSidebarGroup,
 			],
 		}),

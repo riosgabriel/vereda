@@ -1,0 +1,135 @@
+<!doctype html>
+<!--
+  The cover of the downloadable book, 1600px wide. scripts/book-download.ts screenshots it with the
+  pinned commit in the hash (book-cover.html#6c03ba1): 2400px tall for the EPUB, A4's shape for the
+  PDF's first page. Everything is placed from the top or the bottom, so both shapes work.
+  The scene is the landing page's horizon at sunset, the dark theme's look (src/components/Horizon.astro),
+  cropped to a column around the notch: same ridges, trail and colours at --rise 0.
+-->
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<link
+			rel="stylesheet"
+			href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;800&family=JetBrains+Mono:wght@400&display=block"
+		/>
+		<style>
+			html,
+			body {
+				margin: 0;
+				width: 1600px;
+				height: 100vh;
+				overflow: hidden;
+				background: #17181c;
+				font-family: "Schibsted Grotesk", sans-serif;
+				color: #f7e7c7;
+			}
+			svg {
+				position: absolute;
+				inset: 0;
+				width: 100%;
+				height: 100%;
+			}
+			.title {
+				position: absolute;
+				top: 230px;
+				left: 140px;
+				right: 140px;
+			}
+			.brand {
+				display: flex;
+				align-items: center;
+				gap: 26px;
+				font-size: 46px;
+				font-weight: 800;
+				color: #e8b84a;
+			}
+			.brand img {
+				width: 92px;
+			}
+			h1 {
+				margin: 70px 0 0;
+				font-size: 200px;
+				line-height: 0.95;
+				font-weight: 800;
+				letter-spacing: -0.03em;
+			}
+			.subtitle {
+				margin-top: 56px;
+				font-size: 58px;
+				line-height: 1.25;
+				color: #f2d9ad;
+			}
+			.subtitle code {
+				font-family: "JetBrains Mono", monospace;
+				font-size: 0.9em;
+			}
+			.foot {
+				position: absolute;
+				left: 140px;
+				right: 140px;
+				bottom: 110px;
+				display: flex;
+				justify-content: space-between;
+				align-items: baseline;
+				font-size: 46px;
+				color: #f7e7c7;
+			}
+			.foot .pin {
+				font-family: "JetBrains Mono", monospace;
+				font-size: 32px;
+				opacity: 0.7;
+			}
+		</style>
+	</head>
+	<body>
+		<svg viewBox="700 -236 320 480" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+			<defs>
+				<linearGradient id="sky" gradientUnits="userSpaceOnUse" x1="0" y1="-236" x2="0" y2="130">
+					<stop offset="0" stop-color="#17181c" />
+					<stop offset="0.45" stop-color="#3b1a16" />
+					<stop offset="0.75" stop-color="#8a3220" />
+					<stop offset="1" stop-color="#ee7a2a" />
+				</linearGradient>
+				<radialGradient id="glow">
+					<stop offset="0" stop-color="#f37d18" stop-opacity="0.45" />
+					<stop offset="1" stop-color="#f37d18" stop-opacity="0" />
+				</radialGradient>
+				<linearGradient id="trail" x1="0" y1="0" x2="0" y2="1">
+					<stop offset="0.6" stop-color="#f7e7c7" />
+					<stop offset="0.965" stop-color="#f7e7c7" stop-opacity="0" />
+				</linearGradient>
+			</defs>
+			<rect x="0" y="-236" width="1440" height="480" fill="url(#sky)" />
+			<ellipse cx="930" cy="140" rx="336" ry="77" fill="url(#glow)" opacity="0.6" />
+			<path fill="#dbab33" opacity="0.15" d="M0 66 C 320 50, 700 70, 930 126 C 1150 72, 1400 52, 1440 54 L1440 244 L0 244 Z" />
+			<circle cx="930" cy="128" r="34" fill="#f37d18" />
+			<path
+				fill="#3a5e40"
+				d="M0 100 C 320 86, 690 94, 860 118 C 895 123, 918 127, 930 128 C 946 126, 985 116, 1080 106 C 1240 92, 1380 92, 1440 90 L1440 244 L0 244 Z"
+			/>
+			<path fill="#0e322e" d="M0 158 C 260 124, 520 126, 760 148 C 860 157, 960 150, 1100 138 C 1260 124, 1380 128, 1440 132 L1440 244 L0 244 Z" />
+			<path
+				fill="#17181c"
+				d="M0 214 C 300 198, 500 206, 640 226 C 700 236, 860 238, 1000 222 C 1150 206, 1320 208, 1440 214 L1440 244 L0 244 Z"
+			/>
+			<path
+				fill="url(#trail)"
+				opacity="0.9"
+				d="M929.2 128 C928.6 128.4 926.5 129.6 925.4 130.4 C924.2 131.2 923.1 132 922.1 132.8 C921.2 133.6 920.3 134.4 919.6 135.3 C918.9 136.1 918.3 136.9 917.7 137.7 C917.2 138.5 916.8 139.3 916.4 140.1 C916.1 140.9 915.9 141.7 915.7 142.5 C915.5 143.3 915.4 144.1 915.4 144.9 C915.3 145.7 915.3 146.5 915.4 147.3 C915.4 148.1 915.5 148.9 915.5 149.8 C915.6 150.6 915.7 151.4 915.8 152.2 C915.9 153 916 153.8 916 154.6 C916.1 155.4 916.1 156.2 916 157 C916 157.8 915.9 158.6 915.7 159.4 C915.5 160.2 915.3 161 914.9 161.8 C914.5 162.6 914.1 163.4 913.5 164.3 C912.9 165.1 912.2 165.9 911.3 166.7 C910.5 167.5 909.5 168.3 908.3 169.1 C907.1 169.9 905.8 170.7 904.3 171.5 C902.8 172.3 901.2 173.1 899.3 173.9 C897.4 174.7 895.4 175.5 893.1 176.3 C890.9 177.1 888.4 177.9 885.8 178.8 C883.1 179.6 880.3 180.4 877.2 181.2 C874.1 182 870.9 182.8 867.4 183.6 C863.9 184.4 860.3 185.2 856.4 186 C852.5 186.8 848.5 187.6 844.2 188.4 C840 189.2 835.5 190 830.9 190.8 C826.3 191.6 821.5 192.4 816.5 193.3 C811.6 194.1 806.4 194.9 801.2 195.7 C795.9 196.5 790.5 197.3 785 198.1 C779.5 198.9 773.9 199.7 768.2 200.5 C762.5 201.3 756.7 202.1 750.9 202.9 C745 203.7 739.1 204.5 733.2 205.3 C727.2 206.1 721.3 206.9 715.3 207.8 C709.4 208.6 703.4 209.4 697.5 210.2 C691.6 211 685.8 211.8 680 212.6 C674.2 213.4 668.5 214.2 662.9 215 C657.3 215.8 651.8 216.6 646.5 217.4 C641.2 218.2 636 219 631 219.8 C626 220.6 621.2 221.4 616.6 222.3 C612 223.1 607.7 223.9 603.5 224.7 C599.4 225.5 595.5 226.3 591.9 227.1 C588.3 227.9 585 228.7 582 229.5 C579 230.3 576.2 231.1 573.8 231.9 C571.4 232.7 569.3 233.5 567.6 234.3 C565.9 235.1 564.5 235.9 563.4 236.8 C562.4 237.6 561.7 238.4 561.3 239.2 C561 240 561 240.8 561.4 241.6 C561.8 242.4 563.3 243.6 563.7 244 L721.3 244 C720.3 243.6 717 242.4 715.4 241.6 C713.9 240.8 712.7 240 711.8 239.2 C710.9 238.4 710.5 237.6 710.3 236.8 C710.2 235.9 710.4 235.1 711 234.3 C711.5 233.5 712.4 232.7 713.6 231.9 C714.9 231.1 716.4 230.3 718.3 229.5 C720.1 228.7 722.3 227.9 724.7 227.1 C727.1 226.3 729.8 225.5 732.8 224.7 C735.7 223.9 739 223.1 742.4 222.3 C745.8 221.4 749.5 220.6 753.3 219.8 C757.1 219 761.1 218.2 765.3 217.4 C769.4 216.6 773.8 215.8 778.2 215 C782.6 214.2 787.2 213.4 791.8 212.6 C796.4 211.8 801.1 211 805.9 210.2 C810.6 209.4 815.4 208.6 820.2 207.8 C825 206.9 829.9 206.1 834.6 205.3 C839.4 204.5 844.2 203.7 848.9 202.9 C853.6 202.1 858.3 201.3 862.8 200.5 C867.4 199.7 871.9 198.9 876.3 198.1 C880.6 197.3 884.9 196.5 889 195.7 C893.1 194.9 897.1 194.1 900.9 193.3 C904.8 192.4 908.5 191.6 912 190.8 C915.4 190 918.8 189.2 921.9 188.4 C925.1 187.6 928 186.8 930.8 186 C933.5 185.2 936.1 184.4 938.5 183.6 C940.8 182.8 943 182 944.9 181.2 C946.9 180.4 948.7 179.6 950.2 178.8 C951.8 177.9 953.1 177.1 954.3 176.3 C955.4 175.5 956.4 174.7 957.2 173.9 C958 173.1 958.5 172.3 959 171.5 C959.4 170.7 959.6 169.9 959.7 169.1 C959.8 168.3 959.7 167.5 959.5 166.7 C959.3 165.9 959 165.1 958.5 164.3 C958 163.4 957.4 162.6 956.7 161.8 C956.1 161 955.3 160.2 954.4 159.4 C953.5 158.6 952.6 157.8 951.6 157 C950.6 156.2 949.6 155.4 948.5 154.6 C947.4 153.8 946.3 153 945.2 152.2 C944.1 151.4 943 150.6 941.9 149.8 C940.8 148.9 939.7 148.1 938.7 147.3 C937.7 146.5 936.7 145.7 935.7 144.9 C934.8 144.1 933.9 143.3 933.1 142.5 C932.3 141.7 931.6 140.9 931 140.1 C930.4 139.3 929.9 138.5 929.5 137.7 C929.1 136.9 928.8 136.1 928.6 135.3 C928.4 134.4 928.4 133.6 928.5 132.8 C928.6 132 928.8 131.2 929.2 130.4 C929.6 129.6 930.5 128.4 930.8 128 Z"
+			/>
+		</svg>
+		<div class="title">
+			<div class="brand"><img src="../src/assets/logo.png" alt="" />Vereda</div>
+			<h1>The Vereda Book</h1>
+			<div class="subtitle">How <code>@vereda/http</code> works inside</div>
+		</div>
+		<div class="foot">
+			<span>Gabriel Rios</span>
+			<span class="pin" id="pin"></span>
+		</div>
+		<script>
+			document.getElementById("pin").textContent = location.hash ? `as of ${location.hash.slice(1)}` : "";
+		</script>
+	</body>
+</html>
