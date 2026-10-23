@@ -103,6 +103,8 @@ try {
 	const parts: string[] = [];
 	for (const file of chapters) {
 		let markdown = rewriteLinks(readFileSync(join(BOOK, file), "utf8"), file);
+		// The cover is the title page, so the README's "# The Vereda Book" opens the book as what it is.
+		if (file === "README.md") markdown = markdown.replace(/^# .+$/m, "# About this book");
 		markdown = markdown.replace(/^(# .+)$/m, `$1 {#${chapterId(file)}}`);
 		for (const [fence, source = ""] of markdown.matchAll(/^```mermaid\n([\s\S]*?)^```$/gm)) {
 			markdown = markdown.replace(fence, `![](${await renderDiagram(source)})`);
@@ -148,6 +150,7 @@ try {
 		"--to=epub3",
 		"--split-level=1",
 		"--toc-depth=2",
+		"--epub-title-page=false",
 		`--epub-cover-image=${join(work, "cover.png")}`,
 		`--output=${join(OUT, "vereda-book.epub")}`,
 	);
@@ -180,6 +183,10 @@ try {
 		printBackground: true,
 		// Margins come from book-print.css, so the cover's page can have none.
 		preferCSSPageSize: true,
+		// Tagged for screen readers and text extraction; the outline is the PDF viewer's contents
+		// sidebar, so a reader can jump between chapters from any page.
+		tagged: true,
+		outline: true,
 		displayHeaderFooter: true,
 		headerTemplate: "<span></span>",
 		footerTemplate: `<div style="font-size:8px;width:100%;text-align:center;color:#777"><span class="pageNumber"></span></div>`,

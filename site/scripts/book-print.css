@@ -61,6 +61,10 @@ pre,
 code {
 	font-family: "JetBrains Mono", Menlo, Consolas, monospace;
 	font-size: 8.5pt;
+	/* JetBrains Mono draws =>, ===, ++, ?. and // as one glyph. In a PDF those glyphs copy and
+	   extract as the wrong characters (init.: for init?., https:./ for https://), so code is
+	   set one character per glyph, as typed. */
+	font-variant-ligatures: none;
 }
 /* Long lines wrap, as on the site, instead of running off the page. */
 pre {
