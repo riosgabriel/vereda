@@ -54,6 +54,7 @@ Four public entry points, mirrored by `package.json` `exports`:
 | `/middleware` | `src/middleware/index.ts` | onion middleware helpers |
 | `/zod` | `src/adapters/zod.ts` | `withZod` adapter (only zod import site) |
 | `/otel` | `src/otel/index.ts` | `instrumentTracing`, `otelMetricsSink` (only `@opentelemetry/api` import site) |
+| `/testing` | `src/testing/index.ts` | `faultyFetch`, a seeded fault-injecting `fetch` for tests |
 
 Request flow: `client.get()` returns a `Ticket` synchronously → first attempt fires **outside** the bulkhead → only retries go through the per-host partition bulkhead (`src/queue/`). Behavioral invariants — preserve these when touching retry/queue logic:
 
