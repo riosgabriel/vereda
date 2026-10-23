@@ -1,5 +1,6 @@
 import { DEFAULT_MIN_RETRIES_PER_SEC, type PartitionLookup, type RetryBudgetConfig } from "../core/types.ts";
 import { DEFAULT_PARTITION_TTL_MS, mergeOptional } from "./bulkhead.ts";
+import { PartitionRegistry } from "./partition-registry.ts";
 
 // ---------------------------------------------------------------------------
 // Sliding window — fixed-size time buckets counting requests and retries
@@ -133,12 +134,9 @@ export class RetryBudget {
 // ---------------------------------------------------------------------------
 
 export class RetryBudgetRegistry {
-	private readonly budgets = new Map<string, [RetryBudget, number]>();
-	private readonly ttlMs: number;
+	private readonly partitions: PartitionRegistry<RetryBudget>;
 	private readonly globalConfig?: RetryBudgetConfig;
 	private readonly partitionConfig: PartitionLookup;
-	private readonly sweepInterval = 10;
-	private callCounter = 0;
 
 	constructor(
 		globalConfig: RetryBudgetConfig | undefined,
@@ -147,34 +145,17 @@ export class RetryBudgetRegistry {
 	) {
 		this.globalConfig = globalConfig;
 		this.partitionConfig = partitionConfig;
-		this.ttlMs = ttlMs;
+		this.partitions = new PartitionRegistry((name) => {
+			const partitionConfig = this.partitionConfig(name)?.retryBudget;
+			return new RetryBudget(mergeOptional(this.globalConfig, partitionConfig));
+		}, ttlMs);
 	}
 
 	get(partitionName: string): RetryBudget {
-		this.callCounter++;
-
-		let entry = this.budgets.get(partitionName);
-		if (!entry) {
-			const partitionConfig = this.partitionConfig(partitionName)?.retryBudget;
-			const merged = mergeOptional(this.globalConfig, partitionConfig);
-			entry = [new RetryBudget(merged), Date.now()];
-			this.budgets.set(partitionName, entry);
-		}
-		entry[1] = Date.now();
-
-		if (this.callCounter % this.sweepInterval === 0 || this.budgets.size > 100) {
-			this.prune();
-		}
-
-		return entry[0];
+		return this.partitions.get(partitionName);
 	}
 
 	prune(): void {
-		const now = Date.now();
-		for (const [key, [budget, lastAccessed]] of this.budgets) {
-			if (now - lastAccessed > this.ttlMs && budget.isEvictable(now)) {
-				this.budgets.delete(key);
-			}
-		}
+		this.partitions.prune();
 	}
 }

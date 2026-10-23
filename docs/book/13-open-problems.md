@@ -15,12 +15,15 @@ for it.
 
 ### #192: one registry for every kind of partition state
 
+*Done: `PartitionRegistry` in `src/queue/partition-registry.ts`. Kept here as a worked example of
+the questions below.*
+
 *Internal refactor, milestone 1.3. Chapters 8 and 9.*
 
-Three classes keep per-partition state, and they're nearly copies: the bulkhead registry, the
-breaker registry and the retry-budget registry. Each keeps a map from partition name to its entry
-and when it was last used. Each sweeps old entries every tenth lookup, or once it has more than
-100. And each asks the entry whether it may be removed, but under three spellings: `isIdle` in
+Three classes kept per-partition state, and they were nearly copies: the bulkhead registry, the
+breaker registry and the retry-budget registry. Each kept a map from partition name to its entry
+and when it was last used. Each swept old entries every tenth lookup, or once it had more than
+100. And each asked the entry whether it could be removed, but under three spellings: `isIdle` in
 one, `isEvictable(now)` in the other two. The rule behind that question is where an old bug came
 from (chapter 11, Rule 2: never remove state that's still in use).
 
@@ -121,10 +124,6 @@ And a few doc fixes, smaller still:
 
 If this is your first change, take a doc fix or the import-guard test: small, real, and a full
 trip through the test-and-review loop from chapter 12.
-
-If you've read the whole book, take #192. It's a refactor with a known shape: three registries
-that are nearly copies, a rule from chapter 11 that all three must keep, and tests that already
-pin each one's behaviour.
 
 If you want a design problem, take #191, and write the open questions down as a table of options
 before any code.

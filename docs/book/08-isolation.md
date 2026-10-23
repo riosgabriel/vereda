@@ -375,8 +375,9 @@ switch.
 ## Registries and eviction
 
 Partitions are created on demand. The first request to `api.example.com` creates its bulkhead,
-in the bulkhead registry's `get`. The registry remembers when each entry was last used, and
-every tenth `get()` (or whenever it holds more than 100 entries) it **prunes**: it deletes
+in the bulkhead registry's `get`. That registry is a thin wrapper over `PartitionRegistry`
+(`src/queue/partition-registry.ts`), which the breaker and retry budget registries share. It
+remembers when each entry was last used, and every tenth `get()` (or whenever it holds more than 100 entries) it **prunes**: it deletes
 entries that are idle and unused for 60 seconds. Without this, a client that calls many
 different hosts would grow its map forever.
 
@@ -384,9 +385,9 @@ The danger is evicting a bulkhead that's still in use. The next `get()` would bu
 and for a while two bulkheads would exist for the same host, doubling its limit. So "idle" has
 a careful definition:
 
-`src/queue/bulkhead.ts` — `isIdle`
+`src/queue/bulkhead.ts` — `isEvictable`
 ```typescript
-get isIdle(): boolean {
+isEvictable(_now: number): boolean {
 	return (
 		this.activeTickets === 0 &&
 		this.running === 0 &&
@@ -409,12 +410,12 @@ bucket that's been drained must survive until it refills, or eviction would hand
 full one. A paused partition's bulkhead survives until the pause ends, for the same reason: a
 fresh one would send straight into the host that said to wait.
 
-The circuit breaker and retry budget registries (chapter 9) follow the same pattern, with their
-own rules for when an entry may go.
+The circuit breaker and retry budget (chapter 9) answer the same `isEvictable(now)` question,
+each with its own rule for when an entry may go.
 
 > **Aside: bug B12.** Evicting a busy bulkhead, and so doubling a host's limit, really happened.
-> The holds are the fix. Issue #192 proposes merging the three registries into one generic
-> class.
+> The holds are the fix. Issue #192 then moved the sweep and eviction of all three registries
+> into one generic class.
 
 ## Watching it
 
