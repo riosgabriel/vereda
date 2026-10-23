@@ -1,0 +1,93 @@
+/* The book's callouts and recurring sections, in both downloads (scripts/book-download.ts marks
+   them with the site's rules, src/remark/callouts.ts). The same look as the site's theme.css, in
+   the light theme's colours: each kind as loud as it matters to the chapter. */
+
+.callout-label {
+	display: block;
+	margin-bottom: 0.2em;
+	font-size: 0.68em;
+	font-weight: 700;
+	font-style: normal;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: #b4501e;
+}
+/* ": " after the label is for screen readers and the contents only. */
+.callout-sep {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+}
+
+.callout > blockquote {
+	margin: 1.2em 0;
+	padding: 0.4em 1em;
+	border-left: 3px solid #e08a3c;
+	background: #fbefdf;
+	font-style: normal;
+}
+/* The chapter's question: large on an ochre rule, no box. */
+.callout--crux > blockquote {
+	padding: 0.1em 0 0.1em 1em;
+	border-left: 4px solid #e8b84a;
+	background: none;
+	font-size: 1.18em;
+	line-height: 1.4;
+}
+/* A story beside the main text: quieter, a size smaller. */
+.callout--aside > blockquote {
+	border-left: 2px solid #c9b9a2;
+	background: #f5f1ea;
+	font-size: 0.88em;
+	color: #4a4038;
+}
+.callout--aside .callout-label {
+	color: #7a6a58;
+}
+
+section.book-section--design-note {
+	margin-top: 2em;
+	padding-top: 0.4em;
+	border-top: 1px solid #e3d4bf;
+}
+section.book-section--design-note > h2 {
+	margin-top: 0.1em;
+}
+/* The invariants, boxed like a checklist. */
+section.book-section--invariants,
+section.book-section--try-it {
+	margin: 2em 0;
+	padding: 0.2em 1.2em 0.6em;
+	border-radius: 4px;
+}
+section.book-section--invariants {
+	border: 1px solid #e3d4bf;
+	border-top: 3px solid #b4501e;
+}
+section.book-section--invariants > ul {
+	padding-left: 0;
+	list-style: none;
+}
+section.book-section--invariants > ul > li {
+	position: relative;
+	margin: 0.35em 0;
+	padding-left: 1.4em;
+}
+section.book-section--invariants > ul > li::before {
+	content: "✓";
+	position: absolute;
+	left: 0;
+	font-weight: 700;
+	color: #3a5e40;
+}
+/* The exercises, on the code blocks' tint. */
+section.book-section--try-it {
+	background: #f6ecdc;
+}
+section.book-section--try-it > ol > li::marker {
+	font-weight: 700;
+	color: #b4501e;
+}

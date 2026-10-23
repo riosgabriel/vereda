@@ -9,12 +9,14 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { routeFor } from "../src/doc-ids.ts";
+import { CALLOUTS, capitalize, SECTIONS } from "../src/remark/callouts.ts";
 
 const REPO_ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const BOOK = join(REPO_ROOT, "docs/book");
 const OUT = fileURLToPath(new URL("../public/downloads/", import.meta.url));
 const MERMAID = fileURLToPath(new URL("../node_modules/mermaid/dist/mermaid.min.js", import.meta.url));
 const PRINT_CSS = fileURLToPath(new URL("./book-print.css", import.meta.url));
+const CALLOUTS_CSS = fileURLToPath(new URL("./book-callouts.css", import.meta.url));
 const COVER = fileURLToPath(new URL("./book-cover.html", import.meta.url));
 // The site's type. Chromium loads it for the PDF; pandoc would try to embed it and time out.
 const FONTS =
@@ -71,6 +73,30 @@ function rewriteLinks(markdown: string, file: string): string {
 	});
 }
 
+/**
+ * Marks the callouts and recurring sections the way the site does (src/remark/callouts.ts), as
+ * pandoc attributes: a blockquote is wrapped in a classed div, a heading gets classes, which
+ * `--section-divs` moves onto its section. Labels become `.callout-label` spans.
+ */
+function markCallouts(markdown: string): string {
+	const label = (text: string) => `[${text}[: ]{.callout-sep}]{.callout-label}`;
+	return markdown
+		.replace(/^(?:>.*(?:\n|$))+/gm, (quote) => {
+			const opening = quote.match(/^> \*\*(.+?)\*\*/)?.[1] ?? "";
+			const callout = CALLOUTS.find((c) => c.match.test(opening));
+			if (!callout) return quote;
+			const title = capitalize(opening.replace(callout.match, ""));
+			const body = quote.replace(/^> \*\*.+?\*\*/, `> ${label(callout.label)}${title ? ` **${title}**` : ""}`);
+			return `::: {.callout .callout--${callout.kind}}\n${body.endsWith("\n") ? body : `${body}\n`}:::\n`;
+		})
+		.replace(/^## (.+)$/gm, (heading, text: string) => {
+			const section = SECTIONS.find((s) => s.match.test(text));
+			if (!section) return heading;
+			const title = section.label ? `${label(section.label)} ${capitalize(text.replace(section.match, ""))}` : text;
+			return `## ${title} {.book-section .book-section--${section.kind}}`;
+		});
+}
+
 const work = mkdtempSync(join(tmpdir(), "vereda-book-"));
 const browser = await chromium.launch();
 try {
@@ -102,7 +128,7 @@ try {
 
 	const parts: string[] = [];
 	for (const file of chapters) {
-		let markdown = rewriteLinks(readFileSync(join(BOOK, file), "utf8"), file);
+		let markdown = markCallouts(rewriteLinks(readFileSync(join(BOOK, file), "utf8"), file));
 		// The cover is the title page, so the README's "# The Vereda Book" opens the book as what it is.
 		if (file === "README.md") markdown = markdown.replace(/^# .+$/m, "# About this book");
 		markdown = markdown.replace(/^(# .+)$/m, `$1 {#${chapterId(file)}}`);
@@ -146,8 +172,17 @@ try {
 			{ stdio: "inherit" },
 		);
 
+	// pandoc's own EPUB stylesheet gives way to one passed with --css, so the callouts go after it.
+	const epubCss = join(work, "epub.css");
+	writeFileSync(
+		epubCss,
+		execFileSync("pandoc", ["--print-default-data-file=epub.css"], { encoding: "utf8" }) +
+			readFileSync(CALLOUTS_CSS, "utf8"),
+	);
 	pandoc(
 		"--to=epub3",
+		"--section-divs",
+		`--css=${epubCss}`,
 		"--split-level=1",
 		"--toc-depth=2",
 		"--epub-title-page=false",
@@ -162,8 +197,10 @@ try {
 		"--to=html5",
 		"--standalone",
 		"--toc-depth=1",
+		"--section-divs",
 		"--embed-resources",
 		`--css=${PRINT_CSS}`,
+		`--css=${CALLOUTS_CSS}`,
 		`--include-before-body=${coverPage}`,
 		`--output=${html}`,
 	);

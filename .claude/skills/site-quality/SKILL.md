@@ -55,6 +55,8 @@ The whole site should be pleasant to read, like a good book. The reference is ef
 `site/scripts/book-download.ts` builds `site/public/downloads/vereda-book.{epub,pdf}` from `docs/book/`.
 It runs pandoc for both formats, and Playwright's Chromium for the Mermaid diagrams, the cover and the PDF print.
 `book-print.css` styles the PDF, and `book-cover.html` is the cover. CI caches the files on a hash of their inputs.
+
+Callouts (Crux, Aside, See it run) and the recurring sections (Design note, What must stay true, Try it) look the same in all three editions. `src/remark/callouts.ts` holds the rules for recognising them (`CALLOUTS`, `SECTIONS`); the site styles them in `theme.css`, and the downloads in `scripts/book-callouts.css`. A new kind goes in all three places. After changing the plugin, delete `node_modules/.astro` before `bun run build`: Astro reuses its cached render of unchanged Markdown.
 - **Run it:** `bun run book:download` from `site/`. It needs pandoc 3.1+ on PATH (CI uses 3.1.3 from apt; on Arch use the static release binary, because `pandoc-cli` pulls in 100+ Haskell packages).
 - **Already enforced (don't re-check by hand):** both fonts load before printing (the script throws if not), the EPUB passes `epubcheck --failonwarnings` in CI, and `check:links` covers the sidebar links.
 - **Look at the pages:** render them with `pdftoppm -r 60 -png -f N -l M` and read the images. Check the cover, the contents page, a chapter opening, a long code listing, a wide table and the tallest diagram. Zoom to 200 dpi before calling text cramped, because low-resolution previews squeeze word spaces.
