@@ -115,15 +115,51 @@ try {
 		});
 	});
 	let diagrams = 0;
+	/** Draws one diagram to an SVG file and returns it as a Markdown image, with its alt text. */
 	const renderDiagram = async (source: string) => {
 		const name = `diagram-${++diagrams}.svg`;
-		const svg = await page.evaluate(
-			// biome-ignore lint/suspicious/noExplicitAny: mermaid.min.js sets a global
-			async ([id, code]) => (await (window as any).mermaid.render(id, code)).svg as string,
+		const { svg, alt } = await page.evaluate(
+			async ([id, code]) => {
+				// biome-ignore lint/suspicious/noExplicitAny: mermaid.min.js sets a global
+				const mermaid = (window as any).mermaid;
+				const { svg } = await mermaid.render(id, code);
+				// The diagram as text, from Mermaid's own parse of it, for screen readers and for
+				// anything that reads the PDF's text (which otherwise gets the labels as loose words).
+				const text = (label = "") =>
+					label
+						.replace(/<br\s*\/?>/g, " ")
+						.replace(/<[^>]+>/g, "")
+						.trim();
+				const step = (from: string, to: string, label = "") =>
+					`${from} → ${to}${text(label) ? ` (${text(label)})` : ""}`;
+				const diagram = await mermaid.mermaidAPI.getDiagramFromText(code);
+				let steps: string[];
+				let kind: string;
+				if (diagram.type === "sequence") {
+					kind = "Sequence diagram";
+					const actors = diagram.db.getActors() as Map<string, { description: string }>;
+					const who = (name: string) => text(actors.get(name)?.description ?? name);
+					steps = (diagram.db.getMessages() as { from?: string; to?: string; message: string }[])
+						.filter((m) => m.from && m.to)
+						.map((m) => `${step(who(m.from ?? ""), who(m.to ?? ""))}: ${text(m.message)}`);
+				} else {
+					kind = diagram.type.startsWith("state") ? "State diagram" : "Flowchart";
+					const { nodes, edges } = diagram.db.getData() as {
+						nodes: { id: string; label?: string }[];
+						edges: { start: string; end: string; label?: string }[];
+					};
+					const labels = new Map(nodes.map((n) => [n.id, text(n.label) || n.id]));
+					const node = (id: string) =>
+						/_start$/.test(id) ? "start" : /_end$/.test(id) ? "end" : (labels.get(id) ?? id);
+					steps = edges.map((e) => step(node(e.start), node(e.end), e.label));
+				}
+				return { svg: svg as string, alt: `${kind}: ${steps.join("; ")}.` };
+			},
 			[`d${diagrams}`, source] as const,
 		);
 		writeFileSync(join(work, name), svg);
-		return name;
+		// An alt attribute, not ![alt](…): pandoc would print that as a caption. It can't hold a ".
+		return `![](${name}){alt="${alt.replaceAll('"', "'")}"}`;
 	};
 
 	const parts: string[] = [];
@@ -133,7 +169,7 @@ try {
 		if (file === "README.md") markdown = markdown.replace(/^# .+$/m, "# About this book");
 		markdown = markdown.replace(/^(# .+)$/m, `$1 {#${chapterId(file)}}`);
 		for (const [fence, source = ""] of markdown.matchAll(/^```mermaid\n([\s\S]*?)^```$/gm)) {
-			markdown = markdown.replace(fence, `![](${await renderDiagram(source)})`);
+			markdown = markdown.replace(fence, await renderDiagram(source));
 		}
 		parts.push(markdown);
 	}
