@@ -36,16 +36,16 @@ Each fault is a plain object with exactly one of these keys:
 
 | Fault | What the call does |
 | --- | --- |
-| `{ status, retryAfter?, body?, headers? }` | Answers with that status, without calling the inner `fetch`. A `retryAfter` number is sent as seconds. |
-| `{ latencyMs }` | Waits, then calls the inner `fetch` as usual. |
+| `{ status, retryAfter?, body?, headers? }` | Answers with that status, without calling the inner `fetch`. A `retryAfter` number is sent as whole seconds, so it must be a non-negative integer; a string is sent as is. |
+| `{ latencyMs }` | Waits (as long as you say, even past 24.8 days), then calls the inner `fetch` as usual. |
 | `{ networkError: true }` | Rejects with a `TypeError`, as `fetch` does when the network fails. |
 | `{ hang: true }` | Never settles, until the request's signal aborts. |
 
 `status` runs from 200 to 599, because a `Response` can't carry a 1xx code.
 
-Both waits listen to the request's signal. When it aborts, the call rejects with the signal's reason and its timer is cleared. A signal that is already aborted rejects at once. That makes `hang` a good way to test `timeout.attemptMs`.
+Both waits listen to the request's signal. When it aborts, the call rejects with the signal's reason and its timer is cleared. A signal that is already aborted rejects at once, whatever the fault. That makes `hang` a good way to test `timeout.attemptMs`.
 
-Options are checked when you call `faultyFetch`. A bad one throws a `ConfigurationError` there, not on the first request.
+Options are checked when you call `faultyFetch`, headers and `retryAfter` included. A bad one throws a `ConfigurationError` there, not on the first request.
 
 ## Same faults every run
 
@@ -64,7 +64,7 @@ const flaky = faultyFetch(fetch, {
 });
 ```
 
-Calls that `match` rejects go straight through and take no numbers from the generator. `match` sees the method, headers and URL. It doesn't read the body.
+Calls that `match` rejects go straight through and take no numbers from the generator. `match` sees the URL, method and headers. It doesn't get the signal, and it doesn't read the body. A `Request` from another realm (undici, a polyfill) works too.
 
 ## Fake timers
 
