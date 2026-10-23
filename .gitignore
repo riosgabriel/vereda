@@ -54,3 +54,6 @@ TRACKER.md
 # Website build output (site/)
 site/.astro/
 site/src/content/docs/api/
+
+# The book downloads, built by site/scripts/book-download.ts
+site/public/downloads/

@@ -1,0 +1,87 @@
+/* The PDF edition of the book (scripts/book-download.ts): warm paper, the site's light theme. */
+@page {
+	size: A4;
+}
+
+body {
+	max-width: none;
+	margin: 0;
+	padding: 0;
+	font:
+		10.5pt / 1.55 "Schibsted Grotesk",
+		"Helvetica Neue",
+		Arial,
+		sans-serif;
+	color: #2b2420;
+	background: #fffaf2;
+}
+
+h1,
+h2,
+h3 {
+	line-height: 1.25;
+	break-after: avoid;
+}
+
+/* Each chapter starts a page; the title page and table of contents get one each too. */
+h1,
+#TOC {
+	break-before: page;
+}
+header#title-block-header {
+	break-after: page;
+	padding-top: 35%;
+	text-align: center;
+}
+header#title-block-header + h1 {
+	break-before: avoid;
+}
+
+a {
+	color: #b4501e;
+}
+
+blockquote {
+	margin: 1em 0;
+	padding: 0.4em 1em;
+	border-left: 3px solid #e08a3c;
+	background: #fbefdf;
+}
+
+pre,
+code {
+	font-family: "JetBrains Mono", Menlo, Consolas, monospace;
+	font-size: 8.5pt;
+}
+/* Long lines wrap, as on the site, instead of running off the page. */
+pre {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	padding: 0.6em 0.8em;
+	background: #f6ecdc;
+	border-radius: 4px;
+	break-inside: avoid;
+}
+
+table {
+	border-collapse: collapse;
+	font-size: 9.5pt;
+}
+tr {
+	break-inside: avoid;
+}
+th,
+td {
+	border: 1px solid #e3d4bf;
+	padding: 0.3em 0.6em;
+	text-align: left;
+}
+
+img {
+	display: block;
+	max-width: 100%;
+	/* A tall flowchart shrinks to fit one page instead of being cut across two. */
+	max-height: 235mm;
+	margin: 1em auto;
+	break-inside: avoid;
+}
