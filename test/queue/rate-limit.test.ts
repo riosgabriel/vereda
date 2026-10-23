@@ -94,9 +94,9 @@ describe("Bulkhead.takeToken", () => {
 	it("isn't idle until its bucket refills", () => {
 		const bulkhead = new Bulkhead("a", { rateLimit: { tokensPerSec: 10, burst: 1 } });
 		expect(bulkhead.takeToken()).toBeUndefined();
-		expect(bulkhead.isIdle).toBe(false);
+		expect(bulkhead.isEvictable(Date.now())).toBe(false);
 		vi.setSystemTime(100);
-		expect(bulkhead.isIdle).toBe(true);
+		expect(bulkhead.isEvictable(Date.now())).toBe(true);
 	});
 });
 

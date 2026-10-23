@@ -343,10 +343,10 @@ A client-wide budget applies to every partition, but some hosts don't need one. 
 service where retries are cheap, for instance. A partition can set `retryBudget: false`, and its
 budget is built with no config, which makes it allow everything:
 
-`src/queue/retry-budget.ts` — `RetryBudgetRegistry` — `get`
+`src/queue/retry-budget.ts` — `RetryBudgetRegistry`
 ```typescript
-const partitionConfig = this.partitionConfig(partitionName)?.retryBudget;
-const merged = mergeOptional(this.globalConfig, partitionConfig);
+const partitionConfig = this.partitionConfig(name)?.retryBudget;
+return new RetryBudget(mergeOptional(this.globalConfig, partitionConfig));
 ```
 
 `mergeOptional` is chapter 8's merge, shared with the rate limit and `pauseOnRetryAfter`. It

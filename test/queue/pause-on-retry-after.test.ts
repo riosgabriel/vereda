@@ -206,9 +206,9 @@ describe("Bulkhead pause", () => {
 	it("isn't idle while paused", () => {
 		const bulkhead = new Bulkhead("a", { pauseOnRetryAfter: {} });
 		bulkhead.notePushback(pushback(429, 2_000));
-		expect(bulkhead.isIdle).toBe(false);
+		expect(bulkhead.isEvictable(Date.now())).toBe(false);
 		vi.setSystemTime(2_000);
-		expect(bulkhead.isIdle).toBe(true);
+		expect(bulkhead.isEvictable(Date.now())).toBe(true);
 	});
 });
 

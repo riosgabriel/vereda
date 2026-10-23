@@ -184,7 +184,7 @@ describe("Bulkhead", () => {
 
 		await expect(bh.run(task, undefined, undefined, AbortSignal.abort())).rejects.toBeInstanceOf(CancelledError);
 		expect(task).not.toHaveBeenCalled();
-		expect(bh.isIdle).toBe(true);
+		expect(bh.isEvictable(Date.now())).toBe(true);
 	});
 
 	it("a retained reference's release is idempotent", () => {
@@ -194,10 +194,10 @@ describe("Bulkhead", () => {
 
 		releaseA();
 		releaseA();
-		expect(bh.isIdle).toBe(false); // B still holds it
+		expect(bh.isEvictable(Date.now())).toBe(false); // B still holds it
 
 		releaseB();
-		expect(bh.isIdle).toBe(true);
+		expect(bh.isEvictable(Date.now())).toBe(true);
 	});
 });
 

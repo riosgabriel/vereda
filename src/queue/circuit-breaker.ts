@@ -8,7 +8,7 @@ import {
 	type PartitionLookup,
 	partitionLookup,
 } from "../core/types.ts";
-import { DEFAULT_PARTITION_TTL_MS } from "./bulkhead.ts";
+import { PartitionRegistry } from "./partition-registry.ts";
 import { RETRIABLE_KINDS } from "./policy.ts";
 
 type CircuitState = "closed" | "open" | "half-open";
@@ -383,77 +383,33 @@ export class CircuitBreaker {
 }
 
 // ---------------------------------------------------------------------------
-// CircuitBreakerRegistry — one breaker per partition, mirrors BulkheadRegistry
+// CircuitBreakerRegistry — one breaker per partition, on PartitionRegistry
 // ---------------------------------------------------------------------------
 
-type CircuitBreakerEntry = [CircuitBreaker, number];
-
-export class CircuitBreakerRegistry {
-	private readonly breakers = new Map<string, CircuitBreakerEntry>();
-	private readonly ttlMs: number;
-	private readonly globalConfig: CircuitBreakerConfig;
-	private readonly partitionConfig: PartitionLookup;
-	private readonly sweepInterval: number;
-	private readonly onStateChange?: (partition: string, state: "open" | "closed") => void;
-	private callCounter = 0;
-
+export class CircuitBreakerRegistry extends PartitionRegistry<CircuitBreaker> {
 	constructor(
 		globalConfig: CircuitBreakerConfig = {},
 		partitionConfigs: Record<string, PartitionConfig> | PartitionLookup = {},
-		ttlMs: number = DEFAULT_PARTITION_TTL_MS,
+		ttlMs?: number,
 		onStateChange?: (partition: string, state: "open" | "closed") => void,
 	) {
-		this.ttlMs = ttlMs;
-		this.globalConfig = globalConfig;
-		this.partitionConfig =
+		const partitionConfig =
 			typeof partitionConfigs === "function" ? partitionConfigs : partitionLookup(partitionConfigs);
-		this.sweepInterval = 10;
-		this.onStateChange = onStateChange;
-	}
-
-	get(partitionName: string): CircuitBreaker {
-		this.callCounter++;
-
-		if (!this.breakers.has(partitionName)) {
-			const partitionConfig = this.partitionConfig(partitionName)?.circuitBreaker ?? {};
+		super((name) => {
+			const overrides = partitionConfig(name)?.circuitBreaker ?? {};
 			const merged: CircuitBreakerConfig = {
-				...this.globalConfig,
-				...partitionConfig,
+				...globalConfig,
+				...overrides,
 			};
-			this.breakers.set(partitionName, [new CircuitBreaker(partitionName, merged, this.onStateChange), Date.now()]);
-		}
-		const [cb] = this.breakers.get(partitionName)!;
-		// Update last accessed time
-		this.breakers.set(partitionName, [cb, Date.now()]);
-
-		// Sweep stale entries periodically
-		if (this.callCounter % this.sweepInterval === 0 || this.breakers.size > 100) {
-			this.prune();
-		}
-
-		return cb;
-	}
-
-	prune(): void {
-		const now = Date.now();
-		for (const [key, [cb, lastAccessed]] of this.breakers) {
-			// Never evict before an open breaker's resetTimeoutMs or while a
-			// ticket holds it: a fresh closed breaker would defeat the reset.
-			if (now - lastAccessed > this.ttlMs && cb.isEvictable(now)) {
-				this.breakers.delete(key);
-			}
-		}
-	}
-
-	delete(partitionName: string): void {
-		this.breakers.delete(partitionName);
+			return new CircuitBreaker(name, merged, onStateChange);
+		}, ttlMs);
 	}
 
 	/** Snapshots of every enabled breaker. Doesn't refresh last-access times,
 	 *  so observing a partition never keeps it from being evicted. */
 	getAll(): CircuitSnapshot[] {
 		const result: CircuitSnapshot[] = [];
-		for (const [, [cb]] of this.breakers) {
+		for (const cb of this.values()) {
 			if (cb.enabled) result.push(cb.snapshot());
 		}
 		return result;

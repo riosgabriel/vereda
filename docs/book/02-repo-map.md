@@ -202,6 +202,7 @@ A lookup table. Each row names the file and the function to open first.
 | Pausing a partition after `Retry-After` | `src/queue/pause.ts` — `PartitionPause`, owned by `Bulkhead` |
 | Circuit breaking | `src/queue/circuit-breaker.ts` — `CircuitBreaker` |
 | Retry budget | `src/queue/retry-budget.ts` — `RetryBudget` |
+| The map of per-host objects, and their eviction | `src/queue/partition-registry.ts` — `PartitionRegistry` |
 | Error classes | `src/core/errors.ts` |
 | Lifecycle events and metrics | `src/core/client.ts` — `emit`, `emitMetrics`; `src/core/metrics.ts` — `METRICS` |
 | URL redaction | `src/core/redact.ts` — `redactUrl` |
