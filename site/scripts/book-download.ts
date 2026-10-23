@@ -3,7 +3,7 @@
 // renders the Mermaid diagrams to SVG and prints the PDF. Run before `astro build`:
 // `bun scripts/book-download.ts`.
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,6 +16,9 @@ const OUT = fileURLToPath(new URL("../public/downloads/", import.meta.url));
 const MERMAID = fileURLToPath(new URL("../node_modules/mermaid/dist/mermaid.min.js", import.meta.url));
 const PRINT_CSS = fileURLToPath(new URL("./book-print.css", import.meta.url));
 const COVER = fileURLToPath(new URL("./book-cover.html", import.meta.url));
+// The site's type. Chromium loads it for the PDF; pandoc would try to embed it and time out.
+const FONTS =
+	"https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:ital,wght@0,400..800;1,400..800&family=JetBrains+Mono:ital,wght@0,400..700;1,400..700&display=block";
 
 // Fail before the slow part (Chromium, diagrams) rather than with a spawn stack trace after it.
 try {
@@ -162,6 +165,8 @@ try {
 		`--output=${html}`,
 	);
 	await page.goto(`file://${html}`);
+	await page.addStyleTag({ url: FONTS });
+	await page.evaluate(() => document.fonts.ready);
 	await page.pdf({
 		path: join(OUT, "vereda-book.pdf"),
 		format: "A4",
@@ -177,4 +182,5 @@ try {
 	);
 } finally {
 	await browser.close();
+	rmSync(work, { recursive: true, force: true });
 }

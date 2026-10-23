@@ -1,7 +1,10 @@
-/* The PDF edition of the book (scripts/book-download.ts): warm paper, the site's light theme. */
+/* The PDF edition of the book (scripts/book-download.ts): white paper, so it prints cleanly, with
+   the site's light-theme tints on code and asides. Chromium paints no background into the page
+   margins, so a paper colour would show as a cream card on a white sheet. */
+/* Wide margins keep a line near 75 characters, a comfortable measure for long reading. */
 @page {
 	size: A4;
-	margin: 20mm 18mm;
+	margin: 24mm 28mm 26mm;
 }
 @page :first {
 	margin: 0;
@@ -12,12 +15,11 @@ body {
 	margin: 0;
 	padding: 0;
 	font:
-		10.5pt / 1.55 "Schibsted Grotesk",
+		11pt / 1.6 "Schibsted Grotesk",
 		"Helvetica Neue",
 		Arial,
 		sans-serif;
 	color: #2b2420;
-	background: #fffaf2;
 }
 
 h1,
@@ -67,7 +69,14 @@ pre {
 	padding: 0.6em 0.8em;
 	background: #f6ecdc;
 	border-radius: 4px;
-	break-inside: avoid;
+	/* A long listing splits across pages rather than leaving a blank half page, but never with
+	   fewer than four lines on either side. */
+	orphans: 4;
+	widows: 4;
+}
+/* A listing's label ("src/core/client.ts — send") stays on the page with its code. */
+p:has(+ div.sourceCode) {
+	break-after: avoid;
 }
 
 table {
