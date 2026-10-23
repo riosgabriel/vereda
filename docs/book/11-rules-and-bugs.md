@@ -75,6 +75,7 @@ the others. Here is what the code takes and what gives it back:
 | A breaker trial slot | the permit, settled once, released in a `finally` |
 | A partition slot, when the global limit then says no | the bulkhead's reject path |
 | A place in a queue, for a waiter that is cancelled | an abort listener on the waiter |
+| A rate-limit token, for a waiter that is cancelled | `takeToken`'s abort handler hands it back (while a pause freezes the bucket, at most down to 0) |
 | A partition's registry entry, while requests use it | `retain()`, released by the ticket's cleanup |
 | A response body nobody will read | `body.cancel()` |
 | A listener on your `signal` | the ticket's cleanup |

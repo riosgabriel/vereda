@@ -142,6 +142,14 @@ function validateRetryConfig(retry: RetryConfig | undefined, prefix: string): vo
 		throw new ConfigurationError(`${prefix}.maxRetries must be a non-negative integer`);
 	}
 
+	if (
+		retry.idempotencyKey !== undefined &&
+		typeof retry.idempotencyKey !== "boolean" &&
+		typeof retry.idempotencyKey !== "function"
+	) {
+		throw new ConfigurationError(`${prefix}.idempotencyKey must be a boolean or a function`);
+	}
+
 	if (retry.retryOnStatus !== undefined) {
 		for (const status of retry.retryOnStatus) {
 			if (!Number.isInteger(status) || status < 400 || status > 599) {

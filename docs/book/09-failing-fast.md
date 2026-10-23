@@ -143,6 +143,12 @@ above the threshold. The window is ten time buckets, and buckets that have aged 
 on each read. Counting in a row is simple and reacts fast. The window tolerates scattered
 failures on a busy host, where one success between failures shouldn't wipe the slate clean.
 
+When the breaker closes again, after a successful trial, the window is emptied too (#219).
+Before that, `resetCounters` cleared only the failures-in-a-row count. The old failures stayed in
+the window until they aged out, so with `minimumRequests: 4` a breaker that had just closed
+could open again on one new failure, because four old ones were still counted. A closed breaker
+now judges the host on what happens from then on.
+
 ### What counts as a failure
 
 This is where most of the breaker's subtlety lives. To the breaker, each try ends in one of
@@ -337,17 +343,15 @@ A client-wide budget applies to every partition, but some hosts don't need one. 
 service where retries are cheap, for instance. A partition can set `retryBudget: false`, and its
 budget is built with no config, which makes it allow everything:
 
-`src/queue/retry-budget.ts` — `RetryBudgetRegistry` — `get`
+`src/queue/retry-budget.ts` — `RetryBudgetRegistry`
 ```typescript
-const partitionConfig = this.partitionConfig(partitionName)?.retryBudget;
-// `false` opts the partition out; spreading it would keep the client's budget.
-const merged =
-	partitionConfig === false
-		? undefined
-		: this.globalConfig || partitionConfig
-			? ({ ...this.globalConfig, ...partitionConfig } as RetryBudgetConfig)
-			: undefined;
+const partitionConfig = this.partitionConfig(name)?.retryBudget;
+return new RetryBudget(mergeOptional(this.globalConfig, partitionConfig));
 ```
+
+`mergeOptional` is chapter 8's merge, shared with the rate limit and `pauseOnRetryAfter`. It
+returns nothing for `false` on either side, which is why the budget is built with no config, and
+it spreads the two objects otherwise. Spreading `false` would keep the client's budget.
 
 Put `partitions: { "api.example.com": { retryBudget: false } }` next to the client budget above,
 and our request is back to three fetches and a success. Set `retryBudget: false` on
@@ -383,6 +387,7 @@ so: write an `isFailure` that classifies those statuses as failures.
 - Only a trial of the current half-open episode can close or reopen the circuit.
 - A try that was never sent is invisible to the breaker; an answer that isn't a failure counts
   as a success.
+- Closing the breaker empties its rolling window as well as its failure count.
 - Reading state (snapshots, `client.circuits()`) never moves the breaker.
 - An open breaker isn't evicted before its pause has passed, and no registry entry is evicted
   while a request holds it.
@@ -410,6 +415,12 @@ so: write an `isFailure` that classifies those statuses as failures.
 5. **Compute, then check.** `new RetryBudget({ ratio: 0.1, windowMs: 1000 })` with 50
    `recordRequest(0)` calls: how many `tryWithdraw(0)` calls succeed? With 500? (10, from the
    floor of 10 a second over one second; then 50, from `0.1 × 500`.)
-6. **Investigate.** In `_fireFirstAttempt`, a request the breaker refuses returns before the line
+6. **Predict, then run.** `circuitBreaker: { enabled: true, window: { sizeMs: 10_000,
+   failureRatePercent: 50, minimumRequests: 4 }, resetTimeoutMs: 100 }`, `maxRetries: 0`, and a
+   `fetch` that returns 503 four times. Wait 120 ms, make `fetch` return 200 and send one
+   request, then make it return 503 again and send one more. (The breaker opens after four
+   failures, the 200 trial closes it, and the next 503 does not reopen it: `circuits()` shows
+   `failures: 1` and `state: "closed"`. Before #219 it reopened.)
+7. **Investigate.** In `_fireFirstAttempt`, a request the breaker refuses returns before the line
    that records it for the budget. What would go wrong if the two were swapped? Write the test
    that would catch it, using `test/queue/retry-budget.test.ts` for patterns.

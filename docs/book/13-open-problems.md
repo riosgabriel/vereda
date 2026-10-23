@@ -15,29 +15,34 @@ for it.
 
 ### #192: one registry for every kind of partition state
 
+*Done: `PartitionRegistry` in `src/queue/partition-registry.ts`. Kept here as a worked example of
+the questions below.*
+
 *Internal refactor, milestone 1.3. Chapters 8 and 9.*
 
-Three classes keep per-partition state, and they're nearly copies: the bulkhead registry, the
-breaker registry and the retry-budget registry. Each keeps a map from partition name to its entry
-and when it was last used. Each sweeps old entries every tenth lookup, or once it has more than
-100. And each asks the entry whether it may be removed, but under three spellings: `isIdle` in
+Three classes kept per-partition state, and they were nearly copies: the bulkhead registry, the
+breaker registry and the retry-budget registry. Each kept a map from partition name to its entry
+and when it was last used. Each swept old entries every tenth lookup, or once it had more than
+100. And each asked the entry whether it could be removed, but under three spellings: `isIdle` in
 one, `isEvictable(now)` in the other two. The rule behind that question is where an old bug came
 from (chapter 11, Rule 2: never remove state that's still in use).
 
 The issue proposes one generic registry, built from a function that makes an entry for a
 partition name, and used by all three. Each caller keeps merging its own config.
 
-**Where to start.** Put the three `get` methods side by side, in `src/queue/bulkhead.ts`,
+**Where to start.** Put the three registries side by side, in `src/queue/bulkhead.ts`,
 `src/queue/circuit-breaker.ts` and `src/queue/retry-budget.ts`, and list every difference. Two to
 look for. First, the bulkhead and breaker registries can list every entry without updating when
 each was last used, so watching a partition never keeps it alive; the generic version must keep
-that. Second, since #194 a partition can turn the client's retry budget or rate limit off with
-`false`, and the two registries spell that check differently. Config merging stays with the
-callers, but make sure the shared code doesn't get in its way.
+that. Second, a partition can turn the client's retry budget, rate limit or `pauseOnRetryAfter` off
+with `false` (#194, #256). Those three merge through one function, `mergeOptional` in
+`src/queue/bulkhead.ts`, which the bulkhead and retry-budget registries both call. Config merging
+stays with the callers, but make sure the shared code doesn't get in its way.
 
 **Acceptance (from the issue).** All three registries use it with no change in behavior, the
-existing prune tests stay green without edits, and `test/queue/prune-held-reference.test.ts`
-covers the generic registry once instead of once per kind.
+existing prune tests keep passing (only their `isIdle` calls are renamed to `isEvictable`), and
+`test/queue/prune-held-reference.test.ts` covers the generic registry once instead of once per
+kind.
 
 ### #191: pause a partition when a 429 says when to come back
 
@@ -120,10 +125,6 @@ And a few doc fixes, smaller still:
 
 If this is your first change, take a doc fix or the import-guard test: small, real, and a full
 trip through the test-and-review loop from chapter 12.
-
-If you've read the whole book, take #192. It's a refactor with a known shape: three registries
-that are nearly copies, a rule from chapter 11 that all three must keep, and tests that already
-pin each one's behaviour.
 
 If you want a design problem, take #191, and write the open questions down as a table of options
 before any code.

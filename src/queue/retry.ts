@@ -11,7 +11,7 @@ import {
 	RetryableStatusError,
 	TimeoutError,
 } from "../core/errors.ts";
-import { setLongTimeout } from "../core/timer.ts";
+import { sleep } from "../core/timer.ts";
 import {
 	type BackoffOptions,
 	DEFAULT_MAX_RETRIES,
@@ -415,26 +415,6 @@ export async function runRetryLoop(job: RetryJobOptions): Promise<void> {
 		success: false,
 		error: exhaustedError,
 	} as never);
-}
-
-/** Resolves after `ms`, or rejects with `signal.reason` once it aborts. The
- *  retry loop only cares *that* the sleep was interrupted, not why. */
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-	return new Promise((resolve, reject) => {
-		if (signal?.aborted) {
-			reject(signal.reason);
-			return;
-		}
-		const cancel = setLongTimeout(() => {
-			signal?.removeEventListener("abort", onAbort);
-			resolve();
-		}, ms);
-		const onAbort = () => {
-			cancel();
-			reject(signal?.reason);
-		};
-		signal?.addEventListener("abort", onAbort, { once: true });
-	});
 }
 
 /** Resolve the delay before a retry (decision D3): a Retry-After-derived

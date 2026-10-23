@@ -9,7 +9,13 @@ import { remarkDropTitle } from "./src/remark/drop-title.ts";
 import { remarkMermaid } from "./src/remark/mermaid.ts";
 
 // The public entry points, as in package.json "exports".
-const ENTRY_POINTS = ["src/core/index.ts", "src/middleware/index.ts", "src/adapters/zod.ts", "src/otel/index.ts"];
+const ENTRY_POINTS = [
+	"src/core/index.ts",
+	"src/middleware/index.ts",
+	"src/adapters/zod.ts",
+	"src/otel/index.ts",
+	"src/testing/index.ts",
+];
 
 // The site reads the hand-written docs straight from ../docs (see src/content.config.ts),
 // so docs/book stays where book:check and book:drift expect it.

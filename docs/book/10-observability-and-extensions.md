@@ -70,7 +70,7 @@ They're declared as a type map in `src/core/types.ts`:
 | Event | When | How often per request |
 | --- | --- | --- |
 | `request` | the URL resolved and the checks passed | at most once |
-| `retry` | a retry is about to wait | 0 or more |
+| `retry` | a retry is about to wait; `delayMs` is the whole wait, a `Retry-After` pause included | 0 or more |
 | `success`, `failure`, `cancelled` | the ticket settles | exactly one of the three |
 | `retryBudgetExhausted` | the budget refused a retry; a `failure` follows | 0 or 1 |
 | `circuitOpen`, `circuitClose` | a host's breaker changes state | per host, not per request |
