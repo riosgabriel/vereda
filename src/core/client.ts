@@ -18,6 +18,7 @@ import {
 	RateLimitedError,
 	TimeoutError,
 } from "./errors.ts";
+import { withIdempotencyKey } from "./idempotency.ts";
 import { Emitter, reportCallbackError } from "./listeners.ts";
 import { METRICS, type MetricsSink } from "./metrics.ts";
 import { nanoid } from "./nanoid.ts";
@@ -305,6 +306,22 @@ export class HttpClient {
 			return;
 		}
 
+		// Shared early exit for failures before the request is admitted: one
+		// "failure" event, the ticket settled, cleanup run.
+		const failEarly = (error: AppError, partition: string | undefined): void => {
+			this.emit("failure", {
+				ticketId: ticket.id,
+				url: this.logUrl(url),
+				partition,
+				attempts: 1,
+				durationMs: Date.now() - startTime,
+				queuedMs: 0,
+				error,
+			});
+			controller.markDone({ success: false, error } as never);
+			cleanup();
+		};
+
 		// Resolve URL and partition inside the async path so relative URLs
 		// without a baseUrl surface as a ticket ConfigurationError instead of
 		// throwing. It's a caller mistake, not a network fault, so it is never
@@ -321,19 +338,7 @@ export class HttpClient {
 					: `url ${this.logUrl(url)} must be absolute when no baseUrl is set`,
 				{ cause: err },
 			);
-			const durationMs = Date.now() - startTime;
-			this.emit("failure", {
-				ticketId: ticket.id,
-				url: this.logUrl(url),
-				partition: undefined,
-				attempts: 1,
-				durationMs,
-				queuedMs: 0,
-				error,
-			});
-			controller.markDone({ success: false, error } as never);
-			cleanup();
-			return;
+			return failEarly(error, undefined);
 		}
 
 		// Validate the body early in the async path so an unusable body (a raw
@@ -341,20 +346,7 @@ export class HttpClient {
 		try {
 			validateRequestBody(options.body);
 		} catch (err) {
-			const error = err as ConfigurationError;
-			const durationMs = Date.now() - startTime;
-			this.emit("failure", {
-				ticketId: ticket.id,
-				url: this.logUrl(url),
-				partition: partitionName,
-				attempts: 1,
-				durationMs,
-				queuedMs: 0,
-				error,
-			});
-			controller.markDone({ success: false, error } as never);
-			cleanup();
-			return;
+			return failEarly(err as ConfigurationError, partitionName);
 		}
 
 		// Validate the request's own timeout/retry options before merging them
@@ -364,24 +356,19 @@ export class HttpClient {
 		try {
 			validateRequestOptions(options);
 		} catch (err) {
-			const error = err as ConfigurationError;
-			const durationMs = Date.now() - startTime;
-			this.emit("failure", {
-				ticketId: ticket.id,
-				url: this.logUrl(url),
-				partition: partitionName,
-				attempts: 1,
-				durationMs,
-				queuedMs: 0,
-				error,
-			});
-			controller.markDone({ success: false, error } as never);
-			cleanup();
-			return;
+			return failEarly(err as ConfigurationError, partitionName);
 		}
 
 		const timeoutConfig = this.mergeTimeout(options, partitionName);
 		const retryConfig = this.mergeRetry(options, partitionName);
+
+		// Opt-in Idempotency-Key: generated once per ticket, here, so every
+		// attempt (first and retries) and the retry policy see the same header.
+		try {
+			options = withIdempotencyKey(options, retryConfig);
+		} catch (err) {
+			return failEarly(err as ConfigurationError, partitionName);
+		}
 		const bulkhead = this.bulkheads.get(partitionName);
 		const displayUrl = this.logUrl(fullUrl);
 

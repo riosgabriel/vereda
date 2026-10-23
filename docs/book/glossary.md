@@ -71,7 +71,8 @@ executor's `finally`. (6)
 registries don't evict them while the ticket sleeps between retries. Released by cleanup. (5, 8)
 
 **Idempotent** — Safe to send more than once. GET, HEAD, OPTIONS, PUT and DELETE are; POST and PATCH
-are retried only with `retry.idempotent: true` or an `Idempotency-Key` header. (7)
+are retried only with `retry.idempotent: true`, `retry.idempotencyKey` or an `Idempotency-Key`
+header. (7)
 
 **`isBoundedMs`** — The check for "a real, finite timeout". Every timer creation goes through it so
 `Infinity` never reaches `setTimeout`. (1)
