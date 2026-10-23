@@ -205,8 +205,8 @@ A release is a merged version bump. These steps come from CONTRIBUTING.md, check
 
 Don't push version tags by hand; the workflow creates them.
 
-The last published version is 1.0.2. Everything since sits under `[Unreleased]`, including the
-three fixes this book's first edition reported (#196–#198) and the deprecations ahead of 2.0.
+The last published version is 1.1.1. Everything since sits under `[Unreleased]`: at this book's
+pin, the `pauseOnRetryAfter` option and a stricter `Retry-After` parse.
 
 ## Anatomy of a feature: the retry budget
 
@@ -276,12 +276,12 @@ that the test works.
    fake-timer version takes about 30 ms; with real timers it takes 0.4 to 0.5 s, and the exact
    time changes from run to run because of the random waits.)
 2. **Run the core.** `npx vitest run test/queue/retry-budget.test.ts test/core/lifecycle-invariants.property.test.ts`.
-   Both files should pass, 18 tests in all. Then run the property test with
+   Both files should pass, 19 tests in all. Then run the property test with
    `VEREDA_FC_RUNS=500` and note how long it takes.
 3. **Predict the next release.** Read `## [Unreleased]` in `CHANGELOG.md`. Which bump would the
    prepare script choose? Check without changing anything: import `inferBump` and
    `unreleasedSection` from `./scripts/release-prepare.ts` in a scratch script. (`minor`. The
-   section has `### Added` and `### Deprecated`, and no `### Breaking` or `### Removed`.)
+   section has `### Added`, and no `### Breaking` or `### Removed`.)
 4. **Break a default on purpose.** In a scratch copy of the repo, change `DEFAULT_MAX_RETRIES` in
    `src/core/types.ts` from 3 to 4 and run the whole suite. Before you run it, guess which tests
    fail. (Four: the defaults-table test, because the README still says 3, and three tests in

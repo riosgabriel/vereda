@@ -197,10 +197,10 @@ Two more boundaries shape the code even though the README doesn't list them as n
 > (#115). Dropping the Node built-ins came later, in #174. After 1.0 came a review that found
 > seventeen bugs, labelled `B1` to `B17`; their fixes are why many functions carry long
 > comments. A later round found three more (#196, #197, #198), fixed in October 2026. The
-> latest release is 1.0.2. The unreleased part of `CHANGELOG.md` adds the retry budget, rate
-> limiting, async `parse`, `responseType`, OpenTelemetry, `defaultPartition`, a way for one
-> partition to opt out of the client's budget or rate limit, and the first deprecations ahead
-> of 2.0 (chapter 3).
+> latest release is 1.1.1. Version 1.1.0 added the retry budget, rate limiting, async `parse`,
+> `responseType`, OpenTelemetry, `defaultPartition`, a way for one partition to opt out of the
+> client's budget or rate limit, and the first deprecations ahead of 2.0 (chapter 3). The
+> unreleased part of `CHANGELOG.md` adds `pauseOnRetryAfter` (chapter 7).
 >
 > When a comment in the code says `(B7)` or `(#181)`, it is pointing at that history. Chapter
 > 11 collects those bugs into rules.

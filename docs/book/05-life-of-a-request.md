@@ -294,6 +294,13 @@ if (!permit) {
 	// ... emit "failure", markDone, cleanup, return
 }
 
+// A pause the host asked for (`pauseOnRetryAfter`) that outlasts totalMs can only end in a
+// deadline error, so fail now instead of holding the permit.
+if (isBoundedMs(timeoutConfig.totalMs) && bulkhead.pauseRemainingMs >= /* time left of totalMs */) {
+	permit.release();
+	// ... emit "failure" with DeadlineExceededError, markDone, cleanup, return
+}
+
 // Only first attempts the breaker admitted earn retry budget: a rejected
 // one never reached the host, so it adds no load to spread retries over.
 retryBudget.recordRequest();
@@ -307,7 +314,9 @@ try {
 
 The breaker is off by default, and then it always says yes, so our request gets a **permit**:
 a small object that must be given back on every path. That's what the `try`/`finally` is for.
-Chapter 9 shows what happens when a permit is lost. Because the breaker answered yes, the retry
+Chapter 9 shows what happens when a permit is lost. The pause check between the two is for the
+opt-in `pauseOnRetryAfter` option (chapter 7's aside): it needs a breaker permit to be given
+back, so it sits after `tryAcquire`, and an open breaker still reports `CircuitOpenError`. Because the breaker answered yes, the retry
 budget counts one more real request (chapter 9 again).
 
 ### Try 1, and why it skips the line
@@ -321,10 +330,11 @@ partition's queue, the **bulkhead**. The design note at the end of this chapter 
 ```typescript
 const usePartitionBulkhead = bulkhead.limitFirstAttempts;
 // ...
-const dispatch = (): Promise<Awaited<ReturnType<typeof execute>>> => {
+const guarded = bulkhead.guard(execute);
+const dispatch = (): Promise<Awaited<ReturnType<typeof execute>> | typeof PAUSED> => {
 	if (usePartitionBulkhead) {
 		return bulkhead
-			.run(execute, semaphore, (ms) => { queuedMs += ms; }, ticket.signal)
+			.run(guarded, semaphore, (ms) => { queuedMs += ms; }, ticket.signal)
 			.catch(cancelledWhileQueued);
 	}
 	if (semaphore) {
@@ -332,7 +342,7 @@ const dispatch = (): Promise<Awaited<ReturnType<typeof execute>>> => {
 		return semaphore.acquire(ticket.signal).then(
 			(release) => {
 				queuedMs += Date.now() - enqueuedAt;
-				return execute().finally(release);
+				return guarded().finally(release);
 			},
 			(err: unknown) => {
 				queuedMs += Date.now() - enqueuedAt;
@@ -340,7 +350,7 @@ const dispatch = (): Promise<Awaited<ReturnType<typeof execute>>> => {
 			},
 		);
 	}
-	return execute();
+	return guarded();
 };
 ```
 
@@ -353,8 +363,12 @@ Two smaller details:
 - If the ticket is cancelled while waiting for a permit, the wait ends with an error, and
   `cancelledWhileQueued` turns it into an ordinary "cancelled" outcome. Any other error, such as
   a full queue, goes to the safety net in `send`.
-- Before any of this, the partition's rate limiter, if you configured one, hands out a token.
-  The token comes first, so a request waiting for one holds no concurrency. Every wait, for a
+- `guarded` wraps `execute` so it checks for a `Retry-After` pause at the moment it really
+  starts, and again records one when it fails. With no `pauseOnRetryAfter` configured it just
+  runs `execute`. Chapter 8 has the rest.
+- Before any of this, the partition's rate limiter, if you configured one, hands out a token
+  (and, with `pauseOnRetryAfter`, makes the attempt wait out a pause). The token comes first, so
+  a request waiting for one holds no concurrency. Every wait, for a
   token, a slot or a permit, is added to the ticket's `queuedMs`.
 
 Our request takes a global permit and sends **fetch #1** at 20 ms. The fake server never
@@ -428,16 +442,21 @@ for (let attempt = 0; attempt < maxRetries; attempt++) {
 
 		const delayMs = resolveRetryDelay(lastError, backoffFn, attempt, backoffCap);
 
-		if (deadlineAt !== undefined && isBoundedMs(timeoutConfig.totalMs) && Date.now() + delayMs >= deadlineAt) {
+		const holdMs = Math.max(delayMs, bulkhead.pauseRemainingMs);
+		if (deadlineAt !== undefined && isBoundedMs(timeoutConfig.totalMs) && Date.now() + holdMs >= deadlineAt) {
 			/* onFailure(DeadlineExceededError with cause lastError), markDone, return */
 		}
+
+		const refusal = bulkhead.refusalAfter(delayMs);
+		if (refusal) { /* onFailure(refusal), markDone, throw */ }
 
 		if (retryBudget && !retryBudget.tryWithdraw()) {
 			/* onBudgetExhausted, onFailure(lastError), markDone, return */
 		}
 
-		onRetry?.(attempt, delayMs, lastError);
-		controller.markRetrying(attempt, delayMs);
+		const reportedDelayMs = Math.max(delayMs, bulkhead.pauseRemainingMs);
+		onRetry?.(attempt, reportedDelayMs, lastError);
+		controller.markRetrying(attempt, reportedDelayMs);
 
 		try {
 			await sleep(delayMs, ticket.signal);
@@ -447,7 +466,8 @@ for (let attempt = 0; attempt < maxRetries; attempt++) {
 		if (ticket.isCancelled) { /* onCancelled, markDone, return */ }
 
 		totalAttempts++;
-		// token, then bulkhead.run(() => executeRequest({ ..., attempt: attempt + 1 }), semaphore, ...)
+		// token, then bulkhead.run(bulkhead.guard(() => executeRequest({ ..., attempt: attempt + 1 })), semaphore, ...)
+		// (repeated while the guarded attempt comes back PAUSED)
 		// switch (result.kind): success -> settle; cancelled -> deadline or cancel;
 		// timeout / error -> lastError = ..., permit.failure(lastError), next iteration
 	} finally {
@@ -470,6 +490,10 @@ Rather than reading the gates in the abstract, follow our request through them.
 | 6 | Is there retry budget left? | No budget configured |
 | 7 | Announce | `event retry 0` and `update retrying` at 212 ms |
 | 8 | Sleep, then send | **fetch #2** at 217 ms → 503 |
+
+The table has no row for the pause checks that come after gate 5, because our request has no
+`pauseOnRetryAfter`. Gate 5 would use the longer of the wait and the pause, and gate 7 would
+report that longer wait.
 
 Gate 3 is skipped in round 0 because the first attempt already asked that question about the
 same timeout. Asking again would call your `retryWhen` twice for one failure.
@@ -499,6 +523,10 @@ Each position answers a question about cost:
 - **The deadline check before the sleep.** If the wait alone would run past the deadline, fail
   now rather than sleep until the deadline fires. Only the wait is compared, not wait plus a
   whole attempt, because the per-attempt limit is a ceiling, not an estimate.
+- **The pause counts toward the deadline check.** The wait compared is the longer of the backoff
+  and what is left of a `Retry-After` pause on the partition. A related check, `refusalAfter`,
+  fails a retry the rate limit's `maxWaitMs` is sure to refuse once the pause has outlasted its
+  sleep. Both are no-ops unless `pauseOnRetryAfter` is configured.
 - **The budget after the deadline check**, so a retry that's doomed anyway never spends budget,
   and before the sleep, so a refused retry fails without waiting.
 - **Announce, then sleep.** The `retry` event fires before the wait, and you only hear about

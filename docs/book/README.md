@@ -3,10 +3,10 @@
 A book about how `@vereda/http` works inside: what problem it solves, how one request travels
 through it, the rules the code must keep, and how to change it safely.
 
-> **Pinned commit:** this book describes `6c03ba1` (`6c03ba1dd479dcaf9f8b374a9e766f9ec7132ab7`,
-> 2026-10-17, version 1.0.2 plus unreleased changes: retry budget, rate limiting, the per-partition
-> opt-out, the 1.x deprecations and four bug fixes). Where the book and the code differ, trust the
-> code. To see what changed since, run `git diff 6c03ba1..HEAD --stat -- src/`.
+> **Pinned commit:** this book describes `227f4cc` (`227f4cc2613ef9b5bd652c28a1475b885de1b24b`,
+> 2026-10-22, version 1.1.1 plus unreleased changes: the opt-in `pauseOnRetryAfter` option and a
+> stricter `Retry-After` parse). Where the book and the code differ, trust the code. To see what
+> changed since, run `git diff 227f4cc..HEAD --stat -- src/`.
 
 ## Who it's for
 
@@ -106,7 +106,7 @@ clearInterval(keep);
 | 5 | [Life of a request](05-life-of-a-request.md) | What happens, step by step, between `client.get()` and the ticket settling? | `src/core/client.ts`, `src/queue/retry.ts` |
 | 6 | [One attempt](06-one-attempt.md) | How does one attempt turn a `fetch` into exactly one of four outcomes, and how is it guaranteed to end? | `src/queue/executor.ts` |
 | 7 | [Deciding to retry](07-deciding-to-retry.md) | Which failures are retried, how long does Vereda wait, and which error does the caller finally see? | `src/queue/policy.ts`, `src/core/backoff.ts`, `src/core/errors.ts` |
-| 8 | [Isolation: bulkheads, the global cap and the rate limiter](08-isolation.md) | How does Vereda keep one bad host from eating everyone else's capacity? | `src/queue/bulkhead.ts`, `src/queue/semaphore.ts`, `src/queue/rate-limiter.ts` |
+| 8 | [Isolation: bulkheads, the global cap and the rate limiter](08-isolation.md) | How does Vereda keep one bad host from eating everyone else's capacity? | `src/queue/bulkhead.ts`, `src/queue/semaphore.ts`, `src/queue/rate-limiter.ts`, `src/queue/pause.ts` |
 | 9 | [Failing fast: the circuit breaker and the retry budget](09-failing-fast.md) | How does Vereda decide to stop calling a host, or stop retrying it? | `src/queue/circuit-breaker.ts`, `src/queue/retry-budget.ts` |
 | 10 | [Observability and extension points](10-observability-and-extensions.md) | How does information leave the client, and how can user code plug in without being able to break it? | `src/core/listeners.ts`, `src/core/metrics.ts`, `src/core/redact.ts`, `src/middleware/index.ts`, `src/otel/index.ts` |
 | 11 | [The rules and the bugs that taught them](11-rules-and-bugs.md) | What must stay true whenever you change this code, and how was each rule learned? | the whole spine |

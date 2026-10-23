@@ -31,9 +31,10 @@ partition name, and used by all three. Each caller keeps merging its own config.
 `src/queue/circuit-breaker.ts` and `src/queue/retry-budget.ts`, and list every difference. Two to
 look for. First, the bulkhead and breaker registries can list every entry without updating when
 each was last used, so watching a partition never keeps it alive; the generic version must keep
-that. Second, since #194 a partition can turn the client's retry budget or rate limit off with
-`false`, and the two registries spell that check differently. Config merging stays with the
-callers, but make sure the shared code doesn't get in its way.
+that. Second, a partition can turn the client's retry budget, rate limit or `pauseOnRetryAfter` off
+with `false` (#194, #256). Those three merge through one function, `mergeOptional` in
+`src/queue/bulkhead.ts`, which the bulkhead and retry-budget registries both call. Config merging
+stays with the callers, but make sure the shared code doesn't get in its way.
 
 **Acceptance (from the issue).** All three registries use it with no change in behavior, the
 existing prune tests stay green without edits, and `test/queue/prune-held-reference.test.ts`

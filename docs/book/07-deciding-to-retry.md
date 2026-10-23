@@ -54,7 +54,7 @@ after it; a `timeout` is a `TimeoutError`, a `retryable_status` is a `RetryableS
 | `cancelled` | `cancel()`, your abort signal, `close()` | no, ends the ticket |
 | `queue_full` | a partition queue or the global queue was full | no, ends the ticket |
 | `circuit_open` | the circuit breaker refused the try | no, ends the ticket |
-| `rate_limited` | the wait for a rate-limit token would be too long | no, ends the ticket |
+| `rate_limited` | the wait for a rate-limit token, or for a `Retry-After` pause, would be too long | no, ends the ticket |
 | `max_retries` | retries ran out on a failure that kept being transient | only ever final |
 
 "Ends the ticket" means the error stops the request where it happens, without asking the
@@ -224,20 +224,32 @@ cap, though, so a server can't park a ticket for an hour. The cap is the backoff
 since a function has no ceiling to read.
 
 The header is read in `src/queue/executor.ts` by `parseRetryAfter`. It accepts whole seconds
-(`"2"` becomes 2,000 ms) or an HTTP date (the time from now until then, never below zero).
-Anything else, such as `"1.5"` or `"-5"`, is ignored, and backoff applies.
+(`"2"` becomes 2,000 ms) or an HTTP date (the time from now until then, never below zero), in any
+of the three forms RFC 9110 says a recipient must accept: `Sun, 06 Nov 1994 08:49:37 GMT`, the
+obsolete `Sunday, 06-Nov-94 08:49:37 GMT`, and the obsolete `Sun Nov  6 08:49:37 1994`, which
+means UTC though it doesn't say so. The dates are parsed by hand, because `Date.parse` takes
+`"1.5"` or `"-5"` as dates and reads the last form as local time. Anything else, such as `"1.5"` or `"-5"`, is ignored, and backoff applies.
 
 If our fake server's 503 carried `Retry-After: 1`, the second wait would be exactly 1,000 ms on
 every run, instead of a random draw. That's chapter 5's first exercise.
 
-`Retry-After` changes only the wait of the ticket that received it. Other requests to the same
-host carry on with their own schedules.
+By default, `Retry-After` changes only the wait of the ticket that received it. Other requests to
+the same host carry on with their own schedules.
 
 > **Aside: pausing a whole host.** With the opt-in `pauseOnRetryAfter` option (issue #191), a
 > 429 or 503 with `Retry-After` pauses the whole partition, which is closer to what the server
 > asked for. `Bulkhead.guard` records it as the attempt settles, `Bulkhead.takeToken` waits it out
 > ahead of every attempt, and a queued attempt that reaches the front during the pause is bounced
-> back to `takeToken`.
+> back to `takeToken`. The pause lives in `PartitionPause` (`src/queue/pause.ts`), one per
+> bulkhead; it only moves forward, and `maxPauseMs` (30 s by default) clamps a long header.
+>
+> The retry loop knows about it in three places. The deadline check compares the longer of the
+> backoff and what is left of the pause, so a pause past `totalMs` fails at once with
+> `DeadlineExceededError`. `refusalAfter` fails a retry with `RateLimitedError` (its
+> `pausedUntil` is set) when the pause will still be running after the sleep and `maxWaitMs`
+> would refuse it. And the `retry` event's `delayMs`, and the ticket's `retrying` update, report
+> that longer wait. A first attempt gets the deadline check too, in `_fireFirstAttempt`, after
+> the breaker's `tryAcquire`.
 
 ## What the caller sees when retrying stops
 
@@ -335,6 +347,8 @@ never more.
 - A `validation` failure is never retried.
 - A server's `Retry-After` replaces backoff, without jitter, capped at `maxDelayMs` (or 30 s
   when backoff is a function).
+- A `Retry-After` pause only ever moves forward: a later, shorter header never ends it early.
+- The `retry` event's `delayMs` is the wait the retry really has, a pause included.
 - The "max retries" wrapper is used only when the final failure was itself transient; a
   definite final answer reaches the caller as it is.
 - A new kind of error may be added in a minor release; an existing kind never changes outside a

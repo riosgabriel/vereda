@@ -238,6 +238,10 @@ Each partition bulkhead has 5 slots and a line of 100 by default, configured per
 hold at least 1, while the global line may be 0. The two validators in `src/core/validate.ts`
 check them by different rules, and the code doesn't say why.
 
+A full partition line fails with `queue_full` and `scope: "partition"`. That is a retry, or a
+first attempt too when the partition sets `limitFirstAttempts` (#220 fixed the error's docs,
+which said only retries).
+
 ## The rate limiter
 
 > **See it run:** the [rate limiter simulator](https://vereda.dev/patterns/rate-limiter/) plays this with and without the pattern.
@@ -252,13 +256,8 @@ takes one token. Vereda's, in `src/queue/rate-limiter.ts`, uses a reservation mo
 
 `src/queue/rate-limiter.ts` — `TokenBucket` — `reserve`
 ```typescript
-reserve(now: number = Date.now()): number | null {
-	this.refill(now);
-	if (this.tokens >= 1) {
-		this.tokens -= 1;
-		return 0;
-	}
-	const waitMs = Math.ceil(((1 - this.tokens) / this.tokensPerSec) * 1000);
+reserve(now: number = Date.now(), at: number = now): number | null {
+	const waitMs = this.waitFrom(now, at);
 	if (this.maxWaitMs !== undefined && waitMs > this.maxWaitMs) return null;
 	this.tokens -= 1;
 	return waitMs;
@@ -269,7 +268,9 @@ The balance is allowed to go below zero. A caller who arrives at an empty bucket
 anyway and is told exactly how long until that token would have existed. The next caller sees an
 even lower balance and is told to wait longer. So callers are served in the order they arrived,
 at exactly the configured rate, without the bucket keeping a line of waiters. The class comment
-credits Go's `x/time/rate`, which works the same way.
+credits Go's `x/time/rate`, which works the same way. (`waitFrom` does the sum: the time until
+the bucket may refill, plus the time to earn back a deficit. The optional `at` argument lets a
+caller reserve as of a later moment; that is how a pause uses the bucket, below.)
 
 ### Our request, rate-limited
 
@@ -298,9 +299,52 @@ cancelled meanwhile, the token goes back in the bucket and the wait ends with a 
 throws `RateLimitedError` when the wait would be longer than `maxWaitMs`. That error is never
 retried: the limit is your own setting, and the next wait would only be longer.
 
+When `pauseOnRetryAfter` is configured, the same method also waits out a pause (next section),
+and the wait it checks against `maxWaitMs` includes it.
+
 `burst` is the bucket's size: how many tries may go back to back after a quiet spell. It
 defaults to one second's worth, but never less than 1, because a bucket that can't hold a whole
 token could never hand one out.
+
+### Pausing a host that said "later"
+
+A rate limit is your guess at the host's quota. A `Retry-After` is the host telling you. The
+opt-in `pauseOnRetryAfter: { statuses?, maxPauseMs? }` (client or partition level) turns the
+second into a rule for the whole partition: when an attempt fails with a 429 or 503 (the
+defaults) that carries a positive `Retry-After`, nothing else goes to that partition before the
+time it names. The header is clamped to `maxPauseMs`, 30 s by default, so a hostile or buggy
+value can't park a partition for hours. A status has to be in `retry.retryOnStatus` to be seen.
+
+The state is one small class, in `src/queue/pause.ts`:
+
+`src/queue/pause.ts` — `PartitionPause` — `extend`
+```typescript
+extend(ms: number, now: number = Date.now()): number {
+	this._until = Math.max(this._until, now + Math.min(ms, this.maxPauseMs));
+	return this._until;
+}
+```
+
+It takes the later of the old end and the new one, so a short `Retry-After` never ends a pause
+early. Each `Bulkhead` owns one `PartitionPause` (when configured), and three methods use it:
+
+- `notePushback` reads a failed attempt's error. If it is a listed status with a positive
+  `retryAfterMs`, it extends the pause and calls `freezeUntil` on the bucket, if there is one.
+  `freezeUntil` drains the bucket to zero tokens and holds the refill point at the pause's end,
+  so traffic resumes at `tokensPerSec` instead of in a burst.
+- `guard` wraps an attempt. It calls `notePushback` the moment the attempt settles, before the
+  slot is released and the next queued attempt starts. And if the attempt reaches the front of a
+  line during a pause, it sends nothing and resolves with a marker, `PAUSED`.
+- `takeToken` waits out the pause before every attempt, with the token reserved as of the
+  pause's end. A pause extended while it waits makes it wait again, keeping its token.
+
+An attempt that comes back `PAUSED` was never sent. The first attempt and the retry loop both
+loop on it, going back to `takeToken`, and the wait counts as queue time, not as an attempt.
+
+Pausing is a cost to the caller too, so two checks fail early. A first attempt (and a retry)
+whose pause outlasts `totalMs` fails at once with `DeadlineExceededError`. A retry that the pause
+would hold past `maxWaitMs` fails with `RateLimitedError`, whose `pausedUntil` says when the
+pause ends. `client.partitions()` shows the same time as `pausedUntil` while a pause is active.
 
 ### Turning the limit off for one host
 
@@ -349,7 +393,10 @@ get isIdle(): boolean {
 		this._waitQueue.length === 0 &&
 		// A drained bucket must outlive its tickets: a fresh one starts full
 		// and would let a burst through that the rate limit forbids.
-		(this.bucket === undefined || this.bucket.isFull())
+		(this.bucket === undefined || this.bucket.isFull()) &&
+		// A pause must outlive its tickets too: a fresh bulkhead would send
+		// straight into the host that just said to wait.
+		this.pauseRemainingMs === 0
 	);
 }
 ```
@@ -359,7 +406,8 @@ fetches, while it slept through its backoff, the partition showed nothing runnin
 queued. Yet our request was coming back. That's the first condition: chapter 5's "hold" on the
 partition objects, taken once per request and released by its cleanup. And a rate-limited
 bucket that's been drained must survive until it refills, or eviction would hand out a fresh,
-full one.
+full one. A paused partition's bulkhead survives until the pause ends, for the same reason: a
+fresh one would send straight into the host that said to wait.
 
 The circuit breaker and retry budget registries (chapter 9) follow the same pattern, with their
 own rules for when an entry may go.
@@ -371,8 +419,8 @@ own rules for when an entry may go.
 ## Watching it
 
 `client.partitions()` returns one snapshot per live partition: `partition` (its name),
-`running`, `queued`, `concurrency`, `maxQueueSize`, and `tokens` when the partition is
-rate-limited. The metrics sink also gets a queue-depth gauge per partition and one for the
+`running`, `queued`, `concurrency`, `maxQueueSize`, `tokens` when the partition is
+rate-limited, and `pausedUntil` (epoch ms) while a `Retry-After` pause is active. The metrics sink also gets a queue-depth gauge per partition and one for the
 global line. Chapter 10 covers when those are sampled.
 
 > **Aside: `name` vs `partition`.** Snapshots used to name the partition in a field called
@@ -402,7 +450,10 @@ send its fresh traffic through the bulkhead too, trading some latency for a firm
 - Every path that lowers the running count goes through `_releaseSlot`.
 - A bulkhead is never evicted while a request holds it, while anything runs or waits in it, or
   while its bucket is below full.
-- A partition's `rateLimit: false` drops the client's limit for that partition.
+- A partition's `rateLimit: false` drops the client's limit for that partition. The same goes for
+  `pauseOnRetryAfter: false` and `retryBudget: false`, through `mergeOptional`.
+- A pause only moves forward, and an attempt bounced by one is not counted as an attempt.
+- A paused bulkhead is not evicted until the pause ends.
 
 ## Try it
 
@@ -422,6 +473,11 @@ send its fresh traffic through the bulkhead too, trading some latency for a firm
    one host, and a `fetch` that records the time since the start. Roughly when does each try go
    out? (About 0, 0, 100 and 200 ms.) Then add `partitions: { "<that host>": { rateLimit: false } }`
    and run again. (All four at about 0 ms.)
+6. **Predict, then run.** `pauseOnRetryAfter: {}` and a server that answers the first request
+   with `503` and `Retry-After: 1`, then `200`. A second GET to the same host starts 100 ms
+   after the first. When does its first try reach the server? (About 1,000 ms after the first
+   one failed, not at 100 ms: the pause covers the whole partition. Check `client.partitions()`
+   for `pausedUntil` meanwhile.)
 5. **Read a test.** `test/queue/prune-held-reference.test.ts` checks that a request in retry
    backoff keeps its bulkhead past the 60-second idle limit. How does it get past 60 seconds
    without waiting 60 seconds? (It calls `vi.useFakeTimers()` and then
