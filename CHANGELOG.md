@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - A `Retry-After` of `"1.5"`, `"-5"` or similar is no longer read as a date. Only non-negative whole seconds or an HTTP-date (IMF-fixdate, e.g. `Sun, 06 Nov 1994 08:49:37 GMT`) are accepted; anything else is ignored, as before for garbage.
+- A client with more than 100 bulkhead, breaker or retry budget partitions no longer scans all of them on every request when none can be evicted (all still in use). After a sweep that frees nothing, the next size-triggered sweep waits until the map has doubled; once it is back at 100 entries or fewer, sweeps on every request resume. The sweep every 10th request is unchanged (#269).
 
 ## [1.1.1] - 2026-10-20
 
