@@ -69,9 +69,9 @@ flowchart TD
   J -->|bad JSON or parse threw| V[error: validation]
 ```
 
-*What to notice: the status is checked before the body is read, so a 503 never pays for reading
-a body. Try 1 leaves through "timeout", try 2 through "retryable status", and try 3 through
-"success with data".*
+_What to notice: the status is checked before the body is read, so a 503 never pays for reading a body._
+
+Try 1 leaves through "timeout", try 2 through "retryable status", and try 3 through "success with data".
 
 ## Before sending
 
@@ -105,8 +105,8 @@ const timeoutId = hasAttemptTimeout ? setTimeout(() => timeoutController.abort()
 timeoutId?.unref?.();
 ```
 
-The combined signal is what middleware and `fetch` see. For our request, the timer is set for
-200 ms.
+The combined signal is what middleware and `fetch` see. > **User 42:** The timer is set for
+> 200 ms.
 
 Remember the timer's controller. It's the try's *own* record of whether its timer fired, and
 every decision below asks it, never the error that came back. Note also the `unref`: the timer
@@ -284,9 +284,9 @@ with.
 
 ## Reading the body, inside the attempt
 
-Try 3 gets a 200. Our request passed a parse function, so the body is read now, while the try's
-timer is still running. That's the point: a slow body or a slow parse is part of the try, and
-counts against the same 200 ms.
+> **User 42:** Try 3 gets a 200. The request passed a parse function, so the body is read now, while the try's
+> timer is still running. That's the point: a slow body or a slow parse is part of the try, and
+> counts against the same 200 ms.
 
 The body isn't read with `response.json()`. The built-in readers lock the stream, so cancelling
 the body can't interrupt them, and with a transport that ignores its signal they could read

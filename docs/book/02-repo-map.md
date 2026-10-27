@@ -104,9 +104,11 @@ flowchart LR
   client --> leaf
 ```
 
-*What to notice: the client is the only file that knows about every mechanism. The mechanisms
-know about each other only where the retry loop needs them, and none of them imports the
-client.* (The OpenTelemetry file mentions the client's class, but only as a type.)
+_What to notice: the client is the only file that knows about every mechanism, and none of them
+imports the client._
+
+The mechanisms know about each other only where the retry loop needs them. The OpenTelemetry file
+mentions the client's class, but only as a type.
 
 The small files at the bottom of `src/core/` import only each other. That's what keeps the graph
 free of cycles, even though the client and the retry loop both use almost everything.

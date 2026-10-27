@@ -9,6 +9,7 @@ import type { Blockquote, Heading, PhrasingContent, Root, RootContent } from "md
  *   > **Crux:** …              → callout--crux (the question a book chapter answers)
  *   > **See it run:** …        → callout--demo (a link to a pattern simulator)
  *   > **Aside: title.** …      → callout--aside (a story beside the main text; also "Aside — title.")
+ *   > **User 42:** …           → callout--example (a passage following the book's running example)
  *
  * Any other blockquote stays a plain quote. The book's labels become a small heading above the
  * text (`.callout-label`), and an aside keeps its title in bold.
@@ -34,6 +35,7 @@ export const CALLOUTS = [
 	{ match: /^Crux:\s*/, kind: "crux", label: "Crux" },
 	{ match: /^See it run:\s*/, kind: "demo", label: "See it run" },
 	{ match: /^Aside(?::| —)\s*/, kind: "aside", label: "Aside" },
+	{ match: /^User 42:\s*/, kind: "example", label: "User 42" },
 ] as const;
 
 /** The book's recurring `##` sections: what the heading matches, its kind, and a label if any. */

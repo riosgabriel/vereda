@@ -24,13 +24,13 @@ example a little at a time to see the others.
 Here are the moments from chapter 5's timeline where a decision was made, with the question
 behind each one.
 
-```text
-  210  attempt 1 timed out          Retry a timeout on a GET?        yes
-  212  event retry 0, wait 4 ms     How long?                        random, 0–200 ms
-  217  fetch #2 → 503               Retry a 503 on a GET?            yes
-  224  event retry 1, wait 281 ms   How long?                        random, 0–400 ms
-  513  event success                What does the caller get?        the user
-```
+| ms | Event | Question | Answer |
+| --- | --- | --- | --- |
+| 210 | attempt 1 timed out | Retry a timeout on a GET? | yes |
+| 212 | `event retry 0`, wait 4 ms | How long? | random, 0–200 ms |
+| 217 | `fetch #2` → 503 | Retry a 503 on a GET? | yes |
+| 224 | `event retry 1`, wait 281 ms | How long? | random, 0–400 ms |
+| 513 | `event success` | What does the caller get? | the user |
 
 Both "yes" answers come from the same two rules, the two waits come from one formula, and the
 result is easy because the last try worked. The rest of the chapter takes each question in turn.
@@ -60,8 +60,8 @@ after it; a `timeout` is a `TimeoutError`, a `retryable_status` is a `RetryableS
 "Ends the ticket" means the error stops the request where it happens, without asking the
 retry policy. The other errors are put to the policy, and only the first three pass.
 
-Our request met two kinds: `timeout` on the first try and `retryable_status` on the second.
-Both are in the top three.
+> **User 42:** The request met two kinds: `timeout` on the first try and `retryable_status` on the second.
+> Both are in the top three.
 
 All twelve classes extend one base class, `RequestError`, which stores the kind and an optional
 `cause`. A helper, `isAppError`, checks whether a value is one of the twelve. Catch-all code
@@ -120,11 +120,11 @@ Change one thing in the running example: call `api.post` instead of `api.get`. T
 still hangs and times out at 200 ms. But this time the policy's second rule says no, so there
 is no retry at all:
 
-```text
-    1  event request
-   14  fetch #1              ...hangs
-  205  event failure         kind timeout, attempts 1
-```
+| ms | Event | Detail |
+| --- | --- | --- |
+| 1 | `event request` |  |
+| 14 | `fetch #1` | ...hangs |
+| 205 | `event failure` | kind `timeout`, attempts 1 |
 
 The caller gets the raw timeout error. Nothing was retried, so nothing was "exhausted"; the
 policy simply refused. Add an `Idempotency-Key` header, or set `retry.idempotencyKey: true` so
@@ -190,8 +190,8 @@ return (attempt: number): number => {
 The defaults are a base of 200 ms, a ceiling of 30 seconds and jitter on. So the ceiling doubles
 each round, 200, 400, 800 ms and so on, and the actual wait is a random number below it.
 
-That's our request's two waits: round 0 drew 4 ms out of 0–200, and round 1 drew 281 ms out of
-0–400. Run the example again and you'll get different numbers in the same ranges.
+> **User 42:** Those are the request's two waits: round 0 drew 4 ms out of 0–200, and round 1 drew 281 ms out of
+> 0–400. Run the example again and you'll get different numbers in the same ranges.
 
 This is called **full jitter**: the whole wait is random, not "the exponential value plus a bit
 of noise".
@@ -276,13 +276,13 @@ Retrying can stop in four ways, and they don't all hand the caller the same erro
 Our request ended in the first row. To see the last row, make the fake server answer 503 every
 time:
 
-```text
-   13  fetch #1  → 503       retry 0, wait 18 ms
-   33  fetch #2  → 503       retry 1, wait 394 ms
-  429  fetch #3  → 503       retry 2, wait 645 ms
- 1077  fetch #4  → 503
- 1079  event failure         kind max_retries, attempts 4
-```
+| ms | Event | Detail |
+| --- | --- | --- |
+| 13 | `fetch #1` → 503 | retry 0, wait 18 ms |
+| 33 | `fetch #2` → 503 | retry 1, wait 394 ms |
+| 429 | `fetch #3` → 503 | retry 2, wait 645 ms |
+| 1077 | `fetch #4` → 503 |  |
+| 1079 | `event failure` | kind `max_retries`, attempts 4 |
 
 Three retries are the default, so the client makes four tries in all, then gives up. The caller
 gets a `MaxRetriesExceededError`, which carries the attempt count and keeps the last 503 inside

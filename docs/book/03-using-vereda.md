@@ -198,7 +198,7 @@ flowchart LR
   req --> merged["merged config<br/>for this ticket"]
 ```
 
-*What to notice: a listed partition replaces `defaultPartition`; it doesn't inherit from it.*
+_What to notice: a listed partition replaces `defaultPartition`; it doesn't inherit from it._
 
 For our request, the client sets the timeout and the backoff, no partition is configured, and
 the request sets only `parse`. The merge itself is plain object spread, one level deep:

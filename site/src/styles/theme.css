@@ -154,6 +154,11 @@ h2 {
 .sl-markdown-content blockquote.callout--aside {
 	font-size: var(--sl-text-sm);
 }
+/* The running example, in the charts' color for a request. */
+.sl-markdown-content blockquote.callout--example {
+	border-color: var(--v-first);
+	background: color-mix(in srgb, var(--v-first) 9%, transparent);
+}
 .sl-markdown-content blockquote.callout--warning {
 	border-color: var(--sl-color-red);
 	background: color-mix(in srgb, var(--sl-color-red-low) 55%, transparent);
@@ -176,6 +181,9 @@ h2 {
 }
 .sl-markdown-content blockquote.callout--aside .callout-label {
 	color: var(--sl-color-gray-3);
+}
+.sl-markdown-content blockquote.callout--example .callout-label {
+	color: var(--v-first);
 }
 .sl-markdown-content .callout-sep {
 	position: absolute;
@@ -238,4 +246,17 @@ h2 {
 /* Code blocks share the cards' radius. */
 .expressive-code {
 	--ec-brdRad: var(--v-radius);
+}
+
+/* The glossary's definition lists: the term on its own line, the definition under it. */
+.sl-markdown-content dl dt {
+	margin-top: 1.25rem;
+	font-weight: 600;
+	color: var(--sl-color-white);
+}
+.sl-markdown-content dl dd {
+	margin-top: 0.25rem;
+	margin-inline-start: 0;
+	padding-inline-start: 1rem;
+	border-inline-start: 2px solid var(--sl-color-gray-5);
 }

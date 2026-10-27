@@ -30,16 +30,16 @@ The client has a public way to look inside the compartments: `client.partitions(
 snapshot of each partition's bulkhead. If the fake server in the running example prints that
 snapshot each time it's called, and a timer prints it every 100 ms in between, you get this:
 
-```text
-   27  fetch #1   api.example.com  running 0, queued 0
-  105  (waiting)  api.example.com  running 0, queued 0
-  208  (waiting)  api.example.com  running 0, queued 0
-  210  event retry 0
-  262  fetch #2   api.example.com  running 1, queued 0
-  264  event retry 1
-  281  fetch #3   api.example.com  running 1, queued 0
-  283  event success
-```
+| ms | Event | Partition | Bulkhead |
+| --- | --- | --- | --- |
+| 27 | `fetch #1` | `api.example.com` | running 0, queued 0 |
+| 105 | (waiting) | `api.example.com` | running 0, queued 0 |
+| 208 | (waiting) | `api.example.com` | running 0, queued 0 |
+| 210 | `event retry 0` |  |  |
+| 262 | `fetch #2` | `api.example.com` | running 1, queued 0 |
+| 264 | `event retry 1` |  |  |
+| 281 | `fetch #3` | `api.example.com` | running 1, queued 0 |
+| 283 | `event success` |  |  |
 
 Two things stand out.
 
@@ -72,8 +72,7 @@ flowchart LR
   G -->|line full| QF2[QueueFullError, global]
 ```
 
-*What to notice: each thing is taken only after the one before it is secured, and the token
-comes first. A try that is waiting for its turn never holds something another try could use.*
+_What to notice: each thing is taken only after the one before it is secured, so a try that is waiting holds nothing another try could use._
 
 A first try skips the middle step, unless its partition sets `limitFirstAttempts`. When the try
 ends, it gives things back in reverse: the global permit first, then the partition slot.
@@ -210,9 +209,9 @@ Start at the bottom, where the same three outcomes appear: run now, wait in line
 read `execute`, which is what runs when the slot is granted. It counts the slot, gets the global
 permit *while holding the slot*, runs the try, and gives both back.
 
-Fetch #2 of our request went through exactly this path. The partition had five free slots, so
-`execute` ran at once; the global cap had a free permit; the try ran; and when the 503 came back
-both were returned, which is why the next snapshot showed zero running.
+> **User 42:** Fetch #2 went through exactly this path. The partition had five free slots, so
+> `execute` ran at once; the global cap had a free permit; the try ran; and when the 503 came back
+> both were returned, which is why the next snapshot showed zero running.
 
 Two orderings in this function were bugs once.
 
@@ -286,14 +285,14 @@ uses the bucket, below.)
 Give the running example `rateLimit: { tokensPerSec: 2, burst: 1 }`, and make backoff
 predictable with `{ baseDelayMs: 1, jitter: false }`. Two tokens a second means one every 500 ms.
 
-```text
-   16  fetch #1              took the only token; hangs
-  204  event retry 0         wait 1 ms
-  503  fetch #2  → 503       waited ~300 ms for a token
-  505  event retry 1         wait 2 ms
- 1003  fetch #3  → 200       waited ~500 ms for a token
- 1005  event success         attempts 3, queuedMs 794
-```
+| ms | Event | Detail |
+| --- | --- | --- |
+| 16 | `fetch #1` | took the only token; hangs |
+| 204 | `event retry 0` | wait 1 ms |
+| 503 | `fetch #2` → 503 | waited ~300 ms for a token |
+| 505 | `event retry 1` | wait 2 ms |
+| 1003 | `fetch #3` → 200 | waited ~500 ms for a token |
+| 1005 | `event success` | attempts 3, `queuedMs` 794 |
 
 Follow the bucket. Fetch #1 took the one token at the start. When the retry's 1 ms backoff
 ended, about 200 ms had passed, so the bucket had refilled 0.4 of a token; a whole one was due

@@ -48,6 +48,15 @@
 	color: #7a6a58;
 }
 
+/* The running example, in the site's color for a request. */
+.callout--example > blockquote {
+	border-left: 3px solid #2f6fdb;
+	background: #eef3fc;
+}
+.callout--example .callout-label {
+	color: #2559b3;
+}
+
 section.book-section--design-note {
 	margin-top: 2em;
 	padding-top: 0.4em;
@@ -90,4 +99,17 @@ section.book-section--try-it {
 section.book-section--try-it > ol > li::marker {
 	font-weight: 700;
 	color: #b4501e;
+}
+
+/* The glossary: the term on its own line, the definition under it. */
+dl dt {
+	margin-top: 1em;
+	font-weight: 700;
+	page-break-after: avoid;
+	break-after: avoid;
+}
+dl dd {
+	margin: 0.2em 0 0;
+	padding-left: 0.9em;
+	border-left: 2px solid #e3d4bf;
 }
