@@ -310,7 +310,8 @@ rejects it, as `close()` does. A retry's backoff, a capped `Retry-After` and a r
 wait are computed, so nobody can be told to fix them. They go through `setLongTimeout` in
 `src/core/timer.ts`, which chains timers of at most `MAX_TIMER_MS` until the whole delay has
 passed. Shortening them to the limit instead would have been wrong for the token wait: the
-attempt would go out before its token was due.
+attempt would go out before its token was due. The same file's `sleep` wraps it in a promise that
+an `AbortSignal` can end, for the latency faults of `faultyFetch` (chapter 12).
 
 ### What the three have in common
 
