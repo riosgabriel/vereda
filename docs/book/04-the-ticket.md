@@ -2,10 +2,12 @@
 
 > **Crux:** Why does a request return a `Ticket` instead of a promise, and what states can it be in?
 
-When you call `api.get("/users/42")` in the running example, you don't get a promise back. You
-get a **ticket**: an object you can await, watch and cancel. The library keeps a second handle to
-the same object, which it uses to move the ticket from state to state and finally to settle it
-with a result. Chapter 5 is written in terms of these two handles, so this chapter comes first.
+When you call `api.get("/users/42")` in the running example, you don't get a promise back. You get a
+**ticket**: an object you can await, watch and cancel.
+
+The library keeps a second handle to the same object, which it uses to move the ticket from state to
+state and finally to settle it with a result. Chapter 5 is written in terms of these two handles, so
+this chapter comes first.
 
 Without a ticket, Vereda would need a separate mechanism for each of four jobs: waiting for the
 result, cancelling, watching progress, and stopping network work that's already running. The
@@ -171,16 +173,18 @@ Read it in order:
 
 Point 3 has a cost inside the library. When the interrupted work finally returns, the code that
 handles it will try to settle the ticket and announce how it ended. Settling is safe, because the
-transition check ignores it. But the client's own `cancelled` event must still fire exactly once,
-so that code has to ask the ticket first whether it's already over. The next two sections are
-about how it asks.
+transition check ignores it.
+
+But the client's own `cancelled` event must still fire exactly once, so that code has to ask the
+ticket first whether it's already over. The next two sections are about how it asks.
 
 ### Cancelled before it started
 
-You can also cancel before the request exists: pass an `AbortSignal` that has already fired.
-The client then cancels the ticket inside `get()`, before handing it to you. When the first
-attempt starts a moment later, the first thing it does is ask whether the ticket is already
-settled. If so, it announces one `cancelled` event and stops. No `request` event fires and
+You can also cancel before the request exists: pass an `AbortSignal` that has already fired. The
+client then cancels the ticket inside `get()`, before handing it to you.
+
+When the first attempt starts a moment later, the first thing it does is ask whether the ticket is
+already settled. If so, it announces one `cancelled` event and stops. No `request` event fires and
 nothing is fetched; `get()` returns a ticket that is already `cancelled`.
 
 `src/core/client.ts` — `_fireFirstAttempt`
@@ -326,18 +330,20 @@ succeeded" can't turn our successful request into a failure.
 
 ## Design note: why `cancel()` settles the ticket itself
 
-The alternative is for `cancel()` only to fire the signal, and to let the running attempt notice
-and settle the ticket through the normal path. That gives one code path for every ending. Vereda
-settles inside `cancel()` instead, so your promise settles at once even when the transport is
-slow to give up. The cost is everything in the "Cancelling" section: every other ending has to
-check whether `cancel()` got there first.
+The alternative is for `cancel()` only to fire the signal, and to let the running attempt notice and
+settle the ticket through the normal path. That gives one code path for every ending.
+
+Vereda settles inside `cancel()` instead, so your promise settles at once even when the transport is
+slow to give up. The cost is everything in the "Cancelling" section: every other ending has to check
+whether `cancel()` got there first.
 
 How much that cost matters showed up when a custom `fetch` ignored the abort signal. `cancel()`
-resolved the ticket, but the attempt never returned, so the client's `cancelled` event never
-fired. The fix left `cancel()` alone and made attempts end on abort whatever the transport does
-(chapter 6). The pull request notes that making `cancel()` emit the event itself was considered
-and rejected, because "that fixes only the event, while the same root cause also broke
-`attemptMs`/`totalMs`" (#181).
+resolved the ticket, but the attempt never returned, so the client's `cancelled` event never fired.
+
+The fix left `cancel()` alone and made attempts end on abort whatever the transport does (chapter
+6). The pull request notes that making `cancel()` emit the event itself was considered and rejected,
+because "that fixes only the event, while the same root cause also broke `attemptMs`/`totalMs`"
+(#181).
 
 ## What must stay true
 

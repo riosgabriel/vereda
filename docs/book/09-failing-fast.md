@@ -3,9 +3,11 @@
 > **Crux:** How does Vereda decide to stop calling a host, or stop retrying it?
 
 Chapter 8's mechanisms make requests *wait*. This chapter's two mechanisms make them *fail*, on
-purpose, without sending anything. That sounds backwards, but it's the right call when a host is
-in trouble. Every request sent to a host that's down costs the caller a timeout and costs the
-host load it can't handle. Failing fast gives both of them a break.
+purpose, without sending anything.
+
+That sounds backwards, but it's the right call when a host is in trouble. Every request sent to a
+host that's down costs the caller a timeout and costs the host load it can't handle. Failing fast
+gives both of them a break.
 
 - The **circuit breaker** watches each partition's results. After enough failures it *opens* and
   refuses every try, then lets one trial through after a pause.
@@ -20,8 +22,8 @@ on and replays `GET /users/42` against them.
 ## Our request meets a breaker
 
 Give the running example a breaker that trips after two failures:
-`circuitBreaker: { enabled: true, failureThreshold: 2 }`. The server misbehaves exactly as
-before: a hang, then a 503, then it would answer 200.
+`circuitBreaker: { enabled: true, failureThreshold: 2 }`. The server misbehaves exactly as before: a hang, then a 503, then it would
+answer 200.
 
 ```text
     1  event request
@@ -106,9 +108,11 @@ canRequest(): boolean {
 ```
 
 Notice that asking the question *changes the answer*: a call can move the breaker from open to
-half-open, and it reserves a trial slot. That's why the snapshot behind `client.circuits()` never
-calls it. Reading a breaker must not change it. So a snapshot of an open breaker past its pause
-still says `open`, until a request arrives and becomes the trial.
+half-open, and it reserves a trial slot.
+
+For that reason the snapshot behind `client.circuits()` never calls it. Reading a breaker must not
+change it. So a snapshot of an open breaker past its pause still says `open`, until a request
+arrives and becomes the trial.
 
 The defaults: trip after 5 failures in a row, stay open 30 seconds, allow 1 trial at a time.
 
@@ -139,15 +143,18 @@ That's what tripped on our request: timeout, then 503, two in a row.
 
 With a `window` setting it uses a **rolling window** instead: trip when, over the last
 `sizeMs`, at least `minimumRequests` results were recorded and the failure percentage is strictly
-above the threshold. The window is ten time buckets, and buckets that have aged out are dropped
-on each read. Counting in a row is simple and reacts fast. The window tolerates scattered
-failures on a busy host, where one success between failures shouldn't wipe the slate clean.
+above the threshold.
 
-When the breaker closes again, after a successful trial, the window is emptied too (#219).
-Before that, `resetCounters` cleared only the failures-in-a-row count. The old failures stayed in
-the window until they aged out, so with `minimumRequests: 4` a breaker that had just closed
-could open again on one new failure, because four old ones were still counted. A closed breaker
-now judges the host on what happens from then on.
+The window is ten time buckets, and buckets that have aged out are dropped on each read. Counting in
+a row is simple and reacts fast. The window tolerates scattered failures on a busy host, where one
+success between failures shouldn't wipe the slate clean.
+
+When the breaker closes again, after a successful trial, the window is emptied too (#219). Before
+that, `resetCounters` cleared only the failures-in-a-row count.
+
+The old failures stayed in the window until they aged out, so with `minimumRequests: 4` a breaker
+that had just closed could open again on one new failure, because four old ones were still counted.
+A closed breaker now judges the host on what happens from then on.
 
 ### What counts as a failure
 
@@ -217,16 +224,18 @@ tryAcquire(): CircuitPermit | null {
 The caller reports a result with `success()` or `failure(err)`, and *always* calls `release()`
 in a `finally`. The permit accepts only its first answer, so `release()` after a result does
 nothing, and `release()` alone (for a try that was cancelled, vetoed or refused by a full line)
-frees the trial slot without recording anything. You saw this pattern in chapter 5: a `try`
-around each round, and `permit.release()` in its `finally`. In our breaker run, fetch #2's
-permit got `failure(503)`, which tripped the breaker; the next round's `tryAcquire` returned
-`null`.
+frees the trial slot without recording anything.
+
+You saw this pattern in chapter 5: a `try` around each round, and `permit.release()` in its
+`finally`. In our breaker run, fetch #2's permit got `failure(503)`, which tripped the breaker; the
+next round's `tryAcquire` returned `null`.
 
 The **generation** number handles a slower race. A request admitted while the circuit was closed
 may still be running when the circuit opens and later goes half-open. Its result is from before
-the outage, and it mustn't close the circuit in place of the real trial. Each half-open episode
-gets a new generation number, and a permit is allowed to decide an episode only if it was
-admitted as one of that episode's trials.
+the outage, and it mustn't close the circuit in place of the real trial.
+
+Each half-open episode gets a new generation number, and a permit is allowed to decide an episode
+only if it was admitted as one of that episode's trials.
 
 > **Aside: bug B1.** The first version had a pair of calls instead: ask to get in, then record a
 > success or a failure. Only the record calls gave a trial slot back, and only for results they
@@ -241,9 +250,11 @@ events belong to the partition, not to any one request. `client.circuits()` list
 that are turned on, and spells the middle state `"half_open"`.
 
 Breakers live in a `PartitionRegistry`, the same class that holds chapter 8's bulkheads: created
-on first use, pruned after 60 seconds unused. Evicting an *open* breaker would replace it with a fresh,
-closed one and cut its pause short. So a breaker can't be evicted while a request holds it, and
-an open or half-open one can't be evicted until its pause has passed.
+on first use, pruned after 60 seconds unused.
+
+Evicting an *open* breaker would replace it with a fresh, closed one and cut its pause short. So a
+breaker can't be evicted while a request holds it, and an open or half-open one can't be evicted
+until its pause has passed.
 
 > **Aside: the eviction trade-off.** That rule is B12's fix for breakers (#121). The PR records
 > the trade-off: an expired breaker that's evicted skips its half-open trial, which is a bounded
@@ -295,9 +306,10 @@ tryWithdraw(now: number = Date.now()): boolean {
 ```
 
 Work it through for our request. The window holds one first try, so the allowance is the larger
-of `0 × 1` (the floor) and `0.1 × 1`: one tenth of a retry. Before the first retry, zero retries
-have been made, and 0 is below 0.1, so it's allowed and counted. Before the second, one retry
-has been made, and 1 is not below 0.1, so it's refused.
+of `0 × 1` (the floor) and `0.1 × 1`: one tenth of a retry.
+
+Before the first retry, zero retries have been made, and 0 is below 0.1, so it's allowed and
+counted. Before the second, one retry has been made, and 1 is not below 0.1, so it's refused.
 
 A refusal fails the ticket at once, without the backoff sleep, after a `retryBudgetExhausted`
 event. The caller gets the last try's error as it was, here the 503, just as when your
@@ -311,6 +323,7 @@ thousand first tries a second, a hundred retries a second are allowed. A failing
 
 The `minRetriesPerSec` floor exists for quiet partitions. Without it, a host that gets one
 request a minute could almost never retry, since a tenth of one request is less than one retry.
+
 The default floor is 10 retries a second. With it, our request's budget would have been
 `max(10 × 1, 0.1 × 1) = 10` retries in the window, and both retries would have gone through.
 
@@ -360,10 +373,11 @@ returns nothing for `false` on either side, which is why the budget is built wit
 it spreads the two objects otherwise. Spreading `false` would keep the client's budget.
 
 Put `partitions: { "api.example.com": { retryBudget: false } }` next to the client budget above,
-and our request is back to three fetches and a success. Set `retryBudget: false` on
-`defaultPartition` instead, and every host *not* listed under `partitions` opts out. The rate
-limit from chapter 8 has the same switch. Any other value that isn't an object is rejected when
-the client is created.
+and our request is back to three fetches and a success.
+
+Set `retryBudget: false` on `defaultPartition` instead, and every host *not* listed under
+`partitions` opts out. The rate limit from chapter 8 has the same switch. Any other value that isn't
+an object is rejected when the client is created.
 
 > **Aside: history.** The off switch is #190, and it shipped together with the rate limit's.
 

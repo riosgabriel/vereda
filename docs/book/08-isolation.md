@@ -3,9 +3,11 @@
 > **Crux:** How does Vereda keep one bad host from eating everyone else's capacity?
 
 A service talks to many hosts. When one of them gets slow or starts failing, two things go
-wrong unless something stops them. Retries to the bad host pile up and take every connection
-the process has, so requests to healthy hosts wait behind them. And the bad host, already
-struggling, gets more traffic than ever, right when it can least handle it.
+wrong unless something stops them.
+
+Retries to the bad host pile up and take every connection the process has, so requests to healthy
+hosts wait behind them. And the bad host, already struggling, gets more traffic than ever, right
+when it can least handle it.
 
 Vereda has three mechanisms against this, all in `src/queue/`:
 
@@ -138,10 +140,11 @@ turned away from a line that was only full of ghosts.
 `releaseOnce`), so code that releases on two paths can't create a permit out of nothing.
 
 The defaults are 50 permits and a line of 100. Every try takes a permit, first tries included.
-This is the one place where one host's trouble can still reach another: a host that hangs holds
-its permits for up to `attemptMs` each. Our running example held one for 200 ms while fetch #1
-hung. The README's "one failing dependency" section and the
-[operations guide](../operations.md) ("Sizing concurrency and queues") cover how to size it.
+
+The global cap is the one place where one host's trouble can still reach another: a host that hangs
+holds its permits for up to `attemptMs` each. Our running example held one for 200 ms while fetch #1
+hung. The README's "one failing dependency" section and the [operations guide](../operations.md)
+("Sizing concurrency and queues") cover how to size it.
 
 > **Aside: two fixes here.** Leaving the line on cancel is bug B9, fixed in #88. The `scope`
 > field is newer: before it, a full global line was reported as "partition `global`", which a
@@ -214,15 +217,18 @@ both were returned, which is why the next snapshot showed zero running.
 Two orderings in this function were bugs once.
 
 **The permit is given back before the slot.** Giving back the slot immediately starts the next
-waiter in line, and that waiter's first move is to ask the global cap for a permit. If this try
-still held its permit at that moment, the waiter could find none free and be refused, even though
-one was about to come back. The comment inside `execute` explains this.
+waiter in line, and that waiter's first move is to ask the global cap for a permit.
+
+If this try still held its permit at that moment, the waiter could find none free and be refused,
+even though one was about to come back. The comment inside `execute` explains this.
 
 **A refused permit gives back the slot.** If the slot was granted but the global cap then says no
 (its line is full, or the request was cancelled while waiting), the slot must be returned.
 Otherwise it stays counted as running forever, a "phantom" slot that shrinks the partition's
-capacity by one for good. Every path that lowers the running count goes through one helper,
-`_releaseSlot`, which also starts the next waiter.
+capacity by one for good.
+
+Every path that lowers the running count goes through one helper, `_releaseSlot`, which also
+starts the next waiter.
 
 The `onDequeue` callback reports how long the try waited for its slot and permit together. The
 retry loop adds that to the ticket's `queuedMs`.
@@ -265,12 +271,15 @@ reserve(now: number = Date.now(), at: number = now): number | null {
 ```
 
 The balance is allowed to go below zero. A caller who arrives at an empty bucket takes a token
-anyway and is told exactly how long until that token would have existed. The next caller sees an
-even lower balance and is told to wait longer. So callers are served in the order they arrived,
-at exactly the configured rate, without the bucket keeping a line of waiters. The class comment
-credits Go's `x/time/rate`, which works the same way. (`waitFrom` does the sum: the time until
-the bucket may refill, plus the time to earn back a deficit. The optional `at` argument lets a
-caller reserve as of a later moment; that is how a pause uses the bucket, below.)
+anyway and is told exactly how long until that token would have existed.
+
+The next caller sees an even lower balance and is told to wait longer. So callers are served in the
+order they arrived, at exactly the configured rate, without the bucket keeping a line of waiters.
+The class comment credits Go's `x/time/rate`, which works the same way.
+
+(`waitFrom` does the sum: the time until the bucket may refill, plus the time to earn back a
+deficit. The optional `at` argument lets a caller reserve as of a later moment; that is how a pause
+uses the bucket, below.)
 
 ### Our request, rate-limited
 
@@ -288,16 +297,18 @@ predictable with `{ baseDelayMs: 1, jitter: false }`. Two tokens a second means 
 
 Follow the bucket. Fetch #1 took the one token at the start. When the retry's 1 ms backoff
 ended, about 200 ms had passed, so the bucket had refilled 0.4 of a token; a whole one was due
-300 ms later, and fetch #2 went out at about 500 ms. The second retry found the bucket empty
-again and waited about 500 ms more. Notice that the `retry` events still report the backoff
-(1 ms, 2 ms). The token waits are counted separately, in the success event's `queuedMs`: about
-300 + 500 ms.
+300 ms later, and fetch #2 went out at about 500 ms.
+
+The second retry found the bucket empty again and waited about 500 ms more. Notice that the `retry`
+events still report the backoff (1 ms, 2 ms). The token waits are counted separately, in the success
+event's `queuedMs`: about 300 + 500 ms.
 
 On the request path, the bulkhead's `takeToken` wraps the bucket. It has three answers. "Go
 now" when a token was free. A promise to wait on when the token is due later; if the request is
-cancelled meanwhile, the token goes back in the bucket and the wait ends with a cancel. Or it
-throws `RateLimitedError` when the wait would be longer than `maxWaitMs`. That error is never
-retried: the limit is your own setting, and the next wait would only be longer.
+cancelled meanwhile, the token goes back in the bucket and the wait ends with a cancel.
+
+The third answer is a `RateLimitedError`, thrown when the wait would be longer than `maxWaitMs`.
+That error is never retried: the limit is your own setting, and the next wait would only be longer.
 
 When `pauseOnRetryAfter` is configured, the same method also waits out a pause (next section),
 and the wait it checks against `maxWaitMs` includes it.
@@ -308,11 +319,14 @@ token could never hand one out.
 
 ### Pausing a host that said "later"
 
-A rate limit is your guess at the host's quota. A `Retry-After` is the host telling you. The
-opt-in `pauseOnRetryAfter: { statuses?, maxPauseMs? }` (client or partition level) turns the
+A rate limit is your guess at the host's quota. A `Retry-After` is the host telling you.
+
+The opt-in `pauseOnRetryAfter: { statuses?, maxPauseMs? }` (client or partition level) turns the
 second into a rule for the whole partition: when an attempt fails with a 429 or 503 (the
 defaults) that carries a positive `Retry-After`, nothing else goes to that partition before the
-time it names. The header is clamped to `maxPauseMs`, 30 s by default, so a hostile or buggy
+time it names.
+
+The header is clamped to `maxPauseMs`, 30 s by default, so a hostile or buggy
 value can't park a partition for hours. A status has to be in `retry.retryOnStatus` to be seen.
 
 The state is one small class, in `src/queue/pause.ts`:
@@ -365,10 +379,9 @@ export function mergeOptional<T extends object>(
 ```
 
 The `false` checks are the trap: copying the fields of `false` into an object adds nothing, so a
-naive merge would quietly keep the client's limit. The same function merges `pauseOnRetryAfter`
-and `retryBudget`. Any value other than an object or `false`
-is rejected when the client is created. The retry budget, in the next chapter, has the same
-switch.
+naive merge would quietly keep the client's limit. The same function merges `pauseOnRetryAfter` and
+`retryBudget`. Any value other than an object or `false` is rejected when the client is created. The
+retry budget, in the next chapter, has the same switch.
 
 > **Aside: history.** The rate limiter arrived in #145. The per-partition off switch is #190.
 
@@ -376,10 +389,11 @@ switch.
 
 Partitions are created on demand. The first request to `api.example.com` creates its bulkhead,
 in the bulkhead registry's `get`. That registry extends `PartitionRegistry`
-(`src/queue/partition-registry.ts`), which the breaker and retry budget registries extend too. It
-remembers when each entry was last used, and every tenth `get()` (or whenever it holds more than
-100 entries) it **prunes**: it deletes entries that are idle and unused for 60 seconds. Without this, a client that calls many
-different hosts would grow its map forever.
+(`src/queue/partition-registry.ts`), which the breaker and retry budget registries extend too.
+
+`PartitionRegistry` remembers when each entry was last used. Every tenth `get()` (or whenever it
+holds more than 100 entries) it **prunes**: it deletes entries that are idle and unused for 60
+seconds. Without this, a client that calls many different hosts would grow its map forever.
 
 The danger is evicting a bulkhead that's still in use. The next `get()` would build a fresh one,
 and for a while two bulkheads would exist for the same host, doubling its limit. So "idle" has
@@ -404,11 +418,14 @@ isEvictable(now: number): boolean {
 
 Nothing running and nothing waiting isn't enough. Look back at our request's snapshots: between
 fetches, while it slept through its backoff, the partition showed nothing running and nothing
-queued. Yet our request was coming back. That's the first condition: chapter 5's "hold" on the
-partition objects, taken once per request and released by its cleanup. And a rate-limited
-bucket that's been drained must survive until it refills, or eviction would hand out a fresh,
-full one. A paused partition's bulkhead survives until the pause ends, for the same reason: a
-fresh one would send straight into the host that said to wait.
+queued. Yet our request was coming back.
+
+The first condition covers this: chapter 5's "hold" on the partition objects, taken once per
+request and released by its cleanup.
+
+A rate-limited bucket that's been drained must survive until it refills, or eviction would hand out
+a fresh, full one. A paused partition's bulkhead survives until the pause ends, for the same reason:
+a fresh one would send straight into the host that said to wait.
 
 The circuit breaker and retry budget (chapter 9) answer the same `isEvictable(now)` question,
 each with its own rule for when an entry may go.
@@ -421,8 +438,10 @@ each with its own rule for when an entry may go.
 
 `client.partitions()` returns one snapshot per live partition: `partition` (its name),
 `running`, `queued`, `concurrency`, `maxQueueSize`, `tokens` when the partition is
-rate-limited, and `pausedUntil` (epoch ms) while a `Retry-After` pause is active. The metrics sink also gets a queue-depth gauge per partition and one for the
-global line. Chapter 10 covers when those are sampled.
+rate-limited, and `pausedUntil` (epoch ms) while a `Retry-After` pause is active.
+
+The metrics sink also gets a queue-depth gauge per partition and one for the global line. Chapter 10
+covers when those are sampled.
 
 > **Aside: `name` vs `partition`.** Snapshots used to name the partition in a field called
 > `name`, while circuit snapshots called it `partition`. Both fields exist in 1.x, with the same
@@ -432,9 +451,11 @@ global line. Chapter 10 covers when those are sampled.
 
 You met this choice in chapter 5. Here is what it means for this chapter's machinery. The
 partition bulkhead has a narrow job: to limit the *retry pressure* any one host can create.
-That's why fetch #1 showed zero running. Fresh requests go straight to the global cap, so a
-healthy host's new traffic never waits behind a sick host's retries, and a sick host's first
-tries still go out, which is how you find out it has recovered.
+That's why fetch #1 showed zero running.
+
+Fresh requests go straight to the global cap, so a healthy host's new traffic never waits behind a
+sick host's retries, and a sick host's first tries still go out, which is how you find out it has
+recovered.
 
 The cost is that a host which fails *slowly* can tie up global permits with first tries, as
 fetch #1 did for 200 ms. The README documents this, and `limitFirstAttempts` lets a partition

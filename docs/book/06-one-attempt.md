@@ -9,6 +9,7 @@ and every retry use the same box, a function called `executeRequest` in
 
 The function has two jobs. The first is to **classify**: a 503 is worth another try, a 404 is
 not, a body that isn't JSON is the server's mistake, and a dropped connection is the network's.
+
 The second job is harder than it looks: to **end**. Whatever the transport, your middleware or
 your parse function does, the attempt must return when its timer fires or its ticket is
 cancelled. If it doesn't, the ticket never settles, the slot it holds is never freed, and the
@@ -75,10 +76,12 @@ a body. Try 1 leaves through "timeout", try 2 through "retryable status", and tr
 ## Before sending
 
 Two quick things happen first. If the ticket or your own signal has already fired, the try
-returns "cancelled" without doing anything. Then, if the request's body is a function rather
-than a value, it's called now, once per try, so every retry sends a fresh body. If that function
-throws, the try ends as an error with a `ConfigurationError`. Chapter 9 explains why the circuit
-breaker ignores that error: the request never left the process.
+returns "cancelled" without doing anything.
+
+Then, if the request's body is a function rather than a value, it's called now, once per try, so
+every retry sends a fresh body. If that function throws, the try ends as an error with a
+`ConfigurationError`. Chapter 9 explains why the circuit breaker ignores that error: the request
+never left the process.
 
 Our request is a GET with no body, so neither applies.
 
@@ -128,9 +131,10 @@ export function composeMiddleware(middlewares: MiddlewareFn[], core: NextFn): Ne
 ```
 
 This builds an onion. Starting from the innermost layer, the `fetch` call, it wraps each
-middleware around the last, from the last one registered to the first. So the **first**
-middleware you register is the **outermost**: it runs first on the way in and last on the way
-out. The last one registered runs closest to `fetch`. That's why the tracing middleware in
+middleware around the last, from the last one registered to the first.
+
+So the **first** middleware you register is the **outermost**: it runs first on the way in and
+last on the way out. The last one registered runs closest to `fetch`. That's why the tracing middleware in
 `src/otel/index.ts` asks to be registered last: it wants to time the request itself.
 
 The running example registers no middleware, so the onion is just `fetch`.
@@ -151,9 +155,10 @@ response = await settleOnAbort(pending, attemptSignal, () => {
 ```
 
 You might expect a plain `await composed(ctx)`. That works only if the transport stops when its
-signal fires. The real `fetch` does, and so does our fake server. But a custom `fetch` that
-ignores its signal, or a middleware that swaps the signal out, doesn't, and a plain `await`
-would then wait as long as the transport does: past the per-attempt timeout, past the overall
+signal fires. The real `fetch` does, and so does our fake server.
+
+A custom `fetch` that ignores its signal, or a middleware that swaps the signal out, doesn't.
+A plain `await` would then wait as long as the transport does: past the per-attempt timeout, past the overall
 deadline, past `cancel()`.
 
 So the wait is a race between the response and the signal:
@@ -192,9 +197,10 @@ function settleOnAbort<T>(
 ```
 
 Whichever comes first wins. If the signal fires first, the try moves on, and the `release`
-callback deals with the abandoned promise: it waits for a late response and cancels its body, so
-the connection is freed, and it swallows a late rejection so it doesn't become an unhandled one.
-The abandoned request may still be on the wire; Vereda just stops waiting for it.
+callback deals with the abandoned promise.
+
+It waits for a late response and cancels its body, so the connection is freed, and it swallows a
+late rejection so it doesn't become an unhandled one. The abandoned request may still be on the wire; Vereda just stops waiting for it.
 
 > **Aside: the bug that added this race (#181).** Before it, a custom `fetch` that ignored its
 > signal made `cancel()`, `attemptMs` and `totalMs` all ineffective: the ticket resolved, but the
@@ -266,8 +272,10 @@ if (!response.ok) {
 
 A status on the retry list (by default 408, 425, 429, 500, 502, 503 and 504) becomes a
 retryable-status error, and its body is cancelled: nobody reads the body of a try that's about to
-be repeated. If the response had a `Retry-After` header, it's turned into milliseconds here, for
-chapter 7. Our 503 has none, so try 2 returns an **error**, and the retry loop goes round again.
+be repeated.
+
+If the response had a `Retry-After` header, it's turned into milliseconds here, for chapter 7.
+Our 503 has none, so try 2 returns an **error**, and the retry loop goes round again.
 
 Any other status outside 2xx becomes an `HttpError`, which the default policy never retries. Its
 body is **handed off**: you can read it later from the error, for example to log the message the
@@ -350,9 +358,10 @@ The answer is in the function's `finally` block:
 ```
 
 For a handed-off body, the try sets a new timer for whichever comes sooner: the end of its own
-per-attempt window, counted from when the try started, or the ticket's overall deadline. When the
-timer fires it aborts the try's signal, which `fetch` is still using for the body stream. A late
-read then fails with Vereda's own `TimeoutError` or `DeadlineExceededError`, not a bare browser
+per-attempt window, counted from when the try started, or the ticket's overall deadline.
+
+When the timer fires it aborts the try's signal, which `fetch` is still using for the body
+stream. A late read then fails with Vereda's own `TimeoutError` or `DeadlineExceededError`, not a bare browser
 exception. The ticket isn't touched; it settled long ago.
 
 This is how the README's promise is kept: "the body read has to finish within the same
@@ -364,8 +373,10 @@ This is how the README's promise is kept: "the body read has to finish within th
 ## Design note: classify by signal, not by error
 
 Before #122, the attempt decided "was this a timeout?" by checking whether the thrown error was
-named `AbortError`. The fix replaced that with "did our timer's controller fire?", for the reason
-in the catch block's comment: "middleware may wrap/rethrow the abort error (losing its
+named `AbortError`.
+
+The fix replaced that with "did our timer's controller fire?", for the reason in the catch
+block's comment: "middleware may wrap/rethrow the abort error (losing its
 `AbortError` name), and the attempt's own timeout controller is the authority on whether the
 attempt timed out."
 

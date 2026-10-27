@@ -2,9 +2,10 @@
 
 > **Crux:** Where does each piece live, and who is allowed to import whom?
 
-Before you follow our request for user 42 through the code, you need to know the terrain:
-which directory is the library, which is tooling, and which files are its public face. You also
-need the few import rules that no single file states but that the whole package depends on.
+Before you follow our request for user 42 through the code, you need to know the terrain: which
+directory is the library, which is tooling, and which files are its public face.
+
+You also need the few import rules that no single file states but that the whole package depends on.
 Break one and the package either stops loading for some users or ships code it shouldn't.
 
 This chapter is a map. Read the prose once; come back to the tables when you need them.
@@ -122,26 +123,29 @@ There are five entry points, declared in the `exports` field of `package.json`:
 | `@vereda/http/otel` | `src/otel/index.ts` | `instrumentTracing`, `otelMetricsSink` |
 | `@vereda/http/testing` | `src/testing/index.ts` | `faultyFetch` and its option and fault types |
 
-The README's "Versioning and support" section makes the rule explicit: the public surface is
-exactly what those five files export. Anything in `src/queue/` or `src/ticket/` that they don't
-re-export is internal, even though it ships as readable source. So you may rename a method on
-the circuit breaker freely, but renaming a field of a type the entry point re-exports is a
-breaking change. Chapter 3 shows how the project handles such changes before 2.0.
+The README's "Versioning and support" section makes the rule explicit: the public surface is exactly
+what those five files export. Anything in `src/queue/` or `src/ticket/` that they don't re-export is
+internal, even though it ships as readable source.
+
+So you may rename a method on the circuit breaker freely, but renaming a field of a type the entry
+point re-exports is a breaking change. Chapter 3 shows how the project handles such changes before
+2.0.
 
 ## Rules no single file states
 
-These come from AGENTS.md and CONTRIBUTING.md. Each one was checked against the code and the
+These come from `AGENTS.md` and `CONTRIBUTING.md`. Each one was checked against the code and the
 config.
 
 **Relative imports use the real `.ts` extension.** Every import in `src/` looks like
 `from "./types.ts"`. `tsconfig.json` tells the compiler to accept that and rewrite it to `.js`
 in the build. Write `"./types.js"` or `"./types"` and the build or the runtime fails.
 
-**Only one file may import each optional dependency.** Only `src/adapters/zod.ts` imports
-`zod`, and only `src/otel/index.ts` imports `@opentelemetry/api`. Both are optional peer
-dependencies. A user who never imports the Zod entry point may not have Zod installed, so if the
-core imported it, the main entry point would fail to load for them. Nothing automated enforces
-this rule: no lint rule or test checks it. Review holds it.
+**Only one file may import each optional dependency.** Only `src/adapters/zod.ts` imports `zod`, and
+only `src/otel/index.ts` imports `@opentelemetry/api`. Both are optional peer dependencies.
+
+A user who never imports the Zod entry point may not have Zod installed, so if the core imported it,
+the main entry point would fail to load for them. Nothing automated enforces this rule: no lint rule
+or test checks it. Review holds it.
 
 **No `node:` imports in `src/`.** This one *is* enforced: a test in
 `test/core/emitter.test.ts` reads every file in `src/` and fails if one imports a Node built-in
@@ -167,18 +171,20 @@ after the other:
 
 That's four legs: the library; the library with its tests and scripts
 (`tsconfig.test.json`); the examples (`examples/tsconfig.json`); and the benchmarks
-(`performance/tsconfig.json`). AGENTS.md and CONTRIBUTING.md both say "three legs" and leave
+(`performance/tsconfig.json`). `AGENTS.md` and `CONTRIBUTING.md` both say "three legs" and leave
 out the benchmarks; the script is the truth. If you add a top-level directory of `.ts` files,
 add a leg, or nothing typechecks it.
 
 `test/tsconfig.json` exists only so that editors, which look for the nearest file named
 `tsconfig.json`, pick up the test settings.
 
-**Biome is the only linter and formatter**, configured in `biome.json`: tabs, 120 columns,
-double quotes, and warnings count as errors. The pre-commit hook in `.husky/pre-commit` runs it
-on staged files. Never apply Biome's `--unsafe` fixes without reading the diff. They delete
-three private methods on the ticket, because Biome can't see that they're reached through
-bracket notation. Chapter 4 shows why they're written that way.
+**Biome is the only linter and formatter**, configured in `biome.json`: tabs, 120 columns, double
+quotes, and warnings count as errors. The pre-commit hook in `.husky/pre-commit` runs it on staged
+files.
+
+Never apply Biome's `--unsafe` fixes without reading the diff. They delete three private methods on
+the ticket, because Biome can't see that they're reached through bracket notation. Chapter 4 shows
+why they're written that way.
 
 ## Codemap: where is the thing that does X?
 

@@ -2,10 +2,12 @@
 
 > **Crux:** How do I prove a change is correct, and how does it get shipped?
 
-You now know how the code works. This chapter is about working *on* it: how the tests are
-organized, which kind of test fits which kind of change, what CI checks, and how a merged change
-becomes an npm release. It ends with the anatomy of one real feature, so you can see the whole
-loop in a single pull request.
+You now know how the code works. This chapter is about working *on* it: how the tests are organized,
+which kind of test fits which kind of change, what CI checks, and how a merged change becomes an npm
+release.
+
+It ends with the anatomy of one real feature, so you can see the whole loop in a single pull
+request.
 
 Setup and the full command list are in [CONTRIBUTING.md](../../CONTRIBUTING.md) and the
 "Commands" section of [AGENTS.md](../../AGENTS.md). In short: `bun install`, then `npm test`,
@@ -40,9 +42,10 @@ it("hangs, gets a 503, then succeeds on the third try", async () => {
 ```
 
 Run for real, the example takes about half a second: a 200 ms timeout plus two random waits.
+
 This test takes about 30 ms, and it checks the same story: three tries, and the two reasons for
-retrying from chapter 7. Two techniques make that possible, and they're two of the three the
-suite uses.
+retrying from chapter 7. Two techniques make that possible, and they're two of the three the suite
+uses.
 
 ## Three ways to drive the client
 
@@ -94,17 +97,20 @@ directories mirror `src/`:
 | `test/docs/` | Tests that keep the Markdown docs honest |
 | `test/scripts/` | The release script |
 
-Many test files are named after the bug they pin, and their `describe` blocks carry the bug's
-label: `test/queue/abortable-queues.test.ts` and `test/core/pre-aborted-early-exit.test.ts` are
-two. When you fix a bug, keep the habit. The label is how the next maintainer finds out *why* the test exists.
+Many test files are named after the bug they pin, and their `describe` blocks carry the bug's label:
+`test/queue/abortable-queues.test.ts` and `test/core/pre-aborted-early-exit.test.ts` are two.
+
+When you fix a bug, keep the habit. The label is how the next maintainer finds out *why* the test
+exists.
 
 ## The property test
 
-`test/core/lifecycle-invariants.property.test.ts` is the most valuable test in the repo. Instead
-of one test per scenario, it uses the fast-check library to *generate* scenarios. Each one is a
-handful of requests with a scripted behavior per try (succeed, 404, 503, network error, hang,
-malformed body, a body that stalls), plus random timeouts and deadlines, a cancel at a random
-moment, throwing listeners and metrics sinks, a random retry budget, and sometimes `close()`
+`test/core/lifecycle-invariants.property.test.ts` is the most valuable test in the repo. Instead of
+one test per scenario, it uses the fast-check library to *generate* scenarios.
+
+Each one is a handful of requests with a scripted behavior per try (succeed, 404, 503, network
+error, hang, malformed body, a body that stalls), plus random timeouts and deadlines, a cancel at a
+random moment, throwing listeners and metrics sinks, a random retry budget, and sometimes `close()`
 mid-flight.
 
 For every request in every scenario it checks the rules from chapter 11: the ticket settles, it
@@ -153,11 +159,13 @@ run …/tsc (dependencies installed?)". That's the environment, not your change.
 
 ## Coverage
 
-`npm run test:coverage` enforces thresholds set in `vitest.config.ts`: 96% of lines and
-statements, 95% of functions and 92% of branches overall, and 95% of branches in `src/queue/`,
-"where the B1–B17 bugs lived". The comment above them states the policy: the thresholds sit just
-under the current numbers so coverage "can only ratchet up". Raise them when a change lifts
-coverage. Don't lower them to land one.
+`npm run test:coverage` enforces thresholds set in `vitest.config.ts`: 96% of lines and statements,
+95% of functions and 92% of branches overall, and 95% of branches in `src/queue/`, "where the B1–B17
+bugs lived".
+
+The comment above them states the policy: the thresholds sit just under the current numbers so
+coverage "can only ratchet up". Raise them when a change lifts coverage. Don't lower them to land
+one.
 
 ## What CI runs
 
@@ -190,7 +198,7 @@ install it.
 
 ## How a release happens
 
-A release is a merged version bump. These steps come from CONTRIBUTING.md, checked against
+A release is a merged version bump. These steps come from `CONTRIBUTING.md`, checked against
 `scripts/release-prepare.ts` and `.github/workflows/release.yml`.
 
 1. **Feature pull requests only add changelog entries.** They go under `## [Unreleased]` in
@@ -250,17 +258,21 @@ change like this. It's written for an AI agent, but it reads fine as a checklist
 
 ## Design note: prove the bug first
 
-AGENTS.md's last review rule is "Prove a bug before fixing it. Write the regression test first
-and see it fail on `main`." The fix pull requests in the history follow it and say so in their
-descriptions. The fix for #196 is a recent example. Its new test file has seven cases, and the
-description reports that six of them fail on `main` without the fix. The seventh is a control: it
-checks that a bad URL *without* an aborted signal still fails the normal way, so the fix can't
-have broken the ordinary path.
+AGENTS.md's last review rule is "Prove a bug before fixing it. Write the regression test first and
+see it fail on `main`." The fix pull requests in the history follow it and say so in their
+descriptions.
 
-The reason for the rule is that a test can encode a bug and pass. Chapter 11 tells how that
-happened here (B16). A regression test you've never seen fail might not test anything. So when a
-fix pull request here says "N of M fail without the fix", that's not ceremony. It's the evidence
-that the test works.
+The fix for #196 is a recent example. Its new test file has seven cases, and the description reports
+that six of them fail on `main` without the fix.
+
+The seventh is a control: it checks that a bad URL *without* an aborted signal still fails the
+normal way, so the fix can't have broken the ordinary path.
+
+The reason for the rule is that a test can encode a bug and pass. Chapter 11 tells how that happened
+here (B16).
+
+A regression test you've never seen fail might not test anything. So when a fix pull request here
+says "N of M fail without the fix", that's not ceremony. It's the evidence that the test works.
 
 ## What must stay true
 

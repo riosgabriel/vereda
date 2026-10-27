@@ -26,11 +26,12 @@ path, name the invariants it must keep, and write a change with a test that prov
 Read the chapters in order. Each one needs only the ones before it. Every chapter opens with a
 **Crux**: the one question it answers. If you already know the answer, skim to the next.
 
-Keep the repo open beside the book. Code listings are labelled with a file and a function name
-(not line numbers, which go stale), so you can jump to the real thing. Each chapter ends with
-**What must stay true** (the invariants for that part of the code) and **Try it** (exercises
-against the real code). Do at least one exercise per chapter; reading about a retry loop and
-watching one run are different kinds of knowing.
+Keep the repo open beside the book. Code listings are labelled with a file and a function name (not
+line numbers, which go stale), so you can jump to the real thing.
+
+Each chapter ends with **What must stay true** (the invariants for that part of the code) and **Try
+it** (exercises against the real code). Do at least one exercise per chapter; reading about a retry
+loop and watching one run are different kinds of knowing.
 
 To run the exercises you need the repo set up as in [CONTRIBUTING.md](../../CONTRIBUTING.md)
 (`bun install`, Node 22+).
