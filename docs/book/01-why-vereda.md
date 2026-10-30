@@ -6,11 +6,12 @@ You need user 42 from another service. With plain `fetch`, that's one line, and 
 it works. This book is about the bad day, which is also its running example: the first try
 hangs, the second gets `503 Service Unavailable`, and the third works.
 
-On that day, plain `fetch` waits on the hung request for as long as the operating system lets
-it, which can be minutes. If it ever gets past that, the 503 is just another response, and
-nothing tries again. To get user 42 you need a loop around `fetch`, and that loop has to make
-a surprising number of decisions. Vereda is that loop, written once, with its bugs found and
-pinned down by tests.
+On that day, plain `fetch` waits on the hung request for as long as the operating system lets it,
+which can be minutes. If it ever gets past that, the 503 is just another response, and nothing tries
+again.
+
+To get user 42 you need a loop around `fetch`, and that loop has to make a surprising number of
+decisions. Vereda is that loop, written once, with its bugs found and pinned down by tests.
 
 This chapter looks at the problem from the caller's side and lists the design goals the rest
 of the book keeps coming back to. There's no mechanism yet; that starts in chapter 4.
@@ -51,11 +52,12 @@ one is a decision Vereda had to make, and each has a home in the code:
 | How many retries may pile onto a struggling host? | a queue per host, `src/queue/bulkhead.ts` | 8 |
 | How do I cancel? | the ticket, `src/ticket/ticket.ts` | 4 |
 
-The loop also has problems it doesn't ask about. Nothing limits the total time across all the
-tries. Nothing outside it can cancel it. And if a thousand callers run it against a host that
-is down, the host gets four thousand requests. Vereda answers those too: a total deadline,
-cancellation, and three opt-in ways to shed load (a circuit breaker, a retry budget and a rate
-limiter).
+The loop also has problems it doesn't ask about. Nothing limits the total time across all the tries.
+Nothing outside it can cancel it.
+
+If a thousand callers run it against a host that is down, the host gets four thousand requests.
+Vereda answers all three problems: a total deadline, cancellation, and three opt-in ways to shed
+load (a circuit breaker, a retry budget and a rate limiter).
 
 ## What a caller sees
 
@@ -87,11 +89,11 @@ if (result.success) {
 cancel, watch, or turn into a promise. Chapter 4 is about tickets. Two other things in this
 snippet are choices you'll see enforced all through the code.
 
-First, **the promise never rejects.** Every outcome, including a cancel or a mistake found after
-the call, comes back as a **result**: either `success: true` with the data, or `success: false`
-with an error. The error is always one of Vereda's own classes, and each has a `kind` you can
-switch on. That's why the code is full of "settle the ticket with this error" and has almost no
-`throw`.
+First, **the promise never rejects.** Every outcome, including a cancel or a mistake found after the
+call, comes back as a **result**: either `success: true` with the data, or `success: false` with an
+error. The error is always one of Vereda's own classes, and each has a `kind` you can switch on.
+
+This rule is why the code is full of "settle the ticket with this error" and has almost no `throw`.
 
 Second, **the per-attempt timeout is required.** It's the only setting you can't leave out. Skip
 it and creating the client throws.
@@ -101,11 +103,13 @@ it and creating the client throws.
 The README lists five principles under "Design philosophy". Here they are, each with the place
 in the code that keeps it, because these are the things you must not break.
 
-**Fresh traffic comes first.** The first try of a request doesn't wait in the per-host queue
-(the **partition bulkhead**, chapter 8). Only retries do. Retries are where a crowd of callers
-hammering a sick host comes from, so retries are what get throttled. For our request, the first
-try goes straight out; the two retries each pass through the host's queue. The function that
-makes this choice is `_fireFirstAttempt` in `src/core/client.ts`, which chapter 5 walks through.
+**Fresh traffic comes first.** The first try of a request doesn't wait in the per-host queue (the
+**partition bulkhead**, chapter 8). Only retries do. Retries are where a crowd of callers hammering
+a sick host comes from, so retries are what get throttled.
+
+For our request, the first try goes straight out; the two retries each pass through the host's
+queue. The function that makes this choice is `_fireFirstAttempt` in `src/core/client.ts`, which
+chapter 5 walks through.
 
 **Backpressure beats unbounded queues.** Every queue in Vereda has a maximum size. When it's
 full, the request fails at once with a "queue full" error instead of waiting. Chapter 8 shows the
@@ -138,20 +142,22 @@ export interface ClientTimeoutConfig extends Omit<TimeoutConfig, "attemptMs"> {
 
 Notice that `Infinity` is legal. "No timeout" is allowed, but only as a choice you write down.
 
-There's a trap behind that choice. Node can't hold a timer longer than 2^31 − 1 milliseconds
-(about 24.8 days); hand it a bigger delay, `Infinity` included, and it fires after 1 ms. So the
-code never passes `Infinity` to a timer. It checks every timeout with a small helper,
-`isBoundedMs` in `src/core/types.ts`, and skips the timer when the value isn't a finite
-number. Keep this trap in mind; it caused a real bug, and chapter 11 tells that story.
+There's a trap behind that choice. Node can't hold a timer longer than 2^31 − 1 milliseconds (about
+24.8 days); hand it a bigger delay, `Infinity` included, and it fires after 1 ms.
+
+So the code never passes `Infinity` to a timer. It checks every timeout with a small helper,
+`isBoundedMs` in `src/core/types.ts`, and skips the timer when the value isn't a finite number. Keep
+this trap in mind; it caused a real bug, and chapter 11 tells that story.
 
 ## Design note: why the timeout became mandatory
 
-Early versions had an optional timeout that defaulted to "none". The commit that made it
-required (#60, "per-partition circuit breaker + required per-attempt timeout") gives the
-reason: every other default in the library fails safe when you leave it out, but a missing
-timeout "previously meant 'unbounded' — the same footgun as axios's `timeout: 0`". It landed
-before 1.0 because there were "no published consumers yet", so it could break things without a
-major version.
+Early versions had an optional timeout that defaulted to "none". The commit that made it required
+(#60, "per-partition circuit breaker + required per-attempt timeout") gives the reason: every other
+default in the library fails safe when you leave it out, but a missing timeout "previously meant
+'unbounded' — the same footgun as axios's `timeout: 0`".
+
+The change landed before 1.0 because there were "no published consumers yet", so it could break
+things without a major version.
 
 The same commit turned every tunable default into a named, exported constant, so the code and
 the docs refer to one value. That's why the main entry point exports thirteen `DEFAULT_*`
@@ -251,5 +257,7 @@ typecheck.
 
    Answer: `4 max_retries` for the `GET` (one try plus three retries, then a "max retries"
    error wrapping the last 503), and `1 retryable_status` for the `POST` (a `POST` isn't safe
-   to repeat, so it isn't retried, and the 503 comes back as it is). Keep the second answer in
-   mind: why it *isn't* wrapped in a "max retries" error is a question chapter 7 answers.
+   to repeat, so it isn't retried, and the 503 comes back as it is).
+
+   Keep the second answer in mind: why it *isn't* wrapped in a "max retries" error is a question
+   chapter 7 answers.

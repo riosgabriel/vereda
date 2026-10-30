@@ -8,9 +8,11 @@ waiting in queues. So Vereda reports what it does through several channels, and 
 code plug in at a few points along the way.
 
 Both directions share one danger: every channel runs *your* code in the middle of a request.
-A listener, a metrics sink or a logger can have a bug. This chapter keeps coming back to one
-rule: **your code can watch an outcome, but it must never change it.** A listener that throws
-must not turn a success into a failure, and a URL with a token in it must not leak into a log.
+A listener, a metrics sink or a logger can have a bug.
+
+This chapter keeps coming back to one rule: **your code can watch an outcome, but it must never
+change it.** A listener that throws must not turn a success into a failure, and a URL with a token
+in it must not leak into a log.
 
 The user-facing reference is [docs/guide/observability.md](../guide/observability.md) and
 [docs/guide/requests.md](../guide/requests.md). This chapter is about how they're built.
@@ -80,9 +82,11 @@ events add the number of attempts, the total duration and the time spent queuein
 `success` said `attempts: 3`.
 
 The partition can be missing on two events. A `failure` has none when the URL never resolved,
-because the partition *is* the URL's host. A `cancelled` has none in one rare case: a request
-whose abort signal had already fired before you made the call, *and* whose URL can't be
-resolved. That request ends before it ever starts, and the client doesn't invent a host for it.
+because the partition *is* the URL's host.
+
+A `cancelled` has none in one rare case: a request whose abort signal had already fired before you
+made the call, *and* whose URL can't be resolved. That request ends before it ever starts, and the
+client doesn't invent a host for it.
 
 > **Aside: the pre-aborted request.** If you pass a signal that's already aborted, the ticket is
 > cancelled inside `send` (chapter 5), before the first attempt runs. Until #196, the first
@@ -110,15 +114,17 @@ private emit<K extends keyof LifecycleEventMap>(event: K, data: LifecycleEventMa
 ```
 
 The comment says why this method may never throw. Think back to chapter 5: when our request's
-first try succeeds, the client emits `success` and *then* settles the ticket. If a listener's
-error escaped here, the settle line would never run. The error would land in the safety net
-behind the first attempt, and you'd get a network failure, plus a second, contradictory
+first try succeeds, the client emits `success` and *then* settles the ticket.
+
+If a listener's error escaped here, the settle line would never run. The error would land in the
+safety net behind the first attempt, and you'd get a network failure, plus a second, contradictory
 `failure` event, for a request that worked.
 
 So errors from your code are caught in two places. The emitter from chapter 4 catches each
-listener's error separately, so one broken listener doesn't silence the others. And the metrics
-call is wrapped here. Both hand the error to the same small function, described in the design
-note at the end: it rethrows the error later, outside the request's path.
+listener's error separately, so one broken listener doesn't silence the others.
+
+The metrics call is wrapped here. Both hand the error to the same small function, described in the
+design note at the end: it rethrows the error later, outside the request's path.
 
 > **Aside: bug B3.** That success-turned-failure is not hypothetical. It's bug B3 from the 1.0
 > review, and the reason the comment names it. B2 was its twin on the ticket side: a throwing
@@ -146,9 +152,11 @@ Two choices in this code were bugs once, and one is new.
 
 **In-flight is reported where the ticket leaves.** That's why our output shows
 `vereda.in_flight = 0` before `event success`. The gauge isn't sampled when the ending event
-fires. It's reported by the ticket's cleanup function from chapter 5, at the moment the ticket
+fires.
+
+The gauge is reported by the ticket's cleanup function from chapter 5, at the moment the ticket
 leaves the in-flight set. On the retry path, cleanup runs before the event, so the gauge comes
-first. The rule behind this, in AGENTS.md's words: "Sample state where it changes."
+first. The rule behind this, in the words of `AGENTS.md`: "Sample state where it changes."
 
 > **Aside: bug B15.** The gauge used to be sampled at emit time. The first-attempt path emits
 > *then* cleans up, while the retry loop cleans up *then* emits, so a client whose requests all
@@ -156,9 +164,10 @@ first. The rule behind this, in AGENTS.md's words: "Sample state where it change
 
 **Queue depth is polled, not pushed.** The queue-depth gauges are read only at `request` and at
 the ending events. The method's own comment admits the gap: a request that's queued and
-released between two of those moments "can land on neither poll and never register". Trust the
-gauges for a sustained backlog, not a brief one. The per-request queueing time on the events
-has no such gap, because it's measured on every wait.
+released between two of those moments "can land on neither poll and never register".
+
+Trust the gauges for a sustained backlog, not a brief one. The per-request queueing time on the
+events has no such gap, because it's measured on every wait.
 
 **A missing partition is a missing tag.** When an ending event has no partition, the duration
 histogram leaves the partition tag off entirely rather than sending a made-up value. A
@@ -207,7 +216,7 @@ its three tries and still succeeds. The error shows up on its own, a moment late
 > **Aside: the last unguarded callback.** Until #200, the four log calls were plain method calls.
 > A logger that threw on "Request succeeded" turned a successful response into a failure with
 > both `success` and `failure` events, exactly bug B3 again, through a door the B3 fix hadn't
-> covered (issue #197). The fix added `log` and updated the invariant in AGENTS.md to name the
+> covered (issue #197). The fix added `log` and updated the invariant in `AGENTS.md` to name the
 > logger alongside listeners and sinks.
 
 ## Redaction
@@ -239,15 +248,17 @@ from chapter 5: the full URL is fetched, the display URL is shown.
 Redaction has two limits. First, the client's `redactQuery: false` option affects only the
 client's own output. The request-logging middleware and the tracing module can't see the
 client's config, so each has its own `redactQuery` option, and both always strip credentials
-whatever you set. Second, Vereda redacts only what *it* emits. The URL inside an HTTP error's
+whatever you set.
+
+Second, Vereda redacts only what *it* emits. The URL inside an HTTP error's
 response object, or a URL your own middleware logs, is yours to protect. `redactUrl` is exported
 for that.
 
 ## Middleware helpers
 
 Middleware (chapter 6) wraps each *try*, not the whole request. That's the answer to the third
-puzzle: the middleware logged three lines because our request made three tries. `src/middleware/index.ts`
-has two ready-made pieces:
+puzzle: the middleware logged three lines because our request made three tries.
+`src/middleware/index.ts` has two ready-made pieces:
 
 - `defaultHeaders` sets each header only if the request doesn't already have it. The comparison
   ignores case, so a request's own `authorization` beats a default `Authorization`.
@@ -256,9 +267,11 @@ has two ready-made pieces:
   aborted it while the middleware was waiting.
 
 The request logger takes a `log` function from you, which raises the same question as the
-client's logger. Here the stakes are higher. Middleware runs *inside* the try, so an error
-thrown after a response arrived would count as a failed try: the client would retry it and
-send the request again. So the logger wraps your function the same way:
+client's logger. Here the stakes are higher.
+
+Middleware runs *inside* the try, so an error thrown after a response arrived would count as a
+failed try: the client would retry it and send the request again. So the logger wraps your function
+the same way:
 
 `src/middleware/index.ts` — `requestLogger`
 ```typescript
@@ -274,7 +287,7 @@ const log = (msg: string, meta: Record<string, unknown>): void => {
 ```
 
 The default sink is `console.log`, which the project's lint rules normally forbid, so that line
-carries a comment telling Biome it's intended. AGENTS.md warns that running Biome's unsafe
+carries a comment telling Biome it's intended. `AGENTS.md` warns that running Biome's unsafe
 fixes on this file silently turns the default logger into a no-op.
 
 ## The Zod adapter
@@ -329,9 +342,11 @@ const end = (ticketId: string, attempts: number, finish: (span: Span) => void) =
 
 Because the per-try span is middleware, and the last middleware registered runs closest to
 `fetch` (chapter 6), the docs tell you to call `instrumentTracing` after your own middleware, so
-the span times only the network call. It returns a stop function. Middleware can't be removed
-from a client, so stopping flips a flag that turns the middleware into a pass-through, removes
-the event listeners and ends any open spans.
+the span times only the network call.
+
+`instrumentTracing` returns a stop function. Middleware can't be removed from a client, so stopping
+flips a flag that turns the middleware into a pass-through, removes the event listeners and ends any
+open spans.
 
 **Metrics.** `otelMetricsSink(meter)` is a metrics sink on top of an OpenTelemetry meter. It
 creates each instrument the first time a name appears, so a new Vereda metric needs no change

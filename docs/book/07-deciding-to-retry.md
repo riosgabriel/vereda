@@ -97,16 +97,18 @@ be exactly the same next time. Our timeout passes this rule, and so does our 503
 
 **The request must be safe to send twice.** HTTP calls a method *idempotent* when sending it
 twice has the same effect as sending it once. GET, HEAD, OPTIONS, PUT and DELETE are; POST and
-PATCH are not. Think of a POST that creates a payment and then times out: the server may have
-created it before the connection died, and a retry could create a second one. Our request is a
-GET, so it passes.
+PATCH are not.
+
+Think of a POST that creates a payment and then times out: the server may have created it before
+the connection died, and a retry could create a second one. Our request is a GET, so it passes.
 
 A POST or PATCH is retried only if you say it's safe, in one of three ways: set
 `idempotent: true` in the request's retry options, send an `Idempotency-Key` header yourself, or
-set `retry.idempotencyKey: true` and let Vereda generate that header. That header is a common
-convention: the server remembers the key and ignores a repeat. The check goes through the
-standard `Headers` class, so the header's capitalisation doesn't matter. The generated key is one
-per request, reused on every attempt.
+set `retry.idempotencyKey: true` and let Vereda generate that header.
+
+That header is a common convention: the server remembers the key and ignores a repeat. The check
+goes through the standard `Headers` class, so the header's capitalisation doesn't matter. The
+generated key is one per request, reused on every attempt.
 
 The comments say "Rule 2" and "Rule 3" because the function's doc comment lists five rules. The
 other three live elsewhere: the attempt limit is the retry loop's bound, your own predicate is
@@ -149,8 +151,9 @@ export function shouldRetry(
 ```
 
 Your predicate runs only after the default policy said yes, so it can turn a yes into a no but
-never a no into a yes. You can't use it to retry a 404 or an unmarked POST. For those there are
-explicit settings: add the status to `retryOnStatus` (which turns it into a `retryable_status`
+never a no into a yes.
+
+You can't use it to retry a 404 or an unmarked POST. For those there are explicit settings: add the status to `retryOnStatus` (which turns it into a `retryable_status`
 failure), or mark the request idempotent.
 
 If our running example had a `retryWhen` that logged its arguments, it would print two lines:
@@ -185,15 +188,18 @@ return (attempt: number): number => {
 ```
 
 The defaults are a base of 200 ms, a ceiling of 30 seconds and jitter on. So the ceiling doubles
-each round, 200, 400, 800 ms and so on, and the actual wait is a random number below it. That's
-our request's two waits: round 0 drew 4 ms out of 0–200, and round 1 drew 281 ms out of 0–400.
-Run the example again and you'll get different numbers in the same ranges.
+each round, 200, 400, 800 ms and so on, and the actual wait is a random number below it.
+
+That's our request's two waits: round 0 drew 4 ms out of 0–200, and round 1 drew 281 ms out of
+0–400. Run the example again and you'll get different numbers in the same ranges.
 
 This is called **full jitter**: the whole wait is random, not "the exponential value plus a bit
-of noise". It exists for the case where a thousand clients fail at the same moment. Without
-randomness they all retry at the same moment too, fail together again, and keep doing it in
-lock step. Spreading them across the whole range breaks that up. The price is that some retries
-go out almost at once, like our 4 ms one.
+of noise".
+
+It exists for the case where a thousand clients fail at the same moment. Without randomness they
+all retry at the same moment too, fail together again, and keep doing it in lock step. Spreading
+them across the whole range breaks that up. The price is that some retries go out almost at
+once, like our 4 ms one.
 
 You can also pass `backoff` as a function from round to milliseconds. `buildBackoffFn` then
 returns your function untouched.
@@ -218,17 +224,22 @@ function resolveRetryDelay(
 }
 ```
 
-There's no jitter on this path: the server named a time, and the client honours it. There is a
-cap, though, so a server can't park a ticket for an hour. The cap is the backoff's ceiling,
+There's no jitter on this path: the server named a time, and the client honours it.
+
+There is a cap, though, so a server can't park a ticket for an hour. The cap is the backoff's ceiling,
 `maxDelayMs`, when you gave backoff options, and the default 30 seconds when you gave a function,
 since a function has no ceiling to read.
 
 The header is read in `src/queue/executor.ts` by `parseRetryAfter`. It accepts whole seconds
-(`"2"` becomes 2,000 ms) or an HTTP date (the time from now until then, never below zero), in any
-of the three forms RFC 9110 says a recipient must accept: `Sun, 06 Nov 1994 08:49:37 GMT`, the
-obsolete `Sunday, 06-Nov-94 08:49:37 GMT`, and the obsolete `Sun Nov  6 08:49:37 1994`, which
-means UTC though it doesn't say so. The dates are parsed by hand, because `Date.parse` takes
-`"1.5"` or `"-5"` as dates and reads the last form as local time. Anything else, such as `"1.5"` or `"-5"`, is ignored, and backoff applies.
+(`"2"` becomes 2,000 ms) or an HTTP date (the time from now until then, never below zero).
+
+A date can come in any of the three forms RFC 9110 says a recipient must accept:
+`Sun, 06 Nov 1994 08:49:37 GMT`, the obsolete `Sunday, 06-Nov-94 08:49:37 GMT`, and the obsolete
+`Sun Nov  6 08:49:37 1994`, which means UTC though it doesn't say so.
+
+The dates are parsed by hand, because `Date.parse` takes `"1.5"` or `"-5"` as dates and reads
+the last form as local time. Anything else, such as `"1.5"` or `"-5"`, is ignored, and backoff
+applies.
 
 If our fake server's 503 carried `Retry-After: 1`, the second wait would be exactly 1,000 ms on
 every run, instead of a random draw. That's chapter 5's first exercise.
@@ -303,10 +314,13 @@ const exhaustedError = new MaxRetriesExceededError(totalAttempts, lastError);
 ```
 
 The wrapper means "this kept failing in a way that might have gone away, and we stopped
-trying". Suppose instead the server answered 503, 503, then 404. The 404 is a definite answer:
-the user doesn't exist. Wrapping it would make it look like one more transient failure, and the
-caller would have to dig inside to find out. So the loop asks the policy about the final error
-too. If the policy wouldn't have retried it anyway, the caller gets it as it is: a plain
+trying".
+
+Suppose instead the server answered 503, 503, then 404. The 404 is a definite answer: the user
+doesn't exist. Wrapping it would make it look like one more transient failure, and the caller
+would have to dig inside to find out.
+
+So the loop asks the policy about the final error too. If the policy wouldn't have retried it anyway, the caller gets it as it is: a plain
 `http` error after three fetches.
 
 Two smaller cases follow from the same idea:
@@ -327,13 +341,16 @@ conditions that must *all* hold.
 
 The consequence is that two safety rules hold whatever a caller's predicate does: a request that
 isn't safe to repeat is never repeated without an explicit opt-in, and a definite answer is
-never retried. The opt-ins are named settings (`idempotent`, `retryOnStatus`) that stand out in
+never retried.
+
+The opt-ins are named settings (`idempotent`, `retryOnStatus`) that stand out in
 a code review, rather than a branch hidden inside a function. The repo doesn't record a
 discussion of the alternative.
 
 Why does the policy run *before* your predicate rather than after? The comment on `shouldRetry`
-says the ordering "lives in one place" so that both call sites agree. Running yours second also
-means it's never called about a failure that wouldn't be retried anyway. That keeps a promise
+says the ordering "lives in one place" so that both call sites agree.
+
+Running yours second also means it's never called about a failure that wouldn't be retried anyway. That keeps a promise
 the docs make: your predicate is called once for each failed try that could still be retried,
 never more.
 

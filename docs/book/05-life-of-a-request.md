@@ -127,8 +127,9 @@ is cancelled right here, before you get it. Our request has no signal, so this d
 **The total deadline starts now.** If the request has an overall time limit (`totalMs`), its
 timer starts at the call, not at the first byte. When it fires, it aborts the ticket's signal
 without marking the ticket cancelled. That difference lets later code report "deadline
-exceeded" instead of "cancelled". Our request sets only a per-attempt limit, so no deadline timer
-starts.
+exceeded" instead of "cancelled".
+
+Our request sets only a per-attempt limit, so no deadline timer starts.
 
 > **Aside: two fixes in these lines.** The abort listener is removed when the ticket ends. Before
 > #7, a long-lived signal shared by many requests collected one listener per request. And the
@@ -164,10 +165,12 @@ the second time. The "take and clear" in the middle is the trick: whoever calls 
 release function, and everyone after gets nothing. Chapters 8 and 9 reuse this pattern.
 
 **The first attempt starts, but `send` doesn't wait for it.** `_fireFirstAttempt` is an async
-function, and `send` calls it without `await`, then returns the ticket. The `.catch` on the end
-is a safety net. It should never run, because the first attempt handles its own errors. If
-something unexpected throws anyway, the safety net settles the ticket as a failure, but only if
-nothing has settled it yet, so a crash racing a `cancel()` can't produce a second ending.
+function, and `send` calls it without `await`, then returns the ticket.
+
+The `.catch` on the end is a safety net. It should never run, because the first attempt handles
+its own errors. If something unexpected throws anyway, the safety net settles the ticket as a
+failure, but only if nothing has settled it yet, so a crash racing a `cancel()` can't produce a
+second ending.
 
 ### Why `request` fires before `get()` returns
 
@@ -243,8 +246,10 @@ try {
 
 Remember the last four lines. Every early exit in the client has the same shape: **announce the
 ending, settle the ticket, clean up, return.** You'll see it about a dozen times. If you add an
-exit, copy it, order included. (The `as never` silences a type mismatch: the function is generic
-over the response type, and a failure has no data of that type.)
+exit, copy it, order included.
+
+The `as never` silences a type mismatch: the function is generic over the response type, and a
+failure has no data of that type.
 
 Resolving the URL here, not in `send`, is deliberate: a bad URL is your mistake, but it arrives
 as a failed ticket like every other problem, so `get()` never throws. The body and the request's
@@ -314,10 +319,14 @@ try {
 
 The breaker is off by default, and then it always says yes, so our request gets a **permit**:
 a small object that must be given back on every path. That's what the `try`/`finally` is for.
-Chapter 9 shows what happens when a permit is lost. The pause check between the two is for the
-opt-in `pauseOnRetryAfter` option (chapter 7's aside): it needs a breaker permit to be given
-back, so it sits after `tryAcquire`, and an open breaker still reports `CircuitOpenError`. Because the breaker answered yes, the retry
-budget counts one more real request (chapter 9 again).
+Chapter 9 shows what happens when a permit is lost.
+
+The pause check between the two is for the opt-in `pauseOnRetryAfter` option (chapter 7's
+aside). It needs a breaker permit to be given back, so it sits after `tryAcquire`, and an open
+breaker still reports `CircuitOpenError`.
+
+Because the breaker answered yes, the retry budget counts one more real request (chapter 9
+again).
 
 ### Try 1, and why it skips the line
 
@@ -500,7 +509,9 @@ same timeout. Asking again would call your `retryWhen` twice for one failure.
 
 The wait in gate 4 comes from the backoff function. With the defaults it is **full jitter**: a
 random number between 0 and `200 × 2^round` ms. In round 0 that's anywhere from 0 to 200 ms, and
-this run drew 4. Randomness is the point: if a thousand clients failed at the same moment,
+this run drew 4.
+
+Randomness is the point: if a thousand clients failed at the same moment,
 jitter spreads their retries out instead of sending them back together (chapter 7).
 
 Fetch #2 gets a 503. The loop records it as the last error, tells the breaker, and goes round
@@ -509,8 +520,10 @@ again.
 ### Round 1: after the 503
 
 This time gate 3 runs: the policy is asked about the 503 and says yes, since 503 is one of the
-statuses retried by default. Gate 4 draws from 0–400 ms and gets **281 ms**, which is why the
-second wait is so much longer than the first. After the sleep, **fetch #3** returns 200, the
+statuses retried by default.
+
+Gate 4 draws from 0–400 ms and gets **281 ms**, which is why the second wait is so much longer
+than the first. After the sleep, **fetch #3** returns 200, the
 loop settles the ticket, and `event success` reports `attempts: 3`.
 
 ### Why the gates are in this order
@@ -587,6 +600,7 @@ from." New traffic to a healthy host shouldn't wait behind another request's ret
 
 The cost is the code you've just read. First tries and retries are sent by different functions,
 and the logic that settles a ticket is written twice. The project accepted that duplication.
+
 It accepts a second cost too, shown in the README's "one failing dependency" example: first
 tries still share the *global* limit, so a host that fails slowly can hold global permits and
 delay requests to healthy hosts. `limitFirstAttempts` exists for partitions where that risk
@@ -640,6 +654,7 @@ pending work is a timeout can exit before the ticket settles. Add
 
    Explain why there's no `retryWhen(…, 2)`, and why `retry(1)` follows `retryWhen(…, 1)` with
    no fetch in between.
+
 3. **Predict, then run.** Set `timeout: { attemptMs: 1000, totalMs: 100 }` and use a server that
    never answers. Which event fires, with what error kind, and after about how long? (A
    `failure` with kind `deadline` and `attempts=1`, after about 100 ms. Find the line in the

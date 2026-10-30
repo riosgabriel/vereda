@@ -3,10 +3,11 @@
 > **Crux:** What does a caller write, how is configuration layered, and what comes back?
 
 You can't reason about the inside until you know what the outside promises. This chapter is a
-tutorial: you'll run the book's running example against a real local server, watch our request
-for user 42 hang, get a 503 and then succeed, and read every value that comes back. Then it
-explains how configuration from three levels is merged, because almost every function in later
-chapters receives merged config, and you need to know where its values came from.
+tutorial: you'll run the book's running example against a real local server, watch our request for
+user 42 hang, get a 503 and then succeed, and read every value that comes back.
+
+The chapter then explains how configuration from three levels is merged, because almost every
+function in later chapters receives merged config, and you need to know where its values came from.
 
 ## Step 1: run our request
 
@@ -92,10 +93,12 @@ printed before `got a ticket`. `get()` does the first part of the work synchrono
 choosing where the request belongs and announcing it, and only then hands you the ticket.
 Chapter 5 shows why.
 
-**The partition is `127.0.0.1:35633`.** A **partition** is the group of requests that share one
-set of limits, usually one host. You didn't name one, so Vereda used the URL's host, including
-the port when it isn't the scheme's default. Every partition gets its own queue for retries and,
-if you configure them, its own circuit breaker, retry budget and rate limiter.
+**The partition is `127.0.0.1:35633`.** A **partition** is the group of requests that share one set
+of limits, usually one host. You didn't name one, so Vereda used the URL's host, including the port
+when it isn't the scheme's default.
+
+Every partition gets its own queue for retries and, if you configure them, its own circuit breaker,
+retry budget and rate limiter.
 
 **The first try timed out after 200 ms.** The server never answered, and the per-attempt timeout
 ended the try. A timeout is worth another try, so the first `retry` event says
@@ -174,13 +177,15 @@ request with a configuration error; wrap it in a function instead.
 export type Result<T> = { success: true; data: T; raw: Response } | { success: false; error: AppError };
 ```
 
-The error side is a union of twelve error classes from `src/core/errors.ts`. Each has a fixed
-`kind` string (`"network"`, `"http"`, `"timeout"`, `"max_retries"`, and so on), so a `switch`
-on it tells TypeScript which class you have. A minor release may *add* a class, so the docs
-recommend ending such a `switch` with a `default` branch rather than a compile-time check that
-every case is covered. The full table of errors is in
-[docs/guide/results-and-errors.md](../guide/results-and-errors.md); chapter 7 explains the ones
-the retry logic produces.
+The error side is a union of twelve error classes from `src/core/errors.ts`. Each has a fixed `kind`
+string (`"network"`, `"http"`, `"timeout"`, `"max_retries"`, and so on), so a `switch` on it tells
+TypeScript which class you have.
+
+A minor release may *add* a class, so the docs recommend ending such a `switch` with a `default`
+branch rather than a compile-time check that every case is covered.
+
+The full table of errors is in [docs/guide/results-and-errors.md](../guide/results-and-errors.md);
+chapter 7 explains the ones the retry logic produces.
 
 ## How configuration is layered
 
@@ -242,10 +247,11 @@ many *retries* run at once for that host. Same name, two different mechanisms; c
 explains both.
 
 The `false` in the budget, rate-limit and pause row lets one partition turn off a limit set on the
-client. Say the client sets a rate limit for every host, but one internal host is cheap to call
-and shouldn't be limited: give that partition `rateLimit: false`. Merging can't express this on
-its own, since spreading `false` into an object adds nothing, so the code checks for `false`
-before it merges. Any other value that isn't an object fails validation.
+client. Say the client sets a rate limit for every host, but one internal host is cheap to call and
+shouldn't be limited: give that partition `rateLimit: false`.
+
+Merging can't express this on its own, since spreading `false` into an object adds nothing, so the
+code checks for `false` before it merges. Any other value that isn't an object fails validation.
 
 ## Validation: throw early, or fail the ticket
 
@@ -258,10 +264,11 @@ Bad configuration is caught in two places, and they behave differently:
   with a configuration error. The call itself doesn't throw.
 
 Why the split? `toPromise()` never rejects, and a verb method that sometimes threw would give
-callers two error channels to handle. Config passed when creating the client is checked once at
-startup, where a throw is the clearest signal. Per-request mistakes go through the same result
-channel as everything else, and they're never retried: an unresolvable URL is the caller's
-mistake, not a network fault.
+callers two error channels to handle.
+
+Config passed when creating the client is checked once at startup, where a throw is the clearest
+signal. Per-request mistakes go through the same result channel as everything else, and they're
+never retried: an unresolvable URL is the caller's mistake, not a network fault.
 
 Three cases sit at the edges of that rule:
 
@@ -288,9 +295,10 @@ and `attemptMs: NaN` would silently mean "no timeout".
 
 ## Changing the public API before 2.0
 
-Chapter 2 said the public API is what the five entry points export. Changing it in a
-compatible way is easy: add things. Removing or renaming something has to wait for 2.0. Until
-then, the project **deprecates** it: the old form keeps working, the new form exists beside
+Chapter 2 said the public API is what the five entry points export. Changing it in a compatible way
+is easy: add things. Removing or renaming something has to wait for 2.0.
+
+Until then, the project **deprecates** it: the old form keeps working, the new form exists beside
 it, and the changelog says what will change. These are the deprecations so far:
 
 | Today (1.x) | Use instead | What 2.0 changes |
@@ -310,12 +318,16 @@ budget and the rate limiter, which are on as soon as you configure them.
 
 ## Design note: a ticket, not a promise
 
-Why doesn't `get()` return a promise of a result? Because a request in Vereda has a life of its
-own: it can wait in a queue, be retried and be cancelled, as ours was retried twice. A promise
-can only say "done". The ticket can be cancelled, observed while it runs (as the script did with
-`subscribe()`), and still turned into a promise with `toPromise()`. The ONBOARDING guide puts it
-as "this is why Vereda returns a ticket instead of a plain promise". The history doesn't record
-other designs that were considered; the ticket is in the first "core features" commit.
+Why doesn't `get()` return a promise of a result? Because a request in Vereda has a life of its own:
+it can wait in a queue, be retried and be cancelled, as ours was retried twice. A promise can only
+say "done".
+
+The ticket can be cancelled, observed while it runs (as the script did with `subscribe()`), and
+still turned into a promise with `toPromise()`. The ONBOARDING guide puts it as "this is why Vereda
+returns a ticket instead of a plain promise".
+
+The history doesn't record other designs that were considered; the ticket is in the first "core
+features" commit.
 
 ## What must stay true
 
