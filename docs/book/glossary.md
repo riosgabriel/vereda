@@ -54,6 +54,9 @@ does not inherit from it. (3)
 **`displayUrl`** — The full URL with query values and credentials redacted (unless `redactQuery:
 false`). Used in events, logs and error messages. Contrast `fullUrl`, which is fetched. (5, 10)
 
+**`faultyFetch`** — The `@vereda/http/testing` helper that wraps a `fetch` and fails some calls on
+purpose (a status, a delay, a network error, a hang), in a seeded, repeatable order. (12)
+
 **Full jitter** — Choosing the whole retry delay uniformly at random between 0 and the capped
 exponential value, so clients that failed together don't retry together. (7)
 

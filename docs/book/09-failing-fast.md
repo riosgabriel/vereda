@@ -240,8 +240,8 @@ When a breaker changes state, the client emits `circuitOpen` or `circuitClose`, 
 events belong to the partition, not to any one request. `client.circuits()` lists only breakers
 that are turned on, and spells the middle state `"half_open"`.
 
-Breakers live in a registry that mirrors the bulkhead registry from chapter 8: created on first
-use, pruned after 60 seconds unused. Evicting an *open* breaker would replace it with a fresh,
+Breakers live in a `PartitionRegistry`, the same class that holds chapter 8's bulkheads: created
+on first use, pruned after 60 seconds unused. Evicting an *open* breaker would replace it with a fresh,
 closed one and cut its pause short. So a breaker can't be evicted while a request holds it, and
 an open or half-open one can't be evicted until its pause has passed.
 
@@ -345,9 +345,15 @@ budget is built with no config, which makes it allow everything:
 
 `src/queue/retry-budget.ts` — `RetryBudgetRegistry`
 ```typescript
-const partitionConfig = this.partitionConfig(name)?.retryBudget;
-return new RetryBudget(mergeOptional(this.globalConfig, partitionConfig));
+export class RetryBudgetRegistry extends PartitionRegistry<RetryBudget> {
+	constructor(globalConfig: RetryBudgetConfig | undefined, partitionConfig: PartitionLookup, ttlMs?: number) {
+		super((name) => new RetryBudget(mergeOptional(globalConfig, partitionConfig(name)?.retryBudget)), ttlMs);
+	}
+}
 ```
+
+The whole registry is that factory. `PartitionRegistry` does the rest: one entry per partition,
+made on first use.
 
 `mergeOptional` is chapter 8's merge, shared with the rate limit and `pauseOnRetryAfter`. It
 returns nothing for `false` on either side, which is why the budget is built with no config, and

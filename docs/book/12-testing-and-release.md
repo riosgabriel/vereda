@@ -54,6 +54,11 @@ server is exactly that: a function that returns `Response` objects. In a test it
 is retried, which error comes back, which events fire. `test/queue/deadline-aware-retry.test.ts`
 is a compact example.
 
+For failures that aren't the point of the test, wrap a `fetch` in `faultyFetch` from
+`@vereda/http/testing`. It fails some calls on purpose: a status, a delay, a network error or a
+hang. With a `seed`, the same faults come out in the same order every run.
+`test/testing/faulty-fetch.test.ts` shows each fault.
+
 **Fake timers.** `vi.useFakeTimers()` replaces the clock, and `vi.advanceTimersByTimeAsync(ms)`
 moves it forward. Vitest fakes `Date.now()` too, so timeouts, backoff waits and rate-limit waits
 run in microseconds. That's how the test above skips our request's 200 ms hang. Use it whenever a
@@ -230,7 +235,8 @@ Three habits from that pull request are worth copying.
    "where is it checked?", "what error when it runs out?") with the decision and the reason.
    Chapter 9 quotes it. Without it, the *why* would be lost.
 2. **A new mechanism copies an existing one.** The budget's registry and its eviction rules
-   deliberately mirror the circuit breaker's, so a reader who knows one knows both.
+   deliberately mirror the circuit breaker's, so a reader who knows one knows both. That
+   sameness later made #192 easy: #259 folded all three registries into one `PartitionRegistry`.
 3. **The property test learns the feature.** A random budget joined the scenario generator, so
    every later change is checked against it.
 

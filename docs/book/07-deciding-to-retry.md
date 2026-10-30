@@ -125,8 +125,8 @@ is no retry at all:
 ```
 
 The caller gets the raw timeout error. Nothing was retried, so nothing was "exhausted"; the
-policy simply refused. Add an `Idempotency-Key` header and you're back to three fetches and a
-success.
+policy simply refused. Add an `Idempotency-Key` header, or set `retry.idempotencyKey: true` so
+Vereda generates one, and you're back to three fetches and a success.
 
 ### Your `retryWhen` can only say no
 
