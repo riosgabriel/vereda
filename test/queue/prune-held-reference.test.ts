@@ -135,6 +135,45 @@ describe("PartitionRegistry", () => {
 		expect([...registry.values()]).not.toContain(stale);
 	});
 
+	// #269: entries past the TTL but still held make every sweep scan them
+	// and evict nothing. Size-triggered sweeps must not repeat that per call.
+	it("doesn't rescan held entries on every get once the map passes 100", () => {
+		const isEvictable = vi.fn(() => false);
+		const registry = new PartitionRegistry(() => ({ isEvictable }), TTL_MS);
+		for (let i = 0; i < 150; i++) registry.get(`held${i}`);
+		vi.advanceTimersByTime(TTL_MS + 1);
+		isEvictable.mockClear();
+
+		for (let i = 0; i < 100; i++) registry.get("hot");
+		// Every-10th sweeps alone scan 150 entries 10 times.
+		expect(isEvictable.mock.calls.length).toBeLessThanOrEqual(150 * 15);
+	});
+
+	it("sweeps on every get past 100 entries again once held entries are freed", () => {
+		const { registry } = makeRegistry();
+		const held = Array.from({ length: 150 }, (_, i) => registry.get(`held${i}`));
+		for (const entry of held) entry.evictable = false;
+		vi.advanceTimersByTime(TTL_MS + 1);
+		for (let i = 0; i < 20; i++) registry.get("hot"); // calls 151..170
+
+		// Released: the tenth-call sweep at 180 empties the map but for "hot".
+		for (const entry of held) entry.evictable = true;
+		for (let i = 0; i < 10; i++) registry.get("hot");
+		expect([...registry.values()]).toHaveLength(1);
+
+		// Back to 100 entries (calls 181..280) with one stale one held.
+		const stale = registry.get("stale");
+		stale.evictable = false;
+		vi.advanceTimersByTime(TTL_MS + 1);
+		for (let i = 0; i < 98; i++) registry.get(`p${i}`);
+		registry.get("hot");
+		stale.evictable = true;
+
+		// Call 281 isn't a tenth call; only a restored size trigger sweeps it.
+		registry.get("p98");
+		expect([...registry.values()]).not.toContain(stale);
+	});
+
 	it("values() doesn't refresh last access", () => {
 		const { registry } = makeRegistry();
 		const entry = registry.get("a");
