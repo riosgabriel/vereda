@@ -20,13 +20,13 @@ Here are the ticket updates from one run of the running example. The first colum
 milliseconds since the call. The waits are random, so your numbers will differ, and so will
 chapter 5's.
 
-```text
-    3  get() returns the ticket   pending
-  206  update                     queued      (attempt 1 timed out; a retry is coming)
-  213  update                     retrying    round 0, wait 86 ms
-  313  update                     retrying    round 1, wait 79 ms
-  394  update                     done        success, {"id":42,"name":"Ada"}
-```
+| ms | Event | Status | Detail |
+| --- | --- | --- | --- |
+| 3 | `get()` returns the ticket | `pending` |  |
+| 206 | `update` | `queued` | attempt 1 timed out; a retry is coming |
+| 213 | `update` | `retrying` | round 0, wait 86 ms |
+| 313 | `update` | `retrying` | round 1, wait 79 ms |
+| 394 | `update` | `done` | success, `{"id":42,"name":"Ada"}` |
 
 Every ticket follows the same small map of states:
 
@@ -46,8 +46,9 @@ stateDiagram-v2
   cancelled --> [*]
 ```
 
-*What to notice: `done` and `cancelled` are both final, and only `cancel()` reaches `cancelled`.
-Our request took the path pending → queued → retrying → retrying → done.*
+_What to notice: `done` and `cancelled` are both final, and only `cancel()` reaches `cancelled`._
+
+Our request took the path pending → queued → retrying → retrying → done.
 
 ## Two handles to one object
 

@@ -30,8 +30,8 @@ without tripping over them on the way.
 Every request ends with exactly one terminal event (`success`, `failure` or `cancelled`), and that
 event agrees with the ticket's result.
 
-Our request, run as in chapter 5, emits `request`, a `retry` for the timeout, a `retry` for the 503,
-and then one `success`.
+> **User 42:** Run as in chapter 5, the request emits `request`, a `retry` for the timeout, a `retry` for the 503,
+> and then one `success`.
 
 If you cancel it 300 ms in, while it waits to try again, you get `request`, one `retry`, and one
 `cancelled`, and the ticket resolves with a `CancelledError`. Two endings, or an ending that
@@ -74,8 +74,8 @@ slot.
 Every slot, timer, listener and response body a request takes is released on *every* way out:
 success, failure, cancel, timeout, deadline. Not just on success.
 
-Our request takes several things on its way. During its two waits it holds a timer. Its retries each
-take a place in the partition's bulkhead (chapter 8).
+> **User 42:** It takes several things on its way. During its two waits it holds a timer. Its retries each
+> take a place in the partition's bulkhead (chapter 8).
 
 If you'd enabled the circuit breaker and it was half-open, the request would hold one of its few
 trial slots (chapter 9).

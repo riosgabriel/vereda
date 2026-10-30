@@ -25,19 +25,19 @@ Give the running example a breaker that trips after two failures:
 `circuitBreaker: { enabled: true, failureThreshold: 2 }`. The server misbehaves exactly as before: a hang, then a 503, then it would
 answer 200.
 
-```text
-    1  event request
-   12  fetch #1              ...hangs, times out at 200 ms     failure 1
-  208  event retry 0         wait 101 ms
-  311  fetch #2  → 503                                         failure 2: trip
-  317  event circuitOpen
-  318  event failure         kind circuit_open, attempts 2
-```
+| ms | Event | Detail | Breaker |
+| --- | --- | --- | --- |
+| 1 | `event request` |  |  |
+| 12 | `fetch #1` | ...hangs, times out at 200 ms | failure 1 |
+| 208 | `event retry 0` | wait 101 ms |  |
+| 311 | `fetch #2` → 503 |  | failure 2: trip |
+| 317 | `event circuitOpen` |  |  |
+| 318 | `event failure` | kind `circuit_open`, attempts 2 |  |
 
-The third fetch never happens. After the 503, the breaker has seen two failures in a row, so it
-opens and announces it. The retry loop's next round asks the breaker for permission, as every
-round does, and is refused. The caller gets a `circuit_open` error after two tries, although a
-third would have worked.
+> **User 42:** The third fetch never happens. After the 503, the breaker has seen two failures in a row, so it
+> opens and announces it. The retry loop's next round asks the breaker for permission, as every
+> round does, and is refused. The caller gets a `circuit_open` error after two tries, although a
+> third would have worked.
 
 That's the trade a breaker makes. It gives up on requests that might have succeeded, in exchange
 for not sending hundreds that wouldn't have. With a realistic threshold (the default is 5), one
@@ -66,8 +66,7 @@ stateDiagram-v2
   half_open --> open: trial failed
 ```
 
-*What to notice: there's no timer. An open circuit becomes half-open only when a request arrives
-after the pause; that request becomes the trial.*
+_What to notice: there's no timer. An open circuit becomes half-open only when a request arrives after the pause; that request becomes the trial._
 
 The names come from electrical circuits. *Closed* means current flows: requests go through.
 *Open* means the circuit is broken: nothing goes through. *Half-open* is the test: a limited
@@ -279,14 +278,14 @@ client or on a partition, never on a single request.
 Give the running example `retryBudget: { ratio: 0.1, windowMs: 1000, minRetriesPerSec: 0 }`. In
 words: over the last second, retries may be at most 10% of first tries, with no minimum.
 
-```text
-    2  event request
-   13  fetch #1              ...hangs, times out at 200 ms
-  207  event retry 0         wait 159 ms
-  367  fetch #2  → 503
-  377  event retryBudgetExhausted
-  377  event failure         kind retryable_status, attempts 2
-```
+| ms | Event | Detail |
+| --- | --- | --- |
+| 2 | `event request` |  |
+| 13 | `fetch #1` | ...hangs, times out at 200 ms |
+| 207 | `event retry 0` | wait 159 ms |
+| 367 | `fetch #2` → 503 |  |
+| 377 | `event retryBudgetExhausted` |  |
+| 377 | `event failure` | kind `retryable_status`, attempts 2 |
 
 The first retry was allowed and the second wasn't. Here's the check that decided:
 
@@ -305,8 +304,8 @@ tryWithdraw(now: number = Date.now()): boolean {
 }
 ```
 
-Work it through for our request. The window holds one first try, so the allowance is the larger
-of `0 × 1` (the floor) and `0.1 × 1`: one tenth of a retry.
+> **User 42:** The window holds one first try, so the allowance is the larger
+> of `0 × 1` (the floor) and `0.1 × 1`: one tenth of a retry.
 
 Before the first retry, zero retries have been made, and 0 is below 0.1, so it's allowed and
 counted. Before the second, one retry has been made, and 1 is not below 0.1, so it's refused.

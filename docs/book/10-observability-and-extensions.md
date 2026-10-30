@@ -24,27 +24,27 @@ switch everything on: event listeners, a metrics sink, a logger, the request-log
 middleware and OpenTelemetry tracing. Add `?token=abc` to the path so redaction has something
 to do. This is what comes out, one line per call, condensed:
 
-```text
-    3  event      request
-    3  metric     vereda.requests +1          {partition: api.example.com, method: GET}
-    3  metric     vereda.in_flight = 1
-    3  metric     vereda.queue_depth = 0      {partition: api.example.com}
-    3  metric     vereda.global_queue_depth = 0
-    3  logger     info  Request initiated
-  207  middleware Request failed               url …/users/42?token=[redacted], 192 ms
-  209  logger     info  Request queued for retry
-  211  event      retry
-  211  metric     vereda.retries +1           {kind: timeout}
-  256  middleware Request completed            status 503, 7 ms
-  257  event      retry
-  257  metric     vereda.retries +1           {kind: retryable_status}
-  401  middleware Request completed            status 200, 2 ms
-  403  metric     vereda.in_flight = 0
-  403  event      success
-  404  metric     vereda.duration_ms 402      {partition: api.example.com, kind: success}
-  404  metric     vereda.queue_depth = 0
-  404  metric     vereda.global_queue_depth = 0
-```
+| ms | Source | Call | Detail |
+| --- | --- | --- | --- |
+| 3 | event | `request` |  |
+| 3 | metric | `vereda.requests +1` | `{partition: api.example.com, method: GET}` |
+| 3 | metric | `vereda.in_flight = 1` |  |
+| 3 | metric | `vereda.queue_depth = 0` | `{partition: api.example.com}` |
+| 3 | metric | `vereda.global_queue_depth = 0` |  |
+| 3 | logger | `info  Request initiated` |  |
+| 207 | middleware | `Request failed` | url `…/users/42?token=[redacted]`, 192 ms |
+| 209 | logger | `info  Request queued for retry` |  |
+| 211 | event | `retry` |  |
+| 211 | metric | `vereda.retries +1` | `{kind: timeout}` |
+| 256 | middleware | `Request completed` | status 503, 7 ms |
+| 257 | event | `retry` |  |
+| 257 | metric | `vereda.retries +1` | `{kind: retryable_status}` |
+| 401 | middleware | `Request completed` | status 200, 2 ms |
+| 403 | metric | `vereda.in_flight = 0` |  |
+| 403 | event | `success` |  |
+| 404 | metric | `vereda.duration_ms 402` | `{partition: api.example.com, kind: success}` |
+| 404 | metric | `vereda.queue_depth = 0` |  |
+| 404 | metric | `vereda.global_queue_depth = 0` |  |
 
 When the request finishes, the tracer holds four spans: one for the whole request, carrying two
 `vereda.retry` span events, and one child span per try.
@@ -145,7 +145,8 @@ which turns each event into metrics:
 | `circuitOpen` | circuit-open counter |
 | `retryBudgetExhausted` | budget-exhausted counter |
 
-Our request's two retries were tagged `timeout` and `retryable_status`, the kinds from chapter 7.
+> **User 42:** The two retries were tagged `timeout` and `retryable_status`, the kinds from chapter 7.
+
 That tag is what lets a dashboard tell "the host is slow" from "the host is failing".
 
 Two choices in this code were bugs once, and one is new.
@@ -185,8 +186,12 @@ metrics backend sees a series without that tag, which is honest: there was no ho
 | info | Request queued for retry | the first try failed and a retry will follow |
 | warn | Request failed after retries | the retry loop ended in failure |
 
-That answers the first puzzle. Our request succeeded on its third try, and no line covers that
-case, so the logger said "initiated" and "queued for retry" and then nothing. A request that
+That answers the first puzzle.
+
+> **User 42:** The request succeeded on its third try, and no line covers that
+> case, so the logger said "initiated" and "queued for retry" and then nothing.
+
+A request that
 fails on its first try, say with a 404, gets only "initiated". The logger is a partial record.
 If you need every ending, listen to the events.
 

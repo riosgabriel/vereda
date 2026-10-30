@@ -118,7 +118,9 @@ The last one is worth a sentence, because our running example shows it. The clie
 initiated", "Request queued for retry", "Request succeeded" for a success on the *first* try, and
 "Request failed after retries".
 
-Our request, which succeeds on its third try, logs only the first two. A cancel logs nothing. Decide
+> **User 42:** It succeeds on its third try, so it logs only the first two.
+
+A cancel logs nothing. Decide
 whether the logger should mirror the three terminal events, and if so, where each line belongs.
 
 And a few doc fixes, smaller still:

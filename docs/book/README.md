@@ -128,5 +128,7 @@ flowchart LR
   loop -->|success, veto, exhaustion,<br/>cancel or deadline| done
 ```
 
-*What to notice: the caller gets the ticket before any network work happens, and only retries
-queue behind the per-host bulkhead. Chapter 5 fills in every box.*
+_What to notice: the caller gets the ticket before any network work happens, and only retries
+queue behind the per-host bulkhead._
+
+Chapter 5 fills in every box.

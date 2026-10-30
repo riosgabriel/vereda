@@ -25,18 +25,18 @@ Here is what really happens when you run it (the README has the full script), co
 line per client event and ticket update. The first column is milliseconds since the call; your
 times will differ a little.
 
-```text
-    6  event request         partition api.example.com
-    7  get() returns the ticket (pending)
-   20  fetch #1              ...hangs
-  210  update queued         attempt 1 timed out after 200 ms
-  212  event retry 0         wait 4 ms, because of: timeout
-  217  fetch #2              → 503
-  224  event retry 1         wait 281 ms, because of: retryable_status
-  507  fetch #3              → 200
-  513  event success         attempts: 3
-  513  update done           data: {"id":42,"name":"Ada"}
-```
+| ms | Event | Detail |
+| --- | --- | --- |
+| 6 | `event request` | partition `api.example.com` |
+| 7 | `get()` returns the ticket | `pending` |
+| 20 | `fetch #1` | ...hangs |
+| 210 | `update queued` | attempt 1 timed out after 200 ms |
+| 212 | `event retry 0` | wait 4 ms, because of: `timeout` |
+| 217 | `fetch #2` | → 503 |
+| 224 | `event retry 1` | wait 281 ms, because of: `retryable_status` |
+| 507 | `fetch #3` | → 200 |
+| 513 | `event success` | attempts: 3 |
+| 513 | `update done` | data: `{"id":42,"name":"Ada"}` |
 
 By the end of this chapter you'll be able to explain every line, including two that look odd:
 why the `request` event fires *before* `get()` returns, and why the two waits are so different.
@@ -68,8 +68,7 @@ sequenceDiagram
   L->>C: settle ticket, emit "success"
 ```
 
-*What to notice: you get the ticket back while the first try is still running. Everything after
-that happens in the background, and you hear about it through events and the ticket.*
+_What to notice: `send` hands back the ticket while the first try is still running; everything after that happens in the background._
 
 ## Stage 1: the call returns a ticket
 
@@ -211,8 +210,9 @@ flowchart TD
   H -->|yes| L[hand over to the retry loop]
 ```
 
-*What to notice: there are many ways to end before the retry loop, and one way in. Our request
-takes the long path down the middle and out at the bottom right.*
+_What to notice: there are many ways to end before the retry loop, and only one way in._
+
+Our request takes the long path down the middle and out at the bottom right.
 
 ### The checks, and the shape of every early exit
 
@@ -257,9 +257,9 @@ options are checked next, and fail the same way.
 
 ### Announce and hold
 
-Our request passes every check. The client now merges the timeout and retry settings (client
-defaults, then the partition's, then the request's), emits `request`, and takes a **hold** on
-three per-partition objects: the bulkhead, the circuit breaker and the retry budget.
+> **User 42:** It passes every check. The client now merges the timeout and retry settings (client
+> defaults, then the partition's, then the request's), emits `request`, and takes a **hold** on
+> three per-partition objects: the bulkhead, the circuit breaker and the retry budget.
 
 `src/core/client.ts` — `_fireFirstAttempt`
 ```typescript
@@ -380,9 +380,9 @@ Two smaller details:
   a request waiting for one holds no concurrency. Every wait, for a
   token, a slot or a permit, is added to the ticket's `queuedMs`.
 
-Our request takes a global permit and sends **fetch #1** at 20 ms. The fake server never
-answers. At 200 ms the per-attempt timer fires, the attempt is aborted, and `execute` reports a
-**timeout**.
+> **User 42:** It takes a global permit and sends **fetch #1** at 20 ms. The fake server never
+> answers. At 200 ms the per-attempt timer fires, the attempt is aborted, and `execute` reports a
+> **timeout**.
 
 ### The fork
 
