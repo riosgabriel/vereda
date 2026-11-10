@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-10
+
 ### Added
 
 - `retry.idempotencyKey` option (`true`, or a `() => string` generator; off by default) on the client, a partition or a request: Vereda generates one `Idempotency-Key` per request (a random v4 UUID from `crypto.getRandomValues`) and sends the same key on every attempt, so a `POST` or `PATCH` becomes retryable. Only non-idempotent methods get a key, a non-empty header you set yourself is never replaced, and a generator that throws or returns a blank value, or a key or header that is not valid, fails the request with `ConfigurationError` (#260).
@@ -231,7 +233,8 @@ of this project before today.
 - The circuit breaker counted an attempt that never reached the host (a body factory that threw before the request was dispatched) as a success — it reset the consecutive-failure count, counted as a non-failure in the rolling window, and could close a half-open trial, all without the host ever being contacted. Such an outcome is now ignored entirely: no change to the failure count, the rolling window, or open/closed state, and in half-open it frees the trial slot without deciding it.
 - A user-supplied circuit-breaker `isFailure` was called twice for every attempt it classified as a failure — once to classify the outcome, then again while recording it — so a classifier that counts, logs, or samples saw each real failure twice. It's now called exactly once per reported outcome.
 
-[Unreleased]: https://github.com/riosgabriel/vereda/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/riosgabriel/vereda/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/riosgabriel/vereda/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/riosgabriel/vereda/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/riosgabriel/vereda/compare/v1.0.2...v1.1.0
 [1.0.2]: https://github.com/riosgabriel/vereda/compare/v1.0.1...v1.0.2
