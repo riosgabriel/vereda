@@ -394,6 +394,12 @@ in the bulkhead registry's `get`. That registry extends `PartitionRegistry`
 holds more than 100 entries) it **prunes**: it deletes entries that are idle and unused for 60
 seconds. Without this, a client that calls many different hosts would grow its map forever.
 
+Above 100 entries, a sweep on every `get()` gets costly if none of them can go. So when a sweep
+triggered by size evicts nothing, the size trigger moves to twice the current size. Once the map
+is back at 100 entries or fewer, it drops back to 100. The sweep every tenth `get()` never changes.
+
+> **Aside: history.** The backoff on sweeps that evict nothing is #269.
+
 The danger is evicting a bulkhead that's still in use. The next `get()` would build a fresh one,
 and for a while two bulkheads would exist for the same host, doubling its limit. So "idle" has
 a careful definition:
