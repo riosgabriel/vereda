@@ -3,11 +3,12 @@
 A book about how `@vereda/http` works inside: what problem it solves, how one request travels
 through it, the rules the code must keep, and how to change it safely.
 
-> **Pinned commit:** this book describes `03ad4f6` (`03ad4f6cfa0211d8aa547cc1c59e62686631c0cd`,
-> 2026-10-26, version 1.1.1 plus unreleased changes: the opt-in `pauseOnRetryAfter` and
+> **Pinned commit:** this book describes `170ee44` (`170ee444adfd0ed81cd0e78db4c20fd19a75b5bd`,
+> 2026-10-30, version 1.1.1 plus unreleased changes: the opt-in `pauseOnRetryAfter` and
 > `retry.idempotencyKey` options, a stricter `Retry-After` parse, the `@vereda/http/testing` entry
-> point and one shared `PartitionRegistry`). Where the book and the code differ, trust the code. To
-> see what changed since, run `git diff 03ad4f6..HEAD --stat -- src/`.
+> point, and one shared `PartitionRegistry` that backs off sweeps that evict nothing). Where the
+> book and the code differ, trust the code. To see what changed since, run
+> `git diff 170ee44..HEAD --stat -- src/`.
 
 ## Who it's for
 
